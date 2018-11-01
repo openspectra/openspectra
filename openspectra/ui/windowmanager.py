@@ -170,7 +170,7 @@ class WindowSet(QObject):
             self.__init_histogram(x, y)
 
     def __init_image_window(self, x, y):
-        self.__image_window.pixelSelected.connect(self.__handle_pixel_click)
+        self.__image_window.pixel_selected.connect(self.__handle_pixel_click)
         self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__image_window.closed.connect(self.__handle_image_closed)
         self.__image_window.area_selected.connect(self.__handle_area_selected)
@@ -268,4 +268,4 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
-        print("Got area: ", event.x_points(), event.y())
+        print("Got area: ", event.x_points(), event.y_points())
