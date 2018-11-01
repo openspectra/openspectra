@@ -1,8 +1,45 @@
 import numpy as np
+from numpy import ma
 
 
-if __name__ == '__main__':
+def test2():
+    img = np.arange(9)
+    print(img)
 
+    img.resize(3, 3)
+    print(img)
+
+    print(img[(0, 1)])
+
+    # None of these work
+    # index = np.array([[0, 0], [1, 1], [2, 2]])
+    # index = np.array((0, 0))
+    # index = [(0, 0), (1, 1)]
+    # index = np.array([(0, 0), (1, 1)])
+    # index = list([(0, 0), (1, 1)])
+    # index = (0, 1), (1, 1), (2, 2)
+
+    # this is list of x values, list of y values so 1st pair is 0,0
+    # index = (0, 1, 2), (0, 2, 1) # works
+    # index = [(0, 1, 2), (0, 2, 1)] # works
+    # index = [[0, 1, 2], [0, 2, 1]] # works
+    # index = np.array([(0, 1, 2), (0, 2, 1)]) # nope
+    # index = [np.array([0, 1, 2]), np.array([0, 2, 1])] # works
+
+    x = ma.array([0, 1, 2])
+    y = ma.array([0, 2, 1])
+    x[1] = ma.masked
+    y[1] = ma.masked
+
+    x1 = x[~x.mask]
+    y1 = y[~y.mask]
+    # index = [x1, y1]
+
+    # print("index: ", index)
+    print(img[x1, y1])
+
+
+def test1():
     sq = np.arange(4)
     print(sq)
 
@@ -76,3 +113,8 @@ if __name__ == '__main__':
 
     zero = np.zeros((3, 3, 3))
     print("Zero:", zero)
+
+
+if __name__ == '__main__':
+
+    test2()

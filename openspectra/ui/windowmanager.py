@@ -1,3 +1,5 @@
+from typing import Union
+
 import numpy as np
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent
@@ -7,7 +9,7 @@ from PyQt5.QtWidgets import QTreeWidgetItem
 from openspectra.image import Image, GreyscaleImage, RGBImage
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.open_spectra_file import OpenSpectraFile, OpenSpectraHeader
-from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent
+from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import PlotData, LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 
 
@@ -97,7 +99,7 @@ class FileManager(QObject):
         image = self.__file.greyscale_image(index)
         self.__create_window_set(image, label)
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self.__file.band(line, sample)
 
     def header(self) -> OpenSpectraHeader:
@@ -171,6 +173,7 @@ class WindowSet(QObject):
         self.__image_window.pixelSelected.connect(self.__handle_pixel_click)
         self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__image_window.closed.connect(self.__handle_image_closed)
+        self.__image_window.area_selected.connect(self.__handle_area_selected)
 
         # TODO need some sort of layout manager?
         self.__image_window.move(x, y)
@@ -201,7 +204,7 @@ class WindowSet(QObject):
     def get_image_geometry(self):
         return self.__image_window.geometry()
 
-    def __get_plot_data(self, x, y) -> PlotData:
+    def __get_plot_data(self, x:Union[int, tuple], y:Union[int, tuple]) -> PlotData:
         line = y
         sample = x
         band = self.__file_manager.band(line, sample)
@@ -262,3 +265,7 @@ class WindowSet(QObject):
             np.arange(image_data.min(), image_data.max() + 1, 1),
             image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label, "hist")
         self.__histogram_window.set_adjusted_data(image_hist)
+
+    @pyqtSlot(AreaSelectedEvent)
+    def __handle_area_selected(self, event:AreaSelectedEvent):
+        print("Got area: ", event.x_points(), event.y())

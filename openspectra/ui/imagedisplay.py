@@ -1,5 +1,9 @@
+import itertools
 from enum import Enum
 from math import floor
+
+import numpy as np
+from numpy import ma
 
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
@@ -31,6 +35,20 @@ class AdjustedMouseEvent(QObject):
         return self.__pixel_pos
 
 
+class AreaSelectedEvent(QObject):
+
+    def __init__(self, x_points:np.ndarray, y_points:np.ndarray):
+        super().__init__(None)
+        self.__x_points = x_points
+        self.__y_points = y_points
+
+    def x_points(self) -> np.ndarray:
+        return self.__x_points
+
+    def y(self) -> np.ndarray:
+        return self.__y_points
+
+
 class MouseCoordinates(QLabel):
 
     def __init__(self, parent=None):
@@ -55,6 +73,7 @@ class ImageLabel(QLabel):
     mouseMove = pyqtSignal(AdjustedMouseEvent)
     clicked = pyqtSignal(AdjustedMouseEvent)
     doubleClicked = pyqtSignal(AdjustedMouseEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
 
     def __init__(self, parent=None):
         super(ImageLabel, self).__init__(parent)
@@ -74,6 +93,7 @@ class ImageLabel(QLabel):
         self.__dragging = False
 
         self.__polygon:QPolygon = None
+        self.__polygon_bounds:QRect = None
         self.__drawing = False
 
         self.__current_action = ImageLabel.Action.none
@@ -81,6 +101,7 @@ class ImageLabel(QLabel):
     def __del__(self):
         self.__initial_height = None
         self.__initial_width = None
+        self.__polygon_bounds = None
         self.__polygon = None
         self.__center = None
         self.__rect = None
@@ -88,7 +109,7 @@ class ImageLabel(QLabel):
 
     def changeEvent(self, event:QEvent):
         if event.type() == QEvent.ParentChange and self.pixmap() is not None \
-            and self.__initial_height == 0 and self.__initial_width == 0:
+                and self.__initial_height == 0 and self.__initial_width == 0:
             self.__initial_height = self.pixmap().height()
             self.__initial_width = self.pixmap().width()
 
@@ -120,6 +141,8 @@ class ImageLabel(QLabel):
         elif self.__current_action == ImageLabel.Action.drawing:
             self.__current_action = ImageLabel.Action.none
             self.setCursor(self.__default_cursor)
+            # trigger the collection of spectra plots points
+            self.__get_select_pixels()
             self.update()
 
         # Then it's a click
@@ -167,6 +190,35 @@ class ImageLabel(QLabel):
         if self.__polygon is not None:
             painter.drawPoints(self.__polygon)
 
+            # TODO not sure this is how we want to go but interesting
+            self.__polygon_bounds = self.__polygon.boundingRect()
+            painter.drawRect(self.__polygon_bounds)
+
+    def __get_select_pixels(self):
+        if self.__polygon_bounds is not None:
+            x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
+            # TODO debug only
+            print("Selected coords: ", x1, y1, x2, y2)
+
+            # create an array of contained by the bounding rectangle
+            x_range = ma.arange(x1, x2 + 1)
+            y_range = ma.arange(y1, y2 + 1)
+            points = ma.array(list(itertools.product(x_range, y_range)))
+
+            # check to see which points also fall inside of the polygon
+            for i in range(len(points)):
+                if not self.__polygon.containsPoint(QPoint(points[i][0], points[i][1]), Qt.WindingFill):
+                    points[i] = ma.masked
+
+            # split the points back into x and y values
+            x = points[:, 0]
+            y = points[:, 1]
+
+            # take only the point that were inside the polygon
+            x = x[~x.mask]
+            y = y[~y.mask]
+            self.area_selected.emit(AreaSelectedEvent(x, y))
+
     def __pressed(self):
         # TODO set special cursor depending on action??
         if self.__last_mouse_loc is not None:
@@ -209,6 +261,8 @@ class ImageLabel(QLabel):
 
 class ImageDisplay(QScrollArea):
 
+    area_selected = pyqtSignal(AreaSelectedEvent)
+
     def __init__(self, image:Image,
             qimage_format:QImage.Format=QImage.Format_Grayscale8, parent=None):
         # TODO what's this doing???
@@ -230,6 +284,8 @@ class ImageDisplay(QScrollArea):
         self.__imageLabel.setMouseTracking(True)
 
         self.__imageLabel.doubleClicked.connect(self.__double_click_handler)
+        self.__imageLabel.area_selected.connect(self.area_selected)
+
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
 
@@ -292,6 +348,7 @@ class ImageDisplayWindow(QMainWindow):
 
     pixelSelected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
     closed = pyqtSignal()
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format, parent=None):
@@ -316,6 +373,7 @@ class ImageDisplayWindow(QMainWindow):
         self.__image_display.connect_mouse_move_slot(self.__mouseViewer.on_mouse_move)
         self.__image_display.connect_clicked_slot(self.__on_pixel_click)
         self.__image_display.connect_mouse_move_slot(self.__on_mouse_move)
+        self.__image_display.area_selected.connect(self.area_selected)
 
         self.__mouseWidget.setWidget(self.__mouseViewer)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.__mouseWidget)

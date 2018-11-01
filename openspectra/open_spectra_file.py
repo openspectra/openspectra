@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from typing import List
+from typing import List, Union
 import numpy as np
 
 from openspectra.image import RGBImage, GreyscaleImage
@@ -232,7 +232,7 @@ class FileTypeDelegate():
     def image(self, band) -> np.ndarray:
         pass
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         pass
 
     def shape(self) -> Shape:
@@ -255,7 +255,7 @@ class BILFileDelegate(FileTypeDelegate):
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[:, band, :]
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[line, :, sample]
 
 
@@ -275,7 +275,7 @@ class BQSFileDelegate(FileTypeDelegate):
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[band, :, :]
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[:, line, sample]
 
 
@@ -295,7 +295,7 @@ class BIPFileDelegate(FileTypeDelegate):
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[:, :, band]
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[line, sample, :]
 
 
@@ -355,7 +355,7 @@ class OpenSpectraFile:
             self.__file_delegate.image(green),
             self.__file_delegate.image(blue))
 
-    def band(self, line, sample) -> np.ndarray:
+    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self.__file_delegate.band(line, sample)
 
     def name(self) -> str:
@@ -397,7 +397,7 @@ def create_open_spectra_file(file_name) -> OpenSpectraFile:
         else:
             raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))
 
-        # TODO this is kind of wierd
+        # TODO this is kind of weird
         memory_model.load(file_delegate.shape())
         return OpenSpectraFile(header, file_delegate, memory_model)
 
