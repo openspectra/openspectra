@@ -1,4 +1,4 @@
-import openspectra.open_spectra_file as ev
+import openspectra.openspectra_file as ev
 
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog
 from PyQt5.QtGui import QIcon

@@ -5,8 +5,8 @@ from PyQt5.QtWidgets import QApplication, QScrollArea, QLabel, QMainWindow
 
 import openspectra.image as img
 from openspectra.image import RGBImage
-import openspectra.open_spectra_file as ef
-from openspectra.open_spectra_file import OpenSpectraFile
+import openspectra.openspectra_file as ef
+from openspectra.openspectra_file import OpenSpectraFile
 import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt

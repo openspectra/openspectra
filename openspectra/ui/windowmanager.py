@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QTreeWidgetItem
 
 from openspectra.image import Image, GreyscaleImage, RGBImage
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
-from openspectra.open_spectra_file import OpenSpectraFile, OpenSpectraHeader
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import PlotData, LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 

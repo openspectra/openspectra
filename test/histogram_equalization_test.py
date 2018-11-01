@@ -1,5 +1,5 @@
-import openspectra.open_spectra_file as ef
-from openspectra.open_spectra_file import OpenSpectraFile
+import openspectra.openspectra_file as ef
+from openspectra.openspectra_file import OpenSpectraFile
 import numpy as np
 from matplotlib import pyplot as plt
 from PIL import Image

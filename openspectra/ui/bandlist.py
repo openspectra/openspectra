@@ -1,7 +1,7 @@
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
     QHBoxLayout, QPushButton
-from openspectra.open_spectra_file import OpenSpectraFile
+from openspectra.openspectra_file import OpenSpectraFile
 
 
 class RGBSelectedBands(QObject):
