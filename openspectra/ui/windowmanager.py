@@ -268,4 +268,9 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
-        print("Got area: ", event.x_points(), event.y_points())
+        lines = event.y_points()
+        samples = event.x_points()
+        print("Got area: ", samples, lines)
+        bands = self.__file_manager.band(lines, samples)
+        # TODO OK so now we can get the bands, who should do the calculations???
+        print("bands: ", bands)
