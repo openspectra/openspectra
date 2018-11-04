@@ -147,6 +147,7 @@ class WindowSet(QObject):
         self.__file_manager = file_manager
         self.__image_window = None
         self.__spec_plot_window = LinePlotDisplayWindow()
+        self.__band_stats_window = LinePlotDisplayWindow()
         self.__histogram_window = HistogramDisplayWindow()
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
         self.__label = None
@@ -155,6 +156,7 @@ class WindowSet(QObject):
         print("WindowSet.__del__ called...")
         self.__label = None
         self.__spec_plot_window = None
+        self.__band_stats_window = None
         self.__histogram_window = None
         self.__image_window = None
         self.__file_manager = None
@@ -209,12 +211,13 @@ class WindowSet(QObject):
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
         if self.__spec_plot_window.isVisible():
             plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
-            self.__spec_plot_window.canvas().add_plot(plot_data)
+            plot_data.color = "g"
+            self.__spec_plot_window.add_plot(plot_data)
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_mouse_move(self, event:AdjustedMouseEvent):
         plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
-        self.__spec_plot_window.canvas().plot(plot_data)
+        self.__spec_plot_window.plot(plot_data)
 
         if not self.__spec_plot_window.isVisible():
             # TODO need some sort of layout manager?
@@ -255,9 +258,21 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
+        if self.__band_stats_window.isVisible():
+            self.__band_stats_window.clear()
+
         lines = event.y_points()
         samples = event.x_points()
-        print("Got area: ", samples, lines)
-        bands = self.__file_manager.band(lines, samples)
-        # TODO OK so now we can get the bands, who should do the calculations???
-        print("bands: ", bands)
+        stats_plot = self.__band_tools.statistics_plot(lines, samples)
+        self.__band_stats_window.plot(stats_plot.mean())
+        self.__band_stats_window.add_plot(stats_plot.min())
+        self.__band_stats_window.add_plot(stats_plot.max())
+        self.__band_stats_window.add_plot(stats_plot.plus_one_std())
+        self.__band_stats_window.add_plot(stats_plot.minus_one_std())
+
+        # TODO need some sort of layout manager?
+        rect = self.__histogram_window.geometry()
+        self.__band_stats_window.setGeometry(rect.x() + 75, rect.y() + 75, 500, 400)
+
+        if not self.__band_stats_window.isVisible():
+            self.__band_stats_window.show()

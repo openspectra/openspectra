@@ -62,7 +62,6 @@ class LinePlotCanvas(PlotCanvas):
         super().__init__(parent, width, height, dpi)
 
     def plot(self, data:LinePlotData):
-        # self.__axes.clear()
         if self._current_plot is not None:
             self._current_plot.remove()
 
@@ -72,8 +71,12 @@ class LinePlotCanvas(PlotCanvas):
         super().plot(data)
 
     def add_plot(self, data:LinePlotData):
-        self._axes.plot(data.xdata, data.ydata, color="g", linestyle="-")
+        self._axes.plot(data.xdata, data.ydata, color=data.color, linestyle=data.linestyle)
         self.draw()
+
+    def clear(self):
+        self._axes.clear()
+        self._current_plot = None
 
 
 class HistogramPlotCanvas(PlotCanvas):
@@ -184,9 +187,14 @@ class LinePlotDisplayWindow(QMainWindow):
     def __del__(self):
         self.__plot_canvas = None
 
-    # TODO invert this, get data not expose canvas
-    def canvas(self) -> PlotCanvas:
-        return self.__plot_canvas
+    def plot(self, data:LinePlotData):
+        self.__plot_canvas.plot(data)
+
+    def add_plot(self, data:LinePlotData):
+        self.__plot_canvas.add_plot(data)
+
+    def clear(self):
+        self.__plot_canvas.clear()
 
     # TODO do we need this??
     def resizeEvent(self, event:QResizeEvent):

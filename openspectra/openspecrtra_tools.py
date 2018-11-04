@@ -38,7 +38,9 @@ class BandStatistics:
         self.__bands = bands
         # TODO lazy initialize theese???
         self.__mean = bands.mean(0)
+        # TODO is this correct?
         self.__min = bands.min(0)
+        # TODO is this correct?
         self.__max = bands.max(0)
         self.__std = bands.std(0)
         self.__mean_plus = self.__mean + self.__std
@@ -66,6 +68,33 @@ class BandStatistics:
         return self.__std
 
 
+class BandStaticsPlotData():
+
+    def __init__(self, __band_stats:BandStatistics, wavelengths:np.ndarray):
+        self.__band_stats = __band_stats
+        self.__wavelengths = wavelengths
+
+    def mean(self) -> LinePlotData:
+        return LinePlotData(self.__wavelengths, self.__band_stats.mean(),
+            "Wavelength", "Brightness", "Band Stats", "b")
+
+    def min(self) -> LinePlotData:
+        return LinePlotData(self.__wavelengths, self.__band_stats.min(),
+            "Wavelength", "Brightness", "Band Stats", "r")
+
+    def max(self) -> LinePlotData:
+        return LinePlotData(self.__wavelengths, self.__band_stats.max(),
+            "Wavelength", "Brightness", "Band Stats", "r")
+
+    def plus_one_std(self) -> LinePlotData:
+        return LinePlotData(self.__wavelengths, self.__band_stats.plus_one_std(),
+            "Wavelength", "Brightness", "Band Stats", "g")
+
+    def minus_one_std(self) -> LinePlotData:
+        return LinePlotData(self.__wavelengths, self.__band_stats.minus_one_std(),
+            "Wavelength", "Brightness", "Band Stats", "g")
+
+
 class OpenSpectraBandTools:
     '''A class for working on OS files'''
 
@@ -75,8 +104,9 @@ class OpenSpectraBandTools:
     def band_statistics(self, lines:tuple, samples:tuple) -> BandStatistics:
         return BandStatistics(self.__file.band(lines, samples))
 
-    def statistics_plot(self, lines:tuple, samples:tuple) -> [LinePlotData]:
-        pass
+    def statistics_plot(self, lines:tuple, samples:tuple) -> BandStaticsPlotData:
+        band_stats = self.band_statistics(lines, samples)
+        return BandStaticsPlotData(band_stats, self.__file.header().wavelengths())
 
     def spectral_plot(self, line:int, sample:int) -> LinePlotData:
         band = self.__file.band(line, sample)
