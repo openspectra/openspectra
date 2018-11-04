@@ -6,7 +6,7 @@ from openspectra.openspectra_file import OpenSpectraFile
 
 class PlotData:
     def __init__(self, xdata, ydata, xlabel, ylabel, title,
-            color="b", linestyle="-"):
+            color="b", linestyle="-", legend=None):
         self.xdata = xdata
         self.ydata = ydata
         self.xlabel = xlabel
@@ -14,20 +14,21 @@ class PlotData:
         self.title = title
         self.color = color
         self.linestyle = linestyle
+        self.legend = legend
 
 
 class LinePlotData(PlotData):
 
     def __init__(self, xdata, ydata, xlabel, ylabel, title,
-            color="b", linestyle="-"):
-        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle)
+            color="b", linestyle="-", legend=None):
+        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle, legend)
 
 
 class HistogramPlotData(PlotData):
 
     def __init__(self, xdata, ydata, xlabel, ylabel, title, color="b",
-            linestyle="-", lower_limit=None, upper_limit=None):
-        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle)
+            linestyle="-", legend=None, lower_limit=None, upper_limit=None):
+        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle, legend)
         self.lower_limit = lower_limit
         self.upper_limit = upper_limit
 
@@ -76,23 +77,23 @@ class BandStaticsPlotData():
 
     def mean(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.mean(),
-            "Wavelength", "Brightness", "Band Stats", "b")
+            "Wavelength", "Brightness", "Band Stats", "b", legend="mean")
 
     def min(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.min(),
-            "Wavelength", "Brightness", "Band Stats", "r")
+            "Wavelength", "Brightness", "Band Stats", "r", legend="min")
 
     def max(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.max(),
-            "Wavelength", "Brightness", "Band Stats", "r")
+            "Wavelength", "Brightness", "Band Stats", "r", legend="max")
 
     def plus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.plus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g")
+            "Wavelength", "Brightness", "Band Stats", "g", legend="std+")
 
     def minus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.minus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g")
+            "Wavelength", "Brightness", "Band Stats", "g", legend="std-")
 
 
 class OpenSpectraBandTools:

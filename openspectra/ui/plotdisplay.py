@@ -66,12 +66,16 @@ class LinePlotCanvas(PlotCanvas):
             self._current_plot.remove()
 
         self._current_plot, = self._axes.plot(data.xdata, data.ydata,
-            color=data.color, linestyle=data.linestyle)
-
+            color=data.color, linestyle=data.linestyle, label=data.legend)
+        if data.legend is not None:
+            self._axes.legend(loc='best')
         super().plot(data)
 
     def add_plot(self, data:LinePlotData):
-        self._axes.plot(data.xdata, data.ydata, color=data.color, linestyle=data.linestyle)
+        self._axes.plot(data.xdata, data.ydata, color=data.color,
+            linestyle=data.linestyle, label=data.legend)
+        if data.legend is not None:
+            self._axes.legend(loc='best')
         self.draw()
 
     def clear(self):
