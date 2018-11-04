@@ -1,6 +1,6 @@
 import numpy as np
 
-# TODO divide in subclasses
+from openspectra.image import Image
 from openspectra.openspectra_file import OpenSpectraFile
 
 
@@ -66,30 +66,47 @@ class BandStatistics:
         return self.__std
 
 
-class OpenSpectraTools:
+class OpenSpectraBandTools:
     '''A class for working on OS files'''
 
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
 
-    def band_statistics(self, lines, samples) -> BandStatistics:
+    def band_statistics(self, lines:tuple, samples:tuple) -> BandStatistics:
         return BandStatistics(self.__file.band(lines, samples))
 
-
-class OpenSpectraPlotTools:
-
-    def __init__(self, file:OpenSpectraFile):
-        self.__file = file
-        self.__band_statistics = BandStatistics(file)
-
-    def statistics_plot(self, lines, samples) -> [LinePlotData]:
+    def statistics_plot(self, lines:tuple, samples:tuple) -> [LinePlotData]:
         pass
 
-    def spectral_plot(self, line, sample) -> LinePlotData:
-        pass
+    def spectral_plot(self, line:int, sample:int) -> LinePlotData:
+        band = self.__file.band(line, sample)
+        wavelengths = self.__file.header().wavelengths()
+        return LinePlotData(wavelengths, band, "Wavelength", "Brightness",
+            "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+
+
+class OpenSpectraImageTools:
+
+    def __init__(self, image:Image):
+        self.__image = image
+        self.__label = None
 
     def raw_histogram(self) -> HistogramPlotData:
-        pass
+        raw_data = self.__image.raw_data()
+        return HistogramPlotData(
+            np.arange(raw_data.min(), raw_data.max() + 1, 1),
+            raw_data.flatten(), "X-FixMe", "Y-FixMe", "Raw " + self.__label,
+            "r", lower_limit=self.__image.low_cutoff(),
+            upper_limit=self.__image.high_cutoff())
 
     def adjusted_histogram(self) -> HistogramPlotData:
-        pass
+        image_data = self.__image.image_data()
+        return HistogramPlotData(
+            np.arange(image_data.min(), image_data.max() + 1, 1),
+            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
+
+    def label(self):
+        return self.__label
+
+    def set_label(self, label):
+        self.__label = label

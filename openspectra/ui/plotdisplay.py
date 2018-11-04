@@ -184,6 +184,7 @@ class LinePlotDisplayWindow(QMainWindow):
     def __del__(self):
         self.__plot_canvas = None
 
+    # TODO invert this, get data not expose canvas
     def canvas(self) -> PlotCanvas:
         return self.__plot_canvas
 

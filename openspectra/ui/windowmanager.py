@@ -11,7 +11,7 @@ from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
-from openspectra.openspecrtra_tools import HistogramPlotData, LinePlotData
+from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
 
 
 class WindowManager(QObject):
@@ -81,6 +81,7 @@ class FileManager(QObject):
     def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem):
         super(FileManager, self).__init__(None)
         self.__file = file
+        self.__band_tools = OpenSpectraBandTools(self.__file)
         self.__file_widget = file_widget
         self.__file_name = file_widget.text(0)
         self.__window_sets = list()
@@ -90,6 +91,7 @@ class FileManager(QObject):
         self.__window_sets = None
         self.__file_name = None
         self.__file_widget = None
+        self.__band_tools = None
         self.__file = None
 
     def add_rgb_window_set(self, red, green, blue, label:str):
@@ -106,6 +108,9 @@ class FileManager(QObject):
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
 
+    def band_tools(self):
+        return self.__band_tools
+
     def __create_window_set(self, image:Image, label:str):
         window_set = WindowSet(image, self)
         window_set.closed.connect(self.__handle_windowset_closed)
@@ -115,7 +120,7 @@ class FileManager(QObject):
         if len(self.__window_sets) == 0:
             x = 300
         else:
-            rect = self.__window_sets[len(self.__window_sets) - 1].get_image_geometry()
+            rect = self.__window_sets[len(self.__window_sets) - 1].get_image_window_geometry()
             x = rect.x() + rect.width() + 25
 
         window_set.initialize(title, x, y)
@@ -136,6 +141,9 @@ class WindowSet(QObject):
     def __init__(self, image:Image, file_manager:FileManager):
         super(WindowSet, self).__init__(None)
         self.__image = image
+        self.__image_tools = OpenSpectraImageTools(self.__image)
+        self.__band_tools = file_manager.band_tools()
+        # TODO can probably remove self.__file_manager in favor of self.__band_tools??
         self.__file_manager = file_manager
         self.__image_window = None
         self.__spec_plot_window = LinePlotDisplayWindow()
@@ -150,6 +158,8 @@ class WindowSet(QObject):
         self.__histogram_window = None
         self.__image_window = None
         self.__file_manager = None
+        self.__band_tools = None
+        self.__image_tools = None
         self.__image = None
 
     def initialize(self, label, x, y):
@@ -164,6 +174,7 @@ class WindowSet(QObject):
                 format(type(self.__image)))
 
         self.__label = label
+        self.__image_tools.set_label(self.__label)
         self.__init_image_window(x, y)
 
         # TODO figure out what to do with RGB images
@@ -181,50 +192,29 @@ class WindowSet(QObject):
         self.__image_window.show()
 
     def __init_histogram(self, x, y):
-        # TODO UI components shouldn't be doing these data manipulations to create the plot
-        # TODO want to as much seperation as possible, should get the plot from an API so how do we ID the one we want here?
-        # TODO x range should be natural and wee need to show raw data and processed data
-        raw_data = self.__image.raw_data()
-        raw_hist = HistogramPlotData(
-            np.arange(raw_data.min(), raw_data.max() + 1, 1),
-            raw_data.flatten(), "X-FixMe", "Y-FixMe", "Raw " + self.__label,
-            "r", lower_limit=self.__image.low_cutoff(),
-            upper_limit=self.__image.high_cutoff())
+        raw_hist = self.__image_tools.raw_histogram()
         self.__histogram_window.set_raw_data(raw_hist)
 
-        image_data = self.__image.image_data()
-        image_hist = HistogramPlotData(
-            np.arange(image_data.min(), image_data.max() + 1, 1),
-            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
+        image_hist = self.__image_tools.adjusted_histogram()
         self.__histogram_window.set_adjusted_data(image_hist)
 
         # TODO need some sort of layout manager?
-        self.__histogram_window.setGeometry(x, y + self.get_image_geometry().height() + 50, 800, 400)
+        self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
         self.__histogram_window.show()
 
-    def get_image_geometry(self):
+    def get_image_window_geometry(self):
         return self.__image_window.geometry()
-
-    def __get_plot_data(self, x:Union[int, tuple], y:Union[int, tuple]) -> LinePlotData:
-        line = y
-        sample = x
-        band = self.__file_manager.band(line, sample)
-        wavelengths = self.__file_manager.header().wavelengths()
-
-        # users expect upper left corner of image is 1, 1
-        return LinePlotData(wavelengths, band, "Wavelength", "Brightness",
-            "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
         if self.__spec_plot_window.isVisible():
-            self.__spec_plot_window.canvas().add_plot(
-                self.__get_plot_data(event.pixel_x(), event.pixel_y()))
+            plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
+            self.__spec_plot_window.canvas().add_plot(plot_data)
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_mouse_move(self, event:AdjustedMouseEvent):
-        self.__spec_plot_window.canvas().plot(
-            self.__get_plot_data(event.pixel_x(), event.pixel_y()))
+        plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
+        self.__spec_plot_window.canvas().plot(plot_data)
 
         if not self.__spec_plot_window.isVisible():
             # TODO need some sort of layout manager?
@@ -258,13 +248,9 @@ class WindowSet(QObject):
         # trigger update in image window
         self.__image_window.refresh_image()
 
-        # TODO trigger update in adjusted histogram
-        image_data = self.__image.image_data()
-        # TODO replotting the whole thing is bit inefficient
+        # TODO replotting the whole thing is bit inefficient?
         # TODO don't have the label here
-        image_hist = HistogramPlotData(
-            np.arange(image_data.min(), image_data.max() + 1, 1),
-            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
+        image_hist = self.__image_tools.adjusted_histogram()
         self.__histogram_window.set_adjusted_data(image_hist)
 
     @pyqtSlot(AreaSelectedEvent)
