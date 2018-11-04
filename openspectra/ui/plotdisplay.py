@@ -8,8 +8,9 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.lines as lines
 
+from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
 
-# TODO should I have it extend QEvent?  Doesn't seem necessary
+
 class LimitChangeEvent(QObject):
 
     def __init__(self, id, limit):
@@ -22,21 +23,6 @@ class LimitChangeEvent(QObject):
 
     def limit(self):
         return self.__limit
-
-
-class PlotData:
-    def __init__(self, xdata, ydata, xlabel, ylabel, title, type="line",
-            color="b", linestyle="-", lower_limit=None, upper_limit=None):
-        self.xdata = xdata
-        self.ydata = ydata
-        self.xlabel = xlabel
-        self.ylabel = ylabel
-        self.title = title
-        self.type = type
-        self.color = color
-        self.linestyle = linestyle
-        self.lower_limit = lower_limit
-        self.upper_limit = upper_limit
 
 
 # TODO seperate out plot generation from any UI classes - an API perhaps?
@@ -75,7 +61,7 @@ class LinePlotCanvas(PlotCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         super().__init__(parent, width, height, dpi)
 
-    def plot(self, data:PlotData):
+    def plot(self, data:LinePlotData):
         # self.__axes.clear()
         if self._current_plot is not None:
             self._current_plot.remove()
@@ -85,7 +71,7 @@ class LinePlotCanvas(PlotCanvas):
 
         super().plot(data)
 
-    def add_plot(self, data:PlotData):
+    def add_plot(self, data:LinePlotData):
         self._axes.plot(data.xdata, data.ydata, color="g", linestyle="-")
         self.draw()
 
@@ -95,12 +81,12 @@ class HistogramPlotCanvas(PlotCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         super().__init__(parent, width, height, dpi)
 
-    def plot(self, data:PlotData):
+    def plot(self, data:HistogramPlotData):
         self._axes.hist(data.ydata, data.xdata,
             color=data.color, linestyle=data.linestyle)
         super().plot(data)
 
-    def update_plot(self, data:PlotData):
+    def update_plot(self, data:HistogramPlotData):
         # TODO clear and replace whole plot is a bit inefficient
         self._axes.clear()
         self.plot(data)
@@ -123,7 +109,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.__upper_limit_x = None
         self.__lower_limit_x = None
 
-    def plot(self, data:PlotData):
+    def plot(self, data:HistogramPlotData):
         super().plot(data)
 
         self.mpl_connect("motion_notify_event", self.__on_mouse_move)
@@ -233,10 +219,10 @@ class HistogramDisplayWindow(QMainWindow):
         self.__raw_data_canvas = None
         self.__frame = None
 
-    def set_raw_data(self, data:PlotData):
+    def set_raw_data(self, data:HistogramPlotData):
         self.__raw_data_canvas.plot(data)
 
-    def set_adjusted_data(self, data:PlotData):
+    def set_adjusted_data(self, data:HistogramPlotData):
         if not self.__has_adjusted_data:
             self.__adjusted_data_canvas.plot(data)
             self.__has_adjusted_data = True

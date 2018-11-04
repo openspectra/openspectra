@@ -10,7 +10,8 @@ from openspectra.image import Image, GreyscaleImage, RGBImage
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
-from openspectra.ui.plotdisplay import PlotData, LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.openspecrtra_tools import HistogramPlotData, LinePlotData
 
 
 class WindowManager(QObject):
@@ -184,17 +185,17 @@ class WindowSet(QObject):
         # TODO want to as much seperation as possible, should get the plot from an API so how do we ID the one we want here?
         # TODO x range should be natural and wee need to show raw data and processed data
         raw_data = self.__image.raw_data()
-        raw_hist = PlotData(
+        raw_hist = HistogramPlotData(
             np.arange(raw_data.min(), raw_data.max() + 1, 1),
             raw_data.flatten(), "X-FixMe", "Y-FixMe", "Raw " + self.__label,
-            "hist", "r", lower_limit=self.__image.low_cutoff(),
+            "r", lower_limit=self.__image.low_cutoff(),
             upper_limit=self.__image.high_cutoff())
         self.__histogram_window.set_raw_data(raw_hist)
 
         image_data = self.__image.image_data()
-        image_hist = PlotData(
+        image_hist = HistogramPlotData(
             np.arange(image_data.min(), image_data.max() + 1, 1),
-            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label, "hist")
+            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
         self.__histogram_window.set_adjusted_data(image_hist)
 
         # TODO need some sort of layout manager?
@@ -204,14 +205,14 @@ class WindowSet(QObject):
     def get_image_geometry(self):
         return self.__image_window.geometry()
 
-    def __get_plot_data(self, x:Union[int, tuple], y:Union[int, tuple]) -> PlotData:
+    def __get_plot_data(self, x:Union[int, tuple], y:Union[int, tuple]) -> LinePlotData:
         line = y
         sample = x
         band = self.__file_manager.band(line, sample)
         wavelengths = self.__file_manager.header().wavelengths()
 
         # users expect upper left corner of image is 1, 1
-        return PlotData(wavelengths, band, "Wavelength", "Brightness",
+        return LinePlotData(wavelengths, band, "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
 
     @pyqtSlot(AdjustedMouseEvent)
@@ -261,9 +262,9 @@ class WindowSet(QObject):
         image_data = self.__image.image_data()
         # TODO replotting the whole thing is bit inefficient
         # TODO don't have the label here
-        image_hist = PlotData(
+        image_hist = HistogramPlotData(
             np.arange(image_data.min(), image_data.max() + 1, 1),
-            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label, "hist")
+            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
         self.__histogram_window.set_adjusted_data(image_hist)
 
     @pyqtSlot(AreaSelectedEvent)
