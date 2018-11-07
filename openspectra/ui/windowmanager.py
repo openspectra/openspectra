@@ -188,6 +188,7 @@ class WindowSet(QObject):
         self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__image_window.closed.connect(self.__handle_image_closed)
         self.__image_window.area_selected.connect(self.__handle_area_selected)
+        self.__band_stats_window.closed.connect(self.__image_window.handle_stats_closed)
 
         # TODO need some sort of layout manager?
         self.__image_window.move(x, y)
@@ -258,8 +259,7 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
-        if self.__band_stats_window.isVisible():
-            self.__band_stats_window.clear()
+        self.__band_stats_window.clear()
 
         lines = event.y_points()
         samples = event.x_points()

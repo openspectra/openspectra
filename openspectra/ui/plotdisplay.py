@@ -1,7 +1,7 @@
 from math import floor
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QResizeEvent
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtGui import QResizeEvent, QCloseEvent
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -135,14 +135,6 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
         self.mpl_connect("pick_event", self.__on_pick)
 
-    # TODO ??
-    def set_lower_limit(self, xdata):
-        pass
-
-    # TODO ??
-    def set_upper_limit(self, xdata):
-        pass
-
     def __on_mouse_release(self, event: MouseEvent):
         print("Mouse released at ", event.xdata)
         if self.__dragging is not None and self.__drag_start is not None:
@@ -184,9 +176,19 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
 class LinePlotDisplayWindow(QMainWindow):
 
+    closed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.__plot_canvas = LinePlotCanvas(self, width=5, height=4)
+
+        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
+        # TODO this requires the user to create a new instance to reuse
+        # TODO don't think we want this.
+        # self.setAttribute(Qt.WA_DeleteOnClose)
+
+        # TODO also read that setting a windows paren assures that the child
+        # TODO is deleted when the parent is, might make clean up safer if doing manually
 
     def __del__(self):
         self.__plot_canvas = None
@@ -204,6 +206,11 @@ class LinePlotDisplayWindow(QMainWindow):
     def resizeEvent(self, event:QResizeEvent):
         size = event.size()
         self.__plot_canvas.resize(size)
+
+    def closeEvent(self, event:QCloseEvent):
+        self.closed.emit()
+        # accepting hides the window
+        event.accept()
 
 
 class HistogramDisplayWindow(QMainWindow):

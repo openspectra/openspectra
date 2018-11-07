@@ -194,6 +194,11 @@ class ImageLabel(QLabel):
             self.__polygon_bounds = self.__polygon.boundingRect()
             painter.drawRect(self.__polygon_bounds)
 
+    def clear_selected_area(self):
+        self.__polygon_bounds = None
+        self.__polygon = None
+        self.update()
+
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
             x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
@@ -331,6 +336,9 @@ class ImageDisplay(QScrollArea):
         # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
+    def clear_selected_area(self):
+        self.__imageLabel.clear_selected_area()
+
     def resize(self, size:QSize):
         super().resize(size)
         self.__imageLabel.resize(size)
@@ -382,6 +390,10 @@ class ImageDisplayWindow(QMainWindow):
         self.__image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?
+
+    @pyqtSlot()
+    def handle_stats_closed(self):
+        self.__image_display.clear_selected_area()
 
     def refresh_image(self):
         self.__image_display.refresh_image()
