@@ -118,9 +118,9 @@ class OpenSpectraBandTools:
 
 class OpenSpectraImageTools:
 
-    def __init__(self, image:Image):
+    def __init__(self, image:Image, label:str):
         self.__image = image
-        self.__label = None
+        self.__label = label
 
     def raw_histogram(self) -> HistogramPlotData:
         raw_data = self.__image.raw_data()

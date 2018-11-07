@@ -112,10 +112,11 @@ class FileManager(QObject):
         return self.__band_tools
 
     def __create_window_set(self, image:Image, label:str):
-        window_set = WindowSet(image, self)
-        window_set.closed.connect(self.__handle_windowset_closed)
         title = self.__file_name + ": " + label
+        window_set = WindowSet(image, title, self)
+        window_set.closed.connect(self.__handle_windowset_closed)
 
+        # TODO need a layout manager
         y = 25
         if len(self.__window_sets) == 0:
             x = 300
@@ -123,38 +124,66 @@ class FileManager(QObject):
             rect = self.__window_sets[len(self.__window_sets) - 1].get_image_window_geometry()
             x = rect.x() + rect.width() + 25
 
-        window_set.initialize(title, x, y)
+        window_set.init_position(x, y)
         self.__window_sets.append(window_set)
 
     @pyqtSlot(QChildEvent)
     def __handle_windowset_closed(self, event:QChildEvent):
         window_set = event.child()
         self.__window_sets.remove(window_set)
-        del window_set
         print("WindowSets open ", len(self.__window_sets))
+        del window_set
 
 
 class WindowSet(QObject):
 
     closed = pyqtSignal(QChildEvent)
 
-    def __init__(self, image:Image, file_manager:FileManager):
+    def __init__(self, image:Image, label:str, file_manager:FileManager):
         super(WindowSet, self).__init__(None)
         self.__image = image
-        self.__image_tools = OpenSpectraImageTools(self.__image)
+        self.__label = label
+
+        self.__image_tools = OpenSpectraImageTools(self.__image, self.__label)
         self.__band_tools = file_manager.band_tools()
+
         # TODO can probably remove self.__file_manager in favor of self.__band_tools??
         self.__file_manager = file_manager
-        self.__image_window = None
-        self.__spec_plot_window = LinePlotDisplayWindow()
-        self.__band_stats_window = LinePlotDisplayWindow()
-        self.__histogram_window = HistogramDisplayWindow()
+
+        self.__init_image_window()
+        self.__init_plot_windows()
+
+    def __init_image_window(self):
+        if isinstance(self.__image, GreyscaleImage):
+            self.__image_window = ImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_Grayscale8)
+        elif isinstance(self.__image, RGBImage):
+            self.__image_window = ImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_RGB32)
+        else:
+            raise TypeError("Image type not recognized, found type: {0}".
+                format(type(self.__image)))
+
+        self.__image_window.pixel_selected.connect(self.__handle_pixel_click)
+        self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
+        self.__image_window.closed.connect(self.__handle_image_closed)
+        self.__image_window.area_selected.connect(self.__handle_area_selected)
+
+    def __init_plot_windows(self):
+        # setting the image_window as the parent causes the children to
+        # close when image_window is closed but it doesn't destroy them
+        # i.e. call __del__.  I think it's more intended from parents contain
+        # their children not really among QMainWindows
+        self.__spec_plot_window = LinePlotDisplayWindow(self.__image_window)
+
+        self.__band_stats_window = LinePlotDisplayWindow(self.__image_window)
+        self.__band_stats_window.closed.connect(self.__image_window.handle_stats_closed)
+
+        self.__histogram_window = HistogramDisplayWindow(self.__image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
-        self.__label = None
 
     def __del__(self):
         print("WindowSet.__del__ called...")
-        self.__label = None
         self.__spec_plot_window = None
         self.__band_stats_window = None
         self.__histogram_window = None
@@ -162,39 +191,19 @@ class WindowSet(QObject):
         self.__file_manager = None
         self.__band_tools = None
         self.__image_tools = None
+        self.__label = None
         self.__image = None
 
-    def initialize(self, label, x, y):
-        if isinstance(self.__image, GreyscaleImage):
-            self.__image_window = ImageDisplayWindow(self.__image, label,
-                QImage.Format_Grayscale8)
-        elif isinstance(self.__image, RGBImage):
-            self.__image_window = ImageDisplayWindow(self.__image, label,
-                QImage.Format_RGB32)
-        else:
-            raise TypeError("Image type not recognized, found type: {0}".
-                format(type(self.__image)))
-
-        self.__label = label
-        self.__image_tools.set_label(self.__label)
-        self.__init_image_window(x, y)
+    def init_position(self, x:int, y:int):
+        # TODO need some sort of layout manager?
+        self.__image_window.move(x, y)
+        self.__image_window.show()
 
         # TODO figure out what to do with RGB images
         if isinstance(self.__image, GreyscaleImage):
             self.__init_histogram(x, y)
 
-    def __init_image_window(self, x, y):
-        self.__image_window.pixel_selected.connect(self.__handle_pixel_click)
-        self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
-        self.__image_window.closed.connect(self.__handle_image_closed)
-        self.__image_window.area_selected.connect(self.__handle_area_selected)
-        self.__band_stats_window.closed.connect(self.__image_window.handle_stats_closed)
-
-        # TODO need some sort of layout manager?
-        self.__image_window.move(x, y)
-        self.__image_window.show()
-
-    def __init_histogram(self, x, y):
+    def __init_histogram(self, x:int, y:int):
         raw_hist = self.__image_tools.raw_histogram()
         self.__histogram_window.set_raw_data(raw_hist)
 
@@ -228,8 +237,14 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_image_closed(self):
+        print("__handle_image_closed called...")
+        self.__image_window = None
+
         self.__histogram_window.close()
         self.__histogram_window = None
+
+        self.__band_stats_window.close()
+        self.__band_stats_window = None
 
         self.__spec_plot_window.close()
         self.__spec_plot_window = None

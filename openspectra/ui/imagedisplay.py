@@ -99,12 +99,16 @@ class ImageLabel(QLabel):
         self.__current_action = ImageLabel.Action.none
 
     def __del__(self):
-        self.__initial_height = None
-        self.__initial_width = None
         self.__polygon_bounds = None
         self.__polygon = None
+
         self.__center = None
         self.__rect = None
+
+        self.__default_cursor = None
+        self.__drag_cursor = None
+        self.__draw_cursor = None
+
         self.__last_mouse_loc = None
 
     def changeEvent(self, event:QEvent):
@@ -297,13 +301,6 @@ class ImageDisplay(QScrollArea):
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
 
-    def __del__(self):
-        # TODO ??
-        self.__pixmap = None
-        self.__qimage = None
-        self.__imageLabel = None
-        self.__image = None
-
     def __display_image(self):
         # TODO do I need to keep self.__height, & self.__width?
         self.init_height, self.init_width = self.__image.image_shape()
@@ -316,6 +313,13 @@ class ImageDisplay(QScrollArea):
         self.setWidget(self.__imageLabel)
         self.setAlignment(Qt.AlignHCenter)
         self.show()
+
+    def __del__(self):
+        # TODO ??
+        self.__pixmap = None
+        self.__qimage = None
+        self.__imageLabel = None
+        self.__image = None
 
     # TODO not sure we need this but keep it for the example for now
     @pyqtSlot(AdjustedMouseEvent)
@@ -387,6 +391,7 @@ class ImageDisplayWindow(QMainWindow):
 
     def __del__(self):
         # TODO???
+        print("ImageDisplayWindow.__del__ called...")
         self.__image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?

@@ -191,6 +191,7 @@ class LinePlotDisplayWindow(QMainWindow):
         # TODO is deleted when the parent is, might make clean up safer if doing manually
 
     def __del__(self):
+        print("LinePlotDisplayWindow.__del__ called...")
         self.__plot_canvas = None
 
     def plot(self, data:LinePlotData):
@@ -235,6 +236,7 @@ class HistogramDisplayWindow(QMainWindow):
         self.__has_adjusted_data = False;
 
     def __del__(self):
+        print("HistogramDisplayWindow.__del__ called...")
         self.__adjusted_data_canvas = None
         self.__raw_data_canvas = None
         self.__frame = None
