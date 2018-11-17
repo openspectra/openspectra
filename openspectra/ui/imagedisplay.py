@@ -1,4 +1,5 @@
 import itertools
+import logging
 from enum import Enum
 from math import floor
 
@@ -11,6 +12,7 @@ from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QC
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget
 
 from openspectra.image import Image
+from openspectra.util.logging import Logger
 
 
 class AdjustedMouseEvent(QObject):
@@ -63,6 +65,8 @@ class MouseCoordinates(QLabel):
 
 class ImageLabel(QLabel):
 
+    __LOG:logging.Logger = Logger.logger("ImageLabel")
+
     class Action(Enum):
         none = 0
         dragging = 1
@@ -99,6 +103,7 @@ class ImageLabel(QLabel):
         self.__current_action = ImageLabel.Action.none
 
     def __del__(self):
+        ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
         self.__polygon_bounds = None
         self.__polygon = None
 
@@ -270,6 +275,8 @@ class ImageLabel(QLabel):
 
 class ImageDisplay(QScrollArea):
 
+    __LOG:logging.Logger = Logger.logger("ImageDisplay")
+
     area_selected = pyqtSignal(AreaSelectedEvent)
     clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
@@ -282,7 +289,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__imageLabel = ImageLabel()
+        self.__imageLabel = ImageLabel(self)
         self.__imageLabel.setBackgroundRole(QPalette.Base)
         # self.__imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
@@ -316,6 +323,7 @@ class ImageDisplay(QScrollArea):
 
     def __del__(self):
         # TODO ??
+        ImageDisplay.__LOG.debug("ImageDisplay.__del__ called...")
         self.__pixmap = None
         self.__qimage = None
         self.__imageLabel = None
@@ -349,6 +357,8 @@ class ImageDisplay(QScrollArea):
 
 
 class ImageDisplayWindow(QMainWindow):
+
+    __LOG:logging.Logger = Logger.logger("ImageDisplayWindow")
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
@@ -391,7 +401,7 @@ class ImageDisplayWindow(QMainWindow):
 
     def __del__(self):
         # TODO???
-        print("ImageDisplayWindow.__del__ called...")
+        ImageDisplayWindow.__LOG.debug("ImageDisplayWindow.__del__ called...")
         self.__image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?

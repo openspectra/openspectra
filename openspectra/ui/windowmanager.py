@@ -1,4 +1,5 @@
 from typing import Union
+import logging
 
 import numpy as np
 
@@ -12,6 +13,7 @@ from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
+from openspectra.util.logging import Logger
 
 
 class WindowManager(QObject):
@@ -78,6 +80,8 @@ class WindowManager(QObject):
 
 class FileManager(QObject):
 
+    __LOG:logging.Logger = Logger.logger("FileManager")
+
     def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem):
         super(FileManager, self).__init__(None)
         self.__file = file
@@ -87,7 +91,7 @@ class FileManager(QObject):
         self.__window_sets = list()
 
     def __del__(self):
-        print("FileSet.__del__ called...")
+        FileManager.__LOG.debug("FileSet.__del__ called...")
         self.__window_sets = None
         self.__file_name = None
         self.__file_widget = None
@@ -137,6 +141,8 @@ class FileManager(QObject):
 
 class WindowSet(QObject):
 
+    __LOG:logging.Logger = Logger.logger("WindowSet")
+
     closed = pyqtSignal(QChildEvent)
 
     def __init__(self, image:Image, label:str, file_manager:FileManager):
@@ -183,7 +189,7 @@ class WindowSet(QObject):
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
 
     def __del__(self):
-        print("WindowSet.__del__ called...")
+        WindowSet.__LOG.debug("WindowSet.__del__ called...")
         self.__spec_plot_window = None
         self.__band_stats_window = None
         self.__histogram_window = None
@@ -237,7 +243,7 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_image_closed(self):
-        print("__handle_image_closed called...")
+        WindowSet.__LOG.debug("__handle_image_closed called...")
         self.__image_window = None
 
         self.__histogram_window.close()
@@ -253,7 +259,7 @@ class WindowSet(QObject):
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
-        print("Got limit change event ", event.id(), event.limit())
+        WindowSet.__LOG.debug("Got limit change event ", event.id(), event.limit())
         if event.id() == "upper":
             self.__image.set_high_cutoff(event.limit())
         elif event.id() == "lower":
