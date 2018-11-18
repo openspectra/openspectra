@@ -12,7 +12,7 @@ from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QC
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget
 
 from openspectra.image import Image
-from openspectra.util.logging import Logger
+from openspectra.utils import Logger
 
 
 class AdjustedMouseEvent(QObject):
@@ -139,7 +139,7 @@ class ImageLabel(QLabel):
 
     def mousePressEvent(self, event:QMouseEvent):
         # TODO remove if not used
-        print("mousePressEvent")
+        ImageLabel.__LOG.debug("mousePressEvent")
 
     def mouseReleaseEvent(self, event:QMouseEvent):
         if self.__current_action == ImageLabel.Action.dragging:
@@ -161,7 +161,7 @@ class ImageLabel(QLabel):
         self.__last_mouse_loc = None
 
     def mouseDoubleClickEvent(self, event:QMouseEvent):
-        print("mouseDoubleClickEvent")
+        ImageLabel.__LOG.debug("mouseDoubleClickEvent")
         self.double_clicked.emit(self.__create_adjusted_mouse_event(event))
 
     def eventFilter(self, object:QObject, event:QEvent):
@@ -212,7 +212,7 @@ class ImageLabel(QLabel):
         if self.__polygon_bounds is not None:
             x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
             # TODO debug only
-            print("Selected coords: ", x1, y1, x2, y2)
+            ImageLabel.__LOG.debug("Selected coords: %d, %d, %d, %d", x1, y1, x2, y2)
 
             # create an array of contained by the bounding rectangle
             x_range = ma.arange(x1, x2 + 1)
@@ -332,9 +332,9 @@ class ImageDisplay(QScrollArea):
     # TODO not sure we need this but keep it for the example for now
     @pyqtSlot(AdjustedMouseEvent)
     def __double_click_handler(self, event:AdjustedMouseEvent):
-        # TODO remove
-        print("Double clicked x: {0} y: {1}".format(
-            event.pixel_x() + 1, event.pixel_y() + 1))
+        # TODO remove?
+        ImageDisplay.__LOG.debug("Double clicked x: %d y: %d",
+            event.pixel_x() + 1, event.pixel_y() + 1)
 
         # TODO not working
         # height = self.__pixmap.height()
@@ -397,7 +397,7 @@ class ImageDisplayWindow(QMainWindow):
 
         # TODO just debug stuff
         size_policy:QSizePolicy = self.sizePolicy()
-        print("Window: ", self.width(), self.height())
+        ImageDisplayWindow.__LOG.debug("Window: %d, %d", self.width(), self.height())
 
     def __del__(self):
         # TODO???

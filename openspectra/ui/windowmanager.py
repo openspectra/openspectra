@@ -13,18 +13,20 @@ from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
-from openspectra.util.logging import Logger
+from openspectra.utils import Logger
 
 
 class WindowManager(QObject):
+
+    __LOG:logging.Logger = Logger.logger("WindowManager")
 
     def __init__(self, band_list:BandList):
         super(WindowManager, self).__init__(None)
         screen:QScreen = QGuiApplication.primaryScreen()
         self.__screen_geometery:QRect = screen.geometry()
 
-        # TODO debug only
-        print("Screen h,w", self.__screen_geometery.height(), ",", self.__screen_geometery.width())
+        WindowManager.__LOG.debug("Screen height: %d, width: %d",
+            self.__screen_geometery.height(), self.__screen_geometery.width())
 
         self.__file_sets = dict()
         self.__band_list = band_list
@@ -32,6 +34,12 @@ class WindowManager(QObject):
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
 
     def __del__(self):
+        #TODO This works but for some reason throws an exception on shutdown
+        try:
+           WindowManager.__LOG.debug("WindowManager.__del__ called...")
+        except Exception:
+            pass
+
         self.__file_sets = None
         self.__band_list = None
         self.__screen_geometery = None
@@ -48,8 +56,8 @@ class WindowManager(QObject):
         file_set = FileManager(file, file_widget)
         self.__file_sets[file_name] = file_set
 
-        # TODO remove this and below
-        file.header().dump()
+        if WindowManager.__LOG.isEnabledFor(logging.DEBUG):
+            WindowManager.__LOG.debug(file.header().dump())
 
     def get_file(self, index=0) -> OpenSpectraFile:
         return self.__file_sets[index]
@@ -91,7 +99,12 @@ class FileManager(QObject):
         self.__window_sets = list()
 
     def __del__(self):
-        FileManager.__LOG.debug("FileSet.__del__ called...")
+        #TODO This works but for some reason throws an exception on shutdown
+        try:
+            FileManager.__LOG.debug("FileManager.__del__ called...")
+        except Exception:
+            pass
+
         self.__window_sets = None
         self.__file_name = None
         self.__file_widget = None
@@ -135,7 +148,7 @@ class FileManager(QObject):
     def __handle_windowset_closed(self, event:QChildEvent):
         window_set = event.child()
         self.__window_sets.remove(window_set)
-        print("WindowSets open ", len(self.__window_sets))
+        FileManager.__LOG.debug("WindowSets open %d", len(self.__window_sets))
         del window_set
 
 

@@ -1,7 +1,10 @@
+import logging
 from enum import Enum
 
 import numpy as np
 import numpy.ma as ma
+
+from openspectra.utils import Logger
 
 
 class ImageAdjuster:
@@ -58,6 +61,8 @@ def equalize_histogram(input_image: np.ndarray) -> np.ndarray:
 
 class BandImageAdjuster(ImageAdjuster):
 
+    __LOG:logging.Logger = Logger.logger("BandImageAdjuster")
+
     def __init__(self, band:np.ndarray):
         self.__band = band
         self.__image_data = None
@@ -97,7 +102,7 @@ class BandImageAdjuster(ImageAdjuster):
 
     def adjust(self):
         self.__image_data = self.__band.copy()
-        print("l_cut: {0}, h_cut: {1}".format(self.low_cutoff(), self.high_cutoff()))
+        BandImageAdjuster.__LOG.debug("low cutoff: %f, hight cutoff: %f", self.low_cutoff(), self.high_cutoff())
 
         low_mask = self.__image_data.view(ma.MaskedArray)
         # TODO <= or <, looks like <=, with < I get strange dots on the image
@@ -258,6 +263,8 @@ class GreyscaleImage(Image, BandImageAdjuster):
 class RGBImage(Image, RGBImageAdjuster):
     """A 32-bit RGB image using format (0xffRRGGBB)"""
 
+    __LOG:logging.Logger = Logger.logger("RGBImage")
+
     __HIGH_BYTE = 255 * 256 * 256 * 256
     __RED_SHIFT = 256 * 256
     __GREEN_SHIFT = 256
@@ -274,13 +281,13 @@ class RGBImage(Image, RGBImageAdjuster):
 
         self.__calculate_image()
 
-        np.set_printoptions(8, formatter={'int_kind': '{:02x}'.format})
-        print(self.__data)
-        print("shape: ", self.__data.shape)
-        print("h: ", self.__data.shape[0])
-        print("w: ", self.__data.shape[1])
-        print("size: ", self.__data.size)
-        np.set_printoptions()
+        if RGBImage.__LOG.isEnabledFor(logging.DEBUG):
+            np.set_printoptions(8, formatter={'int_kind': '{:02x}'.format})
+            RGBImage.__LOG.debug(self.__data)
+            RGBImage.__LOG.debug("height: %d", self.__data.shape[0])
+            RGBImage.__LOG.debug("width: %d ", self.__data.shape[1])
+            RGBImage.__LOG.debug("size: %d", self.__data.size)
+            np.set_printoptions()
 
     def __del__(self):
         super().__del__()

@@ -1,13 +1,17 @@
+import logging
 from pathlib import Path
 import re
 from typing import List, Union
 import numpy as np
 
 from openspectra.image import RGBImage, GreyscaleImage
+from openspectra.utils import Logger
 
 
 class OpenSpectraHeader:
     """A class that reads, validates and makes open spectra header file details available"""
+
+    __LOG:logging.Logger = Logger.logger("OpenSpectraHeader")
 
     __BAND_NAMES = "band names"
     __BANDS = "bands"
@@ -35,14 +39,14 @@ class OpenSpectraHeader:
         self.__path = Path(file_name)
         self.__props = dict()
 
-    def dump(self):
-        print("Props:\n", self.__props)
+    def dump(self) -> str:
+        return "Props:\n" + str(self.__props)
 
     def load(self):
-        print("File: {0} exists: {1}".format(self.__path.name, str(self.__path.exists())))
+        OpenSpectraHeader.__LOG.debug("File: %s exists: %s", self.__path.name, str(self.__path.exists()))
 
         if self.__path.exists() and self.__path.is_file():
-            print("Opening {0} with stats {1}".format(self.__path.name, self.__path.stat().st_mode))
+            OpenSpectraHeader.__LOG.info("Opening file %s with mode %d", self.__path.name, self.__path.stat().st_mode)
 
             with self.__path.open() as headerFile:
                 for line in headerFile:
@@ -329,6 +333,8 @@ class MappedModel(FileModel):
 
 class OpenSpectraFile:
 
+    __LOG:logging.Logger = Logger.logger("OpenSpectraFile")
+
     def __init__(self, header:OpenSpectraHeader, file_delegate:FileTypeDelegate,
             memory_model:FileModel):
         # self.__path = Path(file_name)
@@ -340,12 +346,13 @@ class OpenSpectraFile:
         self.__memory_model = memory_model
         self.__file_delegate = file_delegate
 
-        # TODO seems a little weird, maybe the file delegate should provide access to the file?
-        # TODO so how far do we want to go with the delegate, expose file?  Only expose file props/methods?
-        print("Shape: " + str(self.__memory_model.file().shape))
-        print("NDim: " + str(self.__memory_model.file().ndim))
-        print("Size: " + str(self.__memory_model.file().size))
-        print("Typs: " + str(self.__memory_model.file().dtype))
+        if OpenSpectraFile.__LOG.isEnabledFor(logging.DEBUG):
+            # TODO seems a little weird, maybe the file delegate should provide access to the file?
+            # TODO so how far do we want to go with the delegate, expose file?  Only expose file props/methods?
+            OpenSpectraFile.__LOG.debug("Shape: %s", str(self.__memory_model.file().shape))
+            OpenSpectraFile.__LOG.debug("NDim: %s", str(self.__memory_model.file().ndim))
+            OpenSpectraFile.__LOG.debug("Size: %s", str(self.__memory_model.file().size))
+            OpenSpectraFile.__LOG.debug("Type: %s", str(self.__memory_model.file().dtype))
 
     def greyscale_image(self, band) -> GreyscaleImage:
         return GreyscaleImage(self.__file_delegate.image(band))
@@ -376,10 +383,12 @@ class OpenSpectraFileError(Exception):
 
 
 def create_open_spectra_file(file_name) -> OpenSpectraFile:
+
+    logger:logging.Logger = Logger.logger(__name__)
     path = Path(file_name)
 
     if path.exists() and path.is_file():
-        print("Opening {0} with stats {1}".format(path.name, path.stat().st_mode))
+        logger.info("Opening %s with mode %d", path.name, path.stat().st_mode)
 
         header = OpenSpectraHeader(file_name + ".hdr")
         header.load()

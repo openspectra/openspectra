@@ -12,8 +12,11 @@ class Logger:
 
     @staticmethod
     def __initialize():
+        # TODO set this from config options
+        logging.raiseExceptions = True
+
         path: str = os.path.abspath(os.path.dirname(__file__))
-        file: str = os.path.join(path, "logging.conf")
+        file: str = os.path.join(path, "config/logging.conf")
 
         if file is not None and len(file) > 0:
             config_file: Path = Path(file)
@@ -22,15 +25,19 @@ class Logger:
                 conf = load(config_file.open("r"))
                 lc.dictConfig(conf)
                 Logger.__logger = logging.getLogger("openSpectra")
+                logger = Logger.logger("Logger")
+                logger.info("Logger initialize from default configuration, %s", file)
             else:
-                Logger.__default_initialize()
+                Logger.__fallback_initialize()
         else:
-            Logger.__default_initialize()
+            Logger.__fallback_initialize()
 
     @staticmethod
-    def __default_initialize():
-        #TODO
-        pass
+    def __fallback_initialize():
+        logging.basicConfig(format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s", level=logging.DEBUG)
+        Logger.__logger = logging.getLogger("openSpectra")
+        logger = Logger.logger("Logger")
+        logger.info("Could not find default logger configuration file, using fallback config.")
 
     @staticmethod
     def logger(name:str) -> logging.Logger:

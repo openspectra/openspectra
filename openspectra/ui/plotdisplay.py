@@ -1,3 +1,4 @@
+import logging
 from math import floor
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
@@ -9,6 +10,7 @@ from matplotlib.figure import Figure
 import matplotlib.lines as lines
 
 from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
+from openspectra.utils import Logger
 
 
 class LimitChangeEvent(QObject):
@@ -101,6 +103,8 @@ class HistogramPlotCanvas(PlotCanvas):
 
 class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
+    __LOG:logging.Logger = Logger.logger("AdjustableHistogramPlotCanvas")
+
     limit_changed = pyqtSignal(LimitChangeEvent)
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):
@@ -136,7 +140,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.mpl_connect("pick_event", self.__on_pick)
 
     def __on_mouse_release(self, event: MouseEvent):
-        print("Mouse released at ", event.xdata)
+        AdjustableHistogramPlotCanvas.__LOG.debug("Mouse released at %f", event.xdata)
         if self.__dragging is not None and self.__drag_start is not None:
             line_id = self.__get_limit_id(self.__dragging)
             if line_id is not None:
@@ -157,9 +161,11 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
     def __on_pick(self, event: PickEvent):
         if event.artist == self.__lower_limit:
-            print("picked lower limit at ", self.__lower_limit.get_xdata())
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at %f",
+                self.__lower_limit.get_xdata())
         elif event.artist == self.__upper_limit:
-            print("picked upper limit at ", self.__upper_limit.get_xdata())
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at %f",
+                self.__upper_limit.get_xdata())
 
         self.__dragging = event.artist
         self.__drag_start = event.artist.get_xdata()
@@ -169,12 +175,16 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
             self.__dragging.set_xdata([event.xdata, event.xdata])
             self.draw()
         else:
-            print("Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}".
-                format(event.name, event.canvas, event.inaxes,
-                event.x, event.y, event.xdata, event.ydata))
+            # TODO remove this
+            AdjustableHistogramPlotCanvas.__LOG.debug(
+                "Mouse move - name: %s, canvas: %s, axes: %s, x: %f, y: %f, xdata: %f, ydata: %f",
+                event.name, event.canvas, event.inaxes,
+                event.x, event.y, event.xdata, event.ydata)
 
 
 class LinePlotDisplayWindow(QMainWindow):
+
+    __LOG:logging.Logger = Logger.logger("LinePlotDisplayWindow")
 
     closed = pyqtSignal()
 
@@ -191,7 +201,7 @@ class LinePlotDisplayWindow(QMainWindow):
         # TODO is deleted when the parent is, might make clean up safer if doing manually
 
     def __del__(self):
-        print("LinePlotDisplayWindow.__del__ called...")
+        LinePlotDisplayWindow.__LOG.debug("LinePlotDisplayWindow.__del__ called...")
         self.__plot_canvas = None
 
     def plot(self, data:LinePlotData):
@@ -216,6 +226,8 @@ class LinePlotDisplayWindow(QMainWindow):
 
 class HistogramDisplayWindow(QMainWindow):
 
+    __LOG:logging.Logger = Logger.logger("HistogramDisplayWindow")
+
     limit_changed = pyqtSignal(LimitChangeEvent)
 
     def __init__(self, parent=None):
@@ -236,7 +248,7 @@ class HistogramDisplayWindow(QMainWindow):
         self.__has_adjusted_data = False;
 
     def __del__(self):
-        print("HistogramDisplayWindow.__del__ called...")
+        HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
         self.__adjusted_data_canvas = None
         self.__raw_data_canvas = None
         self.__frame = None

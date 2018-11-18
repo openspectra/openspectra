@@ -65,8 +65,8 @@ class OpenSpectraUI(QMainWindow):
         self.show()
 
     def __open(self):
+        # TODO remove hard coded path
         file_dialog = QFileDialog.getOpenFileName(None, "Open file", "/Users/jconti/dev/data/JoeSamples")
-        print(file_dialog)
         file_name = file_dialog[0]
 
         file = ev.create_open_spectra_file(file_name)
