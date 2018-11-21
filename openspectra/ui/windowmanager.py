@@ -272,10 +272,11 @@ class WindowSet(QObject):
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
-        WindowSet.__LOG.debug("Got limit change event ", event.id(), event.limit())
-        if event.id() == "upper":
+        # TODO blowing up
+        # WindowSet.__LOG.debug("Got limit change event ", event.id(), event.limit())
+        if event.id() == LimitChangeEvent.Limit.Upper:
             self.__image.set_high_cutoff(event.limit())
-        elif event.id() == "lower":
+        elif event.id() == LimitChangeEvent.Limit.Lower:
             self.__image.set_low_cutoff(event.limit())
         else:
             return
@@ -297,6 +298,8 @@ class WindowSet(QObject):
 
         lines = event.y_points()
         samples = event.x_points()
+
+        # TODO bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples)
         self.__band_stats_window.plot(stats_plot.mean())
         self.__band_stats_window.add_plot(stats_plot.min())

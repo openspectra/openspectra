@@ -1,9 +1,12 @@
 import logging
+from enum import Enum
 from math import floor, ceil
+from typing import Union
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QResizeEvent, QCloseEvent
-from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget
+from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, QGroupBox, \
+    QLineEdit, QInputDialog
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -15,16 +18,43 @@ from openspectra.utils import Logger
 
 class LimitChangeEvent(QObject):
 
-    def __init__(self, id, limit):
+    class Limit(Enum):
+        Lower = 0
+        Upper = 1
+
+    def __init__(self, id:Limit, limit:Union[int, float]):
         super().__init__()
         self.__id = id
         self.__limit = limit
 
-    def id(self):
+    def id(self) -> Limit:
         return self.__id
 
-    def limit(self):
+    def limit(self) -> Union[int, float]:
         return self.__limit
+
+
+class PlotChangeEvent(QObject):
+
+    def __init__(self, lower_limit:Union[int, float], upper_limit:Union[int, float],
+            lower_min: Union[int, float], upper_max: Union[int, float]):
+        super().__init__()
+        self.__lower_limit = lower_limit
+        self.__upper_limit = upper_limit
+        self.__lower_min = lower_min
+        self.__upper_max = upper_max
+
+    def lower_limit(self) -> Union[int, float]:
+        return self.__lower_limit
+
+    def upper_limit(self) -> Union[int, float]:
+        return self.__upper_limit
+
+    def lower_min(self) -> Union[int, float]:
+        return self.__lower_min
+
+    def upper_max(self) -> Union[int, float]:
+        return self.__upper_max
 
 
 # TODO seperate out plot generation from any UI classes - an API perhaps?
@@ -106,6 +136,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
     __LOG:logging.Logger = Logger.logger("AdjustableHistogramPlotCanvas")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
+    plot_changed = pyqtSignal(PlotChangeEvent)
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         super().__init__(parent, width, height, dpi)
@@ -140,6 +171,10 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: %f, max_adjust_x %f",
             self.__min_adjust_x, self.__max_adjust_x)
 
+        plot_event = PlotChangeEvent(data.lower_limit, data.upper_limit,
+            self.__min_adjust_x, self.__max_adjust_x)
+        self.plot_changed.emit(plot_event)
+
     def __on_mouse_release(self, event: MouseEvent):
         if self.__dragging is not None:
             line_id = self.__get_limit_id(self.__dragging)
@@ -152,11 +187,11 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
             self.__dragging = None
 
     # TODO why do I need this? eventually need to tell them apart? better way?
-    def __get_limit_id(self, limit_line: lines.Line2D) -> str:
+    def __get_limit_id(self, limit_line: lines.Line2D) -> LimitChangeEvent.Limit:
         if limit_line is self.__lower_limit:
-            return "lower"
+            return LimitChangeEvent.Limit.Lower
         elif limit_line is self.__upper_limit:
-            return "upper"
+            return LimitChangeEvent.Limit.Upper
         else:
             return None
 
@@ -241,25 +276,82 @@ class HistogramDisplayWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Histogram")
-        self.__frame = QWidget()
-
         self.__raw_data_canvas = AdjustableHistogramPlotCanvas(self, width=5, height=4)
         self.__raw_data_canvas.limit_changed.connect(self.__handle_hist_limit_change)
+        self.__raw_data_canvas.plot_changed.connect(self.__handle_plot_change)
         self.__adjusted_data_canvas = HistogramPlotCanvas(self, width=5, height=4)
 
-        layout = QHBoxLayout()
-        layout.addWidget(self.__raw_data_canvas)
-        layout.addWidget(self.__adjusted_data_canvas)
+        self.__init_ui()
+
+    def __init_ui(self):
+        self.setWindowTitle("Histogram")
+        self.__frame = QWidget(self)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
+
+        control_frame = QFrame(self)
+        control_frame.setFrameStyle(QFrame.Panel)
+        control_frame.setLineWidth(1)
+
+        control_layout = QHBoxLayout()
+        control_layout.setAlignment(Qt.AlignLeft)
+        control_layout.setContentsMargins(2, 2, 2, 2)
+        control_layout.setSpacing(3)
+
+        low_label = QLabel("low limit:")
+        low_label.setFixedWidth(60)
+        control_layout.addWidget(low_label)
+
+        self.__low_edit = QLineEdit()
+        self.__low_edit.setMaximumWidth(60)
+        self.__low_edit.deselect()
+        # TODO low_edit.setInputMask()
+        # TODO low_edit.setValidator()
+        # TODO low_edit.addAction()
+        control_layout.addWidget(self.__low_edit)
+        control_layout.addSpacing(10)
+
+        high_label = QLabel("high limit:")
+        high_label.setFixedWidth(60)
+        control_layout.addWidget(high_label)
+
+        self.__high_edit = QLineEdit()
+        self.__high_edit.setMaximumWidth(60)
+        self.__high_edit.deselect()
+        # TODO high_edit.setInputMask()
+        # TODO high_edit.setValidator()
+        # TODO high_edit.addAction()
+        control_layout.addWidget(self.__high_edit)
+
+        control_frame.setLayout(control_layout)
+        layout.addWidget(control_frame)
+
+        # plot_frame = QGroupBox(self)
+        plot_frame = QFrame(self)
+        plot_frame.setFrameStyle(QFrame.Panel)
+        plot_frame.setLineWidth(1)
+
+        # plot_frame = QWidget(self)
+        plot_layout = QHBoxLayout()
+        plot_layout.setContentsMargins(2, 2, 2, 2)
+        plot_layout.setSpacing(2)
+        plot_layout.addWidget(self.__raw_data_canvas)
+        plot_layout.addWidget(self.__adjusted_data_canvas)
+        plot_frame.setLayout(plot_layout)
+        layout.addWidget(plot_frame)
 
         self.__frame.setLayout(layout)
         self.setCentralWidget(self.__frame)
-        self.__has_adjusted_data = False;
+        self.__has_adjusted_data = False
 
     def __del__(self):
         HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
         self.__adjusted_data_canvas = None
         self.__raw_data_canvas = None
+        self.__low_edit = None
+        self.__high_edit = None
         self.__frame = None
 
     def set_raw_data(self, data:HistogramPlotData):
@@ -275,3 +367,12 @@ class HistogramDisplayWindow(QMainWindow):
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
         self.limit_changed.emit(event)
+        if event.id() == LimitChangeEvent.Limit.Lower:
+            self.__low_edit.setText(str(event.limit()))
+        elif event.id() == LimitChangeEvent.Limit.Upper:
+            self.__high_edit.setText(str(event.limit()))
+
+    @pyqtSlot(PlotChangeEvent)
+    def __handle_plot_change(self, event:PlotChangeEvent):
+        self.__low_edit.setText(str(event.lower_limit()))
+        self.__high_edit.setText(str(event.upper_limit()))
