@@ -1,5 +1,5 @@
 import logging
-from math import floor
+from math import floor, ceil
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QResizeEvent, QCloseEvent
@@ -109,16 +109,14 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         super().__init__(parent, width, height, dpi)
-        self.__lower_limit_x = None
-        self.__upper_limit_x = None
-        self.__dragging = None
-        self.__drag_start = None
+        self.__min_adjust_x = None
+        self.__max_adjust_x = None
+        self.__dragging:lines.Line2D = None
 
     def __del__(self):
         self.__dragging = None
-        self.__drag_start = None
-        self.__upper_limit_x = None
-        self.__lower_limit_x = None
+        self.__min_adjust_x = None
+        self.__max_adjust_x = None
 
     def plot(self, data:HistogramPlotData):
         super().plot(data)
@@ -126,31 +124,34 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.mpl_connect("motion_notify_event", self.__on_mouse_move)
         self.mpl_connect("button_release_event", self.__on_mouse_release)
 
-        self.__lower_limit_x = data.lower_limit
-        self.__upper_limit_x = data.upper_limit
-
-        self.__lower_limit = lines.Line2D([self.__lower_limit_x, self.__lower_limit_x],
+        self.__lower_limit = lines.Line2D([data.lower_limit, data.lower_limit],
             [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
             figure=self._axes.figure, picker=5)
 
-        self.__upper_limit = lines.Line2D([self.__upper_limit_x, self.__upper_limit_x],
+        self.__upper_limit = lines.Line2D([data.upper_limit, data.upper_limit],
             [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
             figure=self._axes.figure, picker=5)
         self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
         self.mpl_connect("pick_event", self.__on_pick)
 
+        # TODO don't think this will work with float data, need figure out scale
+        self.__min_adjust_x = ceil(self._axes.get_xlim()[0])
+        self.__max_adjust_x = floor(self._axes.get_xlim()[1])
+        AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: %f, max_adjust_x %f",
+            self.__min_adjust_x, self.__max_adjust_x)
+
     def __on_mouse_release(self, event: MouseEvent):
-        AdjustableHistogramPlotCanvas.__LOG.debug("Mouse released at %f", event.xdata)
-        if self.__dragging is not None and self.__drag_start is not None:
+        if self.__dragging is not None:
             line_id = self.__get_limit_id(self.__dragging)
             if line_id is not None:
-                new_loc = floor(event.xdata)
+                new_loc = floor(self.__dragging.get_xdata()[0])
                 limit_event = LimitChangeEvent(line_id, new_loc)
                 self.limit_changed.emit(limit_event)
+                AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: %f", new_loc)
 
-            self.__drag_start = None
             self.__dragging = None
 
+    # TODO why do I need this? eventually need to tell them apart? better way?
     def __get_limit_id(self, limit_line: lines.Line2D) -> str:
         if limit_line is self.__lower_limit:
             return "lower"
@@ -161,25 +162,33 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
     def __on_pick(self, event: PickEvent):
         if event.artist == self.__lower_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at %f",
-                self.__lower_limit.get_xdata())
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at %s",
+                str(self.__lower_limit.get_xdata()))
         elif event.artist == self.__upper_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at %f",
-                self.__upper_limit.get_xdata())
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at %s",
+                str(self.__upper_limit.get_xdata()))
 
         self.__dragging = event.artist
-        self.__drag_start = event.artist.get_xdata()
 
     def __on_mouse_move(self, event: MouseEvent):
-        if self.__dragging is not None and self.__drag_start is not None:
-            self.__dragging.set_xdata([event.xdata, event.xdata])
+        if self.__dragging is not None and event.xdata is not None:
+            new_x = event.xdata
+            if new_x > self.__max_adjust_x:
+                new_x = self.__max_adjust_x
+            elif new_x < self.__min_adjust_x:
+                new_x = self.__min_adjust_x
+
+            self.__dragging.set_xdata([new_x, new_x])
             self.draw()
+
         else:
+            pass
+            # TODO???? Logger blows up because sometimes some values are None
             # TODO remove this
-            AdjustableHistogramPlotCanvas.__LOG.debug(
-                "Mouse move - name: %s, canvas: %s, axes: %s, x: %f, y: %f, xdata: %f, ydata: %f",
-                event.name, event.canvas, event.inaxes,
-                event.x, event.y, event.xdata, event.ydata)
+            # AdjustableHistogramPlotCanvas.__LOG.debug(
+            #     "Mouse move - name: %s, canvas: %s, axes: %s, x: %f, y: %f, xdata: %f, ydata: %f",
+            #     event.name, event.canvas, event.inaxes,
+            #     event.x, event.y, event.xdata, event.ydata)
 
 
 class LinePlotDisplayWindow(QMainWindow):
