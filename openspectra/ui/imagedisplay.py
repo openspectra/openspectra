@@ -68,9 +68,9 @@ class ImageLabel(QLabel):
     __LOG:logging.Logger = Logger.logger("ImageLabel")
 
     class Action(Enum):
-        none = 0
-        dragging = 1
-        drawing = 2
+        Nothing = 0
+        Dragging = 1
+        Drawing = 2
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
@@ -100,7 +100,7 @@ class ImageLabel(QLabel):
         self.__polygon_bounds:QRect = None
         self.__drawing = False
 
-        self.__current_action = ImageLabel.Action.none
+        self.__current_action = ImageLabel.Action.Nothing
 
     def __del__(self):
         ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
@@ -123,11 +123,11 @@ class ImageLabel(QLabel):
             self.__initial_width = self.pixmap().width()
 
     def mouseMoveEvent(self, event:QMouseEvent):
-        if self.__current_action == ImageLabel.Action.drawing:
+        if self.__current_action == ImageLabel.Action.Drawing:
             self.__polygon << event.pos()
             self.update()
 
-        if self.__current_action == ImageLabel.Action.dragging and \
+        if self.__current_action == ImageLabel.Action.Dragging and \
                 self.__last_mouse_loc is not None:
             self.__center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(self.__center)
@@ -142,13 +142,13 @@ class ImageLabel(QLabel):
         ImageLabel.__LOG.debug("mousePressEvent")
 
     def mouseReleaseEvent(self, event:QMouseEvent):
-        if self.__current_action == ImageLabel.Action.dragging:
-            self.__current_action = ImageLabel.Action.none
+        if self.__current_action == ImageLabel.Action.Dragging:
+            self.__current_action = ImageLabel.Action.Nothing
             self.setCursor(self.__default_cursor)
             self.update()
 
-        elif self.__current_action == ImageLabel.Action.drawing:
-            self.__current_action = ImageLabel.Action.none
+        elif self.__current_action == ImageLabel.Action.Drawing:
+            self.__current_action = ImageLabel.Action.Nothing
             self.setCursor(self.__default_cursor)
             # trigger the collection of spectra plots points
             self.__get_select_pixels()
@@ -237,10 +237,10 @@ class ImageLabel(QLabel):
         # TODO set special cursor depending on action??
         if self.__last_mouse_loc is not None:
             if self.__rect.contains(self.__last_mouse_loc):
-                self.__current_action = ImageLabel.Action.dragging
+                self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
             else:
-                self.__current_action = ImageLabel.Action.drawing
+                self.__current_action = ImageLabel.Action.Drawing
                 self.setCursor(self.__draw_cursor)
                 self.__polygon = QPolygon()
 
