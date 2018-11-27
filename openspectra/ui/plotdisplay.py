@@ -268,14 +268,15 @@ class LinePlotDisplayWindow(QMainWindow):
         event.accept()
 
 
-class HistogramDisplayWindow(QMainWindow):
+class AdjustableHistogramControl(QWidget):
 
-    __LOG:logging.Logger = Logger.logger("HistogramDisplayWindow")
+    __LOG:logging.Logger = Logger.logger("AdjustableHistogramControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.__has_adjusted_data = False
         self.__raw_data_canvas = AdjustableHistogramPlotCanvas(self, width=5, height=4)
         self.__raw_data_canvas.limit_changed.connect(self.__handle_hist_limit_change)
         self.__raw_data_canvas.plot_changed.connect(self.__handle_plot_change)
@@ -284,9 +285,6 @@ class HistogramDisplayWindow(QMainWindow):
         self.__init_ui()
 
     def __init_ui(self):
-        self.setWindowTitle("Histogram")
-        self.__frame = QWidget(self)
-
         layout = QVBoxLayout()
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(2)
@@ -342,17 +340,14 @@ class HistogramDisplayWindow(QMainWindow):
         plot_frame.setLayout(plot_layout)
         layout.addWidget(plot_frame)
 
-        self.__frame.setLayout(layout)
-        self.setCentralWidget(self.__frame)
-        self.__has_adjusted_data = False
+        self.setLayout(layout)
 
     def __del__(self):
-        HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
+        AdjustableHistogramControl.__LOG.debug("AdjustableHistogramControl.__del__ called...")
         self.__adjusted_data_canvas = None
         self.__raw_data_canvas = None
         self.__low_edit = None
         self.__high_edit = None
-        self.__frame = None
 
     def set_raw_data(self, data:HistogramPlotData):
         self.__raw_data_canvas.plot(data)
@@ -376,3 +371,36 @@ class HistogramDisplayWindow(QMainWindow):
     def __handle_plot_change(self, event:PlotChangeEvent):
         self.__low_edit.setText(str(event.lower_limit()))
         self.__high_edit.setText(str(event.upper_limit()))
+
+
+class HistogramDisplayWindow(QMainWindow):
+
+    __LOG:logging.Logger = Logger.logger("HistogramDisplayWindow")
+
+    limit_changed = pyqtSignal(LimitChangeEvent)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.__init_ui()
+
+    def __init_ui(self):
+
+        self.setWindowTitle("Histogram")
+
+        # TODO, next add capability for multiple AdjustableHistogramControls here
+        # TODO layout options for them
+        self.__adj_hist_control = AdjustableHistogramControl(self)
+        self.__adj_hist_control.limit_changed.connect(self.limit_changed)
+        self.setCentralWidget(self.__adj_hist_control)
+
+    def __del__(self):
+        HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
+        self.__adj_hist_control = None
+
+    def create_plot_control(self, raw_data:HistogramPlotData, adjusted_data:HistogramPlotData):
+        self.__adj_hist_control.set_raw_data(raw_data)
+        self.__adj_hist_control.set_adjusted_data(adjusted_data)
+
+    def set_adjusted_data(self, data:HistogramPlotData):
+        self.__adj_hist_control.set_adjusted_data(data)

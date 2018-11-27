@@ -224,10 +224,8 @@ class WindowSet(QObject):
 
     def __init_histogram(self, x:int, y:int):
         raw_hist = self.__image_tools.raw_histogram()
-        self.__histogram_window.set_raw_data(raw_hist)
-
         image_hist = self.__image_tools.adjusted_histogram()
-        self.__histogram_window.set_adjusted_data(image_hist)
+        self.__histogram_window.create_plot_control(raw_hist, image_hist)
 
         # TODO need some sort of layout manager?
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
