@@ -1,4 +1,4 @@
-import openspectra.openspectra_file as ef
+import openspectra.openspectra_file as osf
 from openspectra.openspectra_file import OpenSpectraFile
 import numpy as np
 from PIL import Image
@@ -9,7 +9,7 @@ if __name__ == "__main__":
     file_name = "/Users/jconti/dev/data/JoeSamples/cup95_eff_fixed"
     # file_name = "/Users/jconti/dev/data/JoeSamples/ang20160928t135411_rfl_v1nx_nonortho"
 
-    open_spectra_file:OpenSpectraFile = ef.create_open_spectra_file(file_name)
+    open_spectra_file:OpenSpectraFile = osf.create_open_spectra_file(file_name)
 
     image_data = open_spectra_file.greyscale_image(10).raw_data()
     min = np.amin(image_data)

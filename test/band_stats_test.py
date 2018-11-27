@@ -1,13 +1,13 @@
 import numpy as np
 
 from openspectra.openspectra_file import OpenSpectraFile
-import openspectra.openspectra_file as ef
+import openspectra.openspectra_file as osf
 
 
 def band_stats_test():
     file_name = "/Users/jconti/dev/data/JoeSamples/cup95_eff_fixed"
 
-    os_file: OpenSpectraFile = ef.create_open_spectra_file(file_name)
+    os_file: OpenSpectraFile = osf.create_open_spectra_file(file_name)
 
     bands = os_file.band(10, 10)
     print("Bands: ", bands)

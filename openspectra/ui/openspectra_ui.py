@@ -1,4 +1,4 @@
-import openspectra.openspectra_file as ev
+import openspectra.openspectra_file as osf
 
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog
 from PyQt5.QtGui import QIcon
@@ -69,7 +69,7 @@ class OpenSpectraUI(QMainWindow):
         file_dialog = QFileDialog.getOpenFileName(None, "Open file", "/Users/jconti/dev/data/JoeSamples")
         file_name = file_dialog[0]
 
-        file = ev.create_open_spectra_file(file_name)
+        file = osf.create_open_spectra_file(file_name)
         self.__window_manager.add_file(file)
 
     def __plot(self):

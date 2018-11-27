@@ -1,11 +1,5 @@
-import sys
-
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QApplication, QScrollArea, QLabel, QMainWindow
-
 import openspectra.image as img
-from openspectra.image import RGBImage
-import openspectra.openspectra_file as ef
+import openspectra.openspectra_file as osf
 from openspectra.openspectra_file import OpenSpectraFile
 import numpy as np
 from PIL import Image
@@ -15,7 +9,7 @@ from matplotlib import pyplot as plt
 def image_processor_test():
     file_name = "/Users/jconti/dev/data/JoeSamples/cup95_eff_fixed"
 
-    open_spectra_file: OpenSpectraFile = ef.create_open_spectra_file(file_name)
+    open_spectra_file: OpenSpectraFile = osf.create_open_spectra_file(file_name)
 
     image_data = open_spectra_file.greyscale_image(10).raw_data()
     min = np.amin(image_data)
