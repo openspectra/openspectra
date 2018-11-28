@@ -13,12 +13,12 @@ from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
-from openspectra.utils import Logger
+from openspectra.utils import LogHelper
 
 
 class WindowManager(QObject):
 
-    __LOG:logging.Logger = Logger.logger("WindowManager")
+    __LOG:logging.Logger = LogHelper.logger("WindowManager")
 
     def __init__(self, band_list:BandList):
         super(WindowManager, self).__init__(None)
@@ -88,7 +88,7 @@ class WindowManager(QObject):
 
 class FileManager(QObject):
 
-    __LOG:logging.Logger = Logger.logger("FileManager")
+    __LOG:logging.Logger = LogHelper.logger("FileManager")
 
     def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem):
         super(FileManager, self).__init__(None)
@@ -154,7 +154,7 @@ class FileManager(QObject):
 
 class WindowSet(QObject):
 
-    __LOG:logging.Logger = Logger.logger("WindowSet")
+    __LOG:logging.Logger = LogHelper.logger("WindowSet")
 
     closed = pyqtSignal(QChildEvent)
 

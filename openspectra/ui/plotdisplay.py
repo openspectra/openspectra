@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 import matplotlib.lines as lines
 
 from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
-from openspectra.utils import Logger
+from openspectra.utils import LogHelper
 
 
 class LimitChangeEvent(QObject):
@@ -133,7 +133,7 @@ class HistogramPlotCanvas(PlotCanvas):
 
 class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
-    __LOG:logging.Logger = Logger.logger("AdjustableHistogramPlotCanvas")
+    __LOG:logging.Logger = LogHelper.logger("AdjustableHistogramPlotCanvas")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
     plot_changed = pyqtSignal(PlotChangeEvent)
@@ -228,7 +228,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
 class LinePlotDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = Logger.logger("LinePlotDisplayWindow")
+    __LOG:logging.Logger = LogHelper.logger("LinePlotDisplayWindow")
 
     closed = pyqtSignal()
 
@@ -270,7 +270,7 @@ class LinePlotDisplayWindow(QMainWindow):
 
 class AdjustableHistogramControl(QWidget):
 
-    __LOG:logging.Logger = Logger.logger("AdjustableHistogramControl")
+    __LOG:logging.Logger = LogHelper.logger("AdjustableHistogramControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 
@@ -375,7 +375,7 @@ class AdjustableHistogramControl(QWidget):
 
 class HistogramDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = Logger.logger("HistogramDisplayWindow")
+    __LOG:logging.Logger = LogHelper.logger("HistogramDisplayWindow")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 

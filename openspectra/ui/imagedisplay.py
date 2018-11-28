@@ -12,7 +12,7 @@ from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QC
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget
 
 from openspectra.image import Image
-from openspectra.utils import Logger
+from openspectra.utils import LogHelper
 
 
 class AdjustedMouseEvent(QObject):
@@ -65,7 +65,7 @@ class MouseCoordinates(QLabel):
 
 class ImageLabel(QLabel):
 
-    __LOG:logging.Logger = Logger.logger("ImageLabel")
+    __LOG:logging.Logger = LogHelper.logger("ImageLabel")
 
     class Action(Enum):
         Nothing = 0
@@ -275,7 +275,7 @@ class ImageLabel(QLabel):
 
 class ImageDisplay(QScrollArea):
 
-    __LOG:logging.Logger = Logger.logger("ImageDisplay")
+    __LOG:logging.Logger = LogHelper.logger("ImageDisplay")
 
     area_selected = pyqtSignal(AreaSelectedEvent)
     clicked = pyqtSignal(AdjustedMouseEvent)
@@ -358,7 +358,7 @@ class ImageDisplay(QScrollArea):
 
 class ImageDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = Logger.logger("ImageDisplayWindow")
+    __LOG:logging.Logger = LogHelper.logger("ImageDisplayWindow")
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)

@@ -5,13 +5,13 @@ from typing import List, Union
 import numpy as np
 
 from openspectra.image import RGBImage, GreyscaleImage
-from openspectra.utils import Logger
+from openspectra.utils import LogHelper
 
 
 class OpenSpectraHeader:
     """A class that reads, validates and makes open spectra header file details available"""
 
-    __LOG:logging.Logger = Logger.logger("OpenSpectraHeader")
+    __LOG:logging.Logger = LogHelper.logger("OpenSpectraHeader")
 
     __BAND_NAMES = "band names"
     __BANDS = "bands"
@@ -333,7 +333,7 @@ class MappedModel(FileModel):
 
 class OpenSpectraFile:
 
-    __LOG:logging.Logger = Logger.logger("OpenSpectraFile")
+    __LOG:logging.Logger = LogHelper.logger("OpenSpectraFile")
 
     def __init__(self, header:OpenSpectraHeader, file_delegate:FileTypeDelegate,
             memory_model:FileModel):
@@ -393,7 +393,7 @@ class OpenSpectraFile:
 class OpenSpectraFileFactory:
     """An object oriented way to create an OpenSpectra file"""
 
-    __LOG: logging.Logger = Logger.logger("OpenSpectraFileFactory")
+    __LOG: logging.Logger = LogHelper.logger("OpenSpectraFileFactory")
 
     @staticmethod
     def create_open_spectra_file(file_name) -> OpenSpectraFile:

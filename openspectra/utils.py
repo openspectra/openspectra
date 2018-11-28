@@ -6,7 +6,7 @@ from pathlib import Path
 from yaml import load
 
 
-class Logger:
+class LogHelper:
 
     __logger:logging.Logger = None
 
@@ -24,25 +24,25 @@ class Logger:
             if config_file.exists() and config_file.is_file():
                 conf = load(config_file.open("r"))
                 lc.dictConfig(conf)
-                Logger.__logger = logging.getLogger("openSpectra")
-                logger = Logger.logger("Logger")
+                LogHelper.__logger = logging.getLogger("openSpectra")
+                logger = LogHelper.logger("Logger")
                 logger.info("Logger initialize from default configuration, %s", file)
             else:
-                Logger.__fallback_initialize()
+                LogHelper.__fallback_initialize()
         else:
-            Logger.__fallback_initialize()
+            LogHelper.__fallback_initialize()
 
     @staticmethod
     def __fallback_initialize():
         logging.basicConfig(format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s", level=logging.DEBUG)
-        Logger.__logger = logging.getLogger("openSpectra")
-        logger = Logger.logger("Logger")
+        LogHelper.__logger = logging.getLogger("openSpectra")
+        logger = LogHelper.logger("Logger")
         logger.info("Could not find default logger configuration file, using fallback config.")
 
     @staticmethod
     def logger(name:str) -> logging.Logger:
         # TODO thread safety??
-        if Logger.__logger is None:
-            Logger.__initialize()
+        if LogHelper.__logger is None:
+            LogHelper.__initialize()
 
-        return Logger.__logger.getChild(name)
+        return LogHelper.__logger.getChild(name)

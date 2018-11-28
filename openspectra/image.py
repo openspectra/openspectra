@@ -4,7 +4,7 @@ from enum import Enum
 import numpy as np
 import numpy.ma as ma
 
-from openspectra.utils import Logger
+from openspectra.utils import LogHelper
 
 
 class ImageAdjuster:
@@ -61,7 +61,7 @@ def equalize_histogram(input_image: np.ndarray) -> np.ndarray:
 
 class BandImageAdjuster(ImageAdjuster):
 
-    __LOG:logging.Logger = Logger.logger("BandImageAdjuster")
+    __LOG:logging.Logger = LogHelper.logger("BandImageAdjuster")
 
     def __init__(self, band:np.ndarray):
         self.__band = band
@@ -263,7 +263,7 @@ class GreyscaleImage(Image, BandImageAdjuster):
 class RGBImage(Image, RGBImageAdjuster):
     """A 32-bit RGB image using format (0xffRRGGBB)"""
 
-    __LOG:logging.Logger = Logger.logger("RGBImage")
+    __LOG:logging.Logger = LogHelper.logger("RGBImage")
 
     __HIGH_BYTE = 255 * 256 * 256 * 256
     __RED_SHIFT = 256 * 256
