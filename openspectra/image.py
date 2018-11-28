@@ -69,6 +69,7 @@ class BandImageAdjuster(ImageAdjuster):
         self.__low_cutoff = 0
         self.__high_cutoff = 0
         self.adjust_by_percentage(2, 98)
+        BandImageAdjuster.__LOG.debug("min: %d, max: %d", self.__band.min(), self.__band.max())
 
     def __del__(self):
         self.__image_data = None
@@ -79,8 +80,7 @@ class BandImageAdjuster(ImageAdjuster):
         return self.__image_data
 
     def adjust_by_percentage(self, lower, upper):
-        self.__low_cutoff, self.__high_cutoff = np.percentile(
-            self.__band, (lower, upper))
+        self.__low_cutoff, self.__high_cutoff = np.percentile(self.__band, (lower, upper))
         self.adjust()
 
     def adjust_by_value(self, lower, upper):

@@ -296,6 +296,7 @@ class WindowSet(QObject):
 
         lines = event.y_points()
         samples = event.x_points()
+        WindowSet.__LOG.debug("lines dim: %d, samples dim: %d", lines.ndim, samples.ndim)
 
         # TODO bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples)

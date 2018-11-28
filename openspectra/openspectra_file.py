@@ -244,7 +244,7 @@ class FileTypeDelegate():
 
 
 class BILFileDelegate(FileTypeDelegate):
-    '''An 'interleave': 'bil' file'''
+    """An 'interleave': 'bil' file"""
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
@@ -264,7 +264,7 @@ class BILFileDelegate(FileTypeDelegate):
 
 
 class BQSFileDelegate(FileTypeDelegate):
-    '''An 'interleave': 'bsq' file'''
+    """An 'interleave': 'bsq' file"""
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
@@ -284,7 +284,7 @@ class BQSFileDelegate(FileTypeDelegate):
 
 
 class BIPFileDelegate(FileTypeDelegate):
-    '''An 'interleave': 'bip' file'''
+    """An 'interleave': 'bip' file"""
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
@@ -354,15 +354,16 @@ class OpenSpectraFile:
             OpenSpectraFile.__LOG.debug("Size: %s", str(self.__memory_model.file().size))
             OpenSpectraFile.__LOG.debug("Type: %s", str(self.__memory_model.file().dtype))
 
-    def greyscale_image(self, band) -> GreyscaleImage:
+    def greyscale_image(self, band:int) -> GreyscaleImage:
         return GreyscaleImage(self.__file_delegate.image(band))
 
-    def rgb_image(self, red, green, blue) -> RGBImage:
+    def rgb_image(self, red:int, green:int, blue:int) -> RGBImage:
         return RGBImage(self.__file_delegate.image(red),
             self.__file_delegate.image(green),
             self.__file_delegate.image(blue))
 
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def band(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        self.__validate_band_args(line, sample)
         return self.__file_delegate.band(line, sample)
 
     def name(self) -> str:
@@ -371,6 +372,65 @@ class OpenSpectraFile:
     def header(self) -> OpenSpectraHeader:
         return self.__header
 
+    def __validate_band_args(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]):
+        if isinstance(line, int) and isinstance(sample, int):
+            pass
+        elif isinstance(line, tuple) and isinstance(sample, tuple):
+            if len(line) != len(sample):
+                raise ValueError("tuple arguments must have the same length")
+
+        elif isinstance(line, np.ndarray) and isinstance(sample, np.ndarray):
+            if line.ndim != 1 or sample.ndim != 1:
+                raise ValueError("ndarray arguments must have a dimension of 1")
+
+            if line.size != sample.size:
+                raise ValueError("ndarray arguments must have the same size")
+
+        else:
+            raise TypeError("'line' and 'sample' arguments must have the same type")
+
+
+class OpenSpectraFileFactory:
+    """An object oriented way to create an OpenSpectra file"""
+
+    __LOG: logging.Logger = Logger.logger("OpenSpectraFileFactory")
+
+    @staticmethod
+    def create_open_spectra_file(file_name) -> OpenSpectraFile:
+        path = Path(file_name)
+
+        if path.exists() and path.is_file():
+            OpenSpectraFileFactory.__LOG.info("Opening %s with mode %d", path.name, path.stat().st_mode)
+
+            header = OpenSpectraHeader(file_name + ".hdr")
+            header.load()
+            file_type = header.interleave()
+
+            # TODO logic to choose a memory model
+            memory_model:FileModel = MappedModel(path, header)
+
+            if file_type == "bil":
+                file_delegate = BILFileDelegate(header, memory_model)
+            elif file_type == 'bsq':
+                file_delegate = BQSFileDelegate(header, memory_model)
+            elif file_type == 'bip':
+                file_delegate = BIPFileDelegate(header, memory_model)
+            else:
+                raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))
+
+            # TODO this is kind of weird
+            memory_model.load(file_delegate.shape())
+            return OpenSpectraFile(header, file_delegate, memory_model)
+
+        else:
+            raise OpenSpectraFileError("File {0} not found".format(path.name))
+
+
+def create_open_spectra_file(file_name) -> OpenSpectraFile:
+    """A function based way to create an OpenSpectra file"""
+
+    return OpenSpectraFileFactory.create_open_spectra_file(file_name)
+
 
 class OpenSpectraHeaderError(Exception):
     """Raised when there's a problem with the header file"""
@@ -378,37 +438,6 @@ class OpenSpectraHeaderError(Exception):
 
 
 class OpenSpectraFileError(Exception):
-    """Raised when there's a problem with the file"""
+    """Raised when there's a problem with the data file"""
     pass
 
-
-def create_open_spectra_file(file_name) -> OpenSpectraFile:
-
-    logger:logging.Logger = Logger.logger(__name__)
-    path = Path(file_name)
-
-    if path.exists() and path.is_file():
-        logger.info("Opening %s with mode %d", path.name, path.stat().st_mode)
-
-        header = OpenSpectraHeader(file_name + ".hdr")
-        header.load()
-        file_type = header.interleave()
-
-        # TODO logic to choose a memory model
-        memory_model:FileModel = MappedModel(path, header)
-
-        if file_type == "bil":
-            file_delegate = BILFileDelegate(header, memory_model)
-        elif file_type == 'bsq':
-            file_delegate = BQSFileDelegate(header, memory_model)
-        elif file_type == 'bip':
-            file_delegate = BIPFileDelegate(header, memory_model)
-        else:
-            raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))
-
-        # TODO this is kind of weird
-        memory_model.load(file_delegate.shape())
-        return OpenSpectraFile(header, file_delegate, memory_model)
-
-    else:
-        raise OpenSpectraFileError("File {0} not found".format(path.name))

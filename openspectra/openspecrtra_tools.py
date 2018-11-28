@@ -1,3 +1,5 @@
+from typing import Union
+
 import numpy as np
 
 from openspectra.image import Image
@@ -97,15 +99,15 @@ class BandStaticsPlotData():
 
 
 class OpenSpectraBandTools:
-    '''A class for working on OS files'''
+    """A class for working on OS files"""
 
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
 
-    def band_statistics(self, lines:tuple, samples:tuple) -> BandStatistics:
+    def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(self.__file.band(lines, samples))
 
-    def statistics_plot(self, lines:tuple, samples:tuple) -> BandStaticsPlotData:
+    def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStaticsPlotData:
         band_stats = self.band_statistics(lines, samples)
         return BandStaticsPlotData(band_stats, self.__file.header().wavelengths())
 
