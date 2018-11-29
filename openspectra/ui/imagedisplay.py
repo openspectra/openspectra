@@ -9,7 +9,8 @@ from numpy import ma
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
     QPolygon, QCursor
-from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget
+from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
+    QHBoxLayout
 
 from openspectra.image import Image
 from openspectra.utils import LogHelper
@@ -79,7 +80,7 @@ class ImageLabel(QLabel):
     double_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
 
-    def __init__(self, parent=None):
+    def __init__(self, location_rect:bool=True, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
 
@@ -91,9 +92,14 @@ class ImageLabel(QLabel):
         self.__drag_cursor = QCursor(Qt.ClosedHandCursor)
         self.__draw_cursor = QCursor(Qt.CrossCursor)
 
-        # TODO set based on image dimensions
-        self.__rect = QRect(150, 150, 50, 50)
-        self.__center = self.__rect.center()
+        if location_rect:
+            # TODO set based on image dimensions?
+            self.__rect = QRect(150, 150, 50, 50)
+            self.__center = self.__rect.center()
+        else:
+            self.__rect = None
+            self.__center = None
+
         self.__dragging = False
 
         self.__polygon:QPolygon = None
@@ -128,7 +134,7 @@ class ImageLabel(QLabel):
             self.update()
 
         if self.__current_action == ImageLabel.Action.Dragging and \
-                self.__last_mouse_loc is not None:
+                self.__last_mouse_loc is not None and self.__rect is not None:
             self.__center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(self.__center)
             self.__last_mouse_loc = event.pos()
@@ -236,7 +242,7 @@ class ImageLabel(QLabel):
     def __pressed(self):
         # TODO set special cursor depending on action??
         if self.__last_mouse_loc is not None:
-            if self.__rect.contains(self.__last_mouse_loc):
+            if self.__rect is not None and self.__rect.contains(self.__last_mouse_loc):
                 self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
             else:
@@ -281,23 +287,23 @@ class ImageDisplay(QScrollArea):
     clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
 
-    def __init__(self, image:Image,
-            qimage_format:QImage.Format=QImage.Format_Grayscale8, parent=None):
+    def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
+            location_rect:bool=True, parent=None):
         super().__init__(parent)
 
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__imageLabel = ImageLabel(self)
+        self.__imageLabel = ImageLabel(location_rect, self)
         self.__imageLabel.setBackgroundRole(QPalette.Base)
-        # self.__imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.__imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
-        sizePolicy = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
-        sizePolicy.setHeightForWidth(True)
-        self.__imageLabel.setSizePolicy(sizePolicy)
+        # sizePolicy = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+        # sizePolicy.setHeightForWidth(True)
+        # self.__imageLabel.setSizePolicy(sizePolicy)
 
-        self.__imageLabel.setScaledContents(True)
+        # self.__imageLabel.setScaledContents(True)
         self.__imageLabel.setMouseTracking(True)
 
         self.__imageLabel.area_selected.connect(self.area_selected)
@@ -312,10 +318,10 @@ class ImageDisplay(QScrollArea):
         # TODO do I need to keep self.__height, & self.__width?
         self.init_height, self.init_width = self.__image.image_shape()
 
-        self.__qimage = QImage(self.__image.image_data(), self.init_width,
+        self.__qimage:QImage = QImage(self.__image.image_data(), self.init_width,
             self.init_height, self.__image.bytes_per_line(), self.__qimage_format)
 
-        self.__pixmap = QPixmap.fromImage(self.__qimage)
+        self.__pixmap:QPixmap = QPixmap.fromImage(self.__qimage)
         self.__imageLabel.setPixmap(self.__pixmap)
         self.setWidget(self.__imageLabel)
         self.setAlignment(Qt.AlignHCenter)
@@ -336,13 +342,6 @@ class ImageDisplay(QScrollArea):
         ImageDisplay.__LOG.debug("Double clicked x: %d y: %d",
             event.pixel_x() + 1, event.pixel_y() + 1)
 
-        # TODO not working
-        # height = self.__pixmap.height()
-        # width = self.__pixmap.width()
-        # self.__pixmap = self.__pixmap.scaled(width * 2, height * 2)
-        # self.setWidget(self.__imageLabel)
-        # print("Double clicked {0} {1}".format(self.__pixmap.height(), self.__pixmap.width()))
-
     def refresh_image(self):
         # TODO do I need to del the old QImage & QPixmap object???
         # TODO I think they should be garbage collected once the ref is gone?
@@ -350,6 +349,13 @@ class ImageDisplay(QScrollArea):
 
     def clear_selected_area(self):
         self.__imageLabel.clear_selected_area()
+
+    def scale_image(self, factor:float):
+        ImageDisplay.__LOG.debug("scaling image by: %f", factor)
+        new_size = self.__pixmap.size() * factor
+        self.__pixmap = self.__pixmap.scaled(new_size,  Qt.KeepAspectRatio)
+        self.__imageLabel.setPixmap(self.__pixmap)
+        self.resize(new_size)
 
     def resize(self, size:QSize):
         super().resize(size)
@@ -363,63 +369,135 @@ class ImageDisplayWindow(QMainWindow):
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
     area_selected = pyqtSignal(AreaSelectedEvent)
-    closed = pyqtSignal()
 
-    def __init__(self, image:Image, label, qimage_format:QImage.Format, parent=None):
+    def __init__(self, image:Image, label, qimage_format:QImage.Format,
+                screen_geometry:QRect, location_rect:bool=True, parent=None):
         super().__init__(parent)
+        self._screen_geometry = screen_geometry
         # TODO do we need to hold the data itself?
         self.__image = image
-        self.__image_display = ImageDisplay(self.__image, qimage_format, self)
+        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
         self.__init_ui(label)
 
     def __init_ui(self, label):
         self.setWindowTitle(label)
 
-        # Per the docs QMainWindow has it's own layout
-        # Seems to position the widget and size the window to it
-        self.setCentralWidget(self.__image_display)
-        self.__image_display.setAlignment(Qt.AlignHCenter)
+        self.setCentralWidget(self._image_display)
+        self._image_display.setAlignment(Qt.AlignHCenter)
 
         self.__mouseWidget = QDockWidget("Mouse", self)
         self.__mouseWidget.setTitleBarWidget(QWidget(None))
         self.__mouseViewer = MouseCoordinates()
 
-        self.__image_display.mouse_move.connect(self.__mouseViewer.on_mouse_move)
-        self.__image_display.clicked.connect(self.pixel_selected)
-        self.__image_display.mouse_move.connect(self.mouse_moved)
-        self.__image_display.area_selected.connect(self.area_selected)
+        self._image_display.mouse_move.connect(self.__mouseViewer.on_mouse_move)
+        self._image_display.clicked.connect(self.pixel_selected)
+        self._image_display.mouse_move.connect(self.mouse_moved)
+        self._image_display.area_selected.connect(self.area_selected)
 
         self.__mouseWidget.setWidget(self.__mouseViewer)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.__mouseWidget)
 
-        perferred_size = QSize(self.__image_display.init_width + 10, self.__image_display.init_height + 20)
-        self.setMinimumSize(perferred_size)
-
-        # TODO just debug stuff
-        size_policy:QSizePolicy = self.sizePolicy()
-        ImageDisplayWindow.__LOG.debug("Window: %d, %d", self.width(), self.height())
-
     def __del__(self):
         # TODO???
         ImageDisplayWindow.__LOG.debug("ImageDisplayWindow.__del__ called...")
-        self.__image_display = None
+        self._image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?
+        self._screen_geometry = None
 
     @pyqtSlot()
     def handle_stats_closed(self):
-        self.__image_display.clear_selected_area()
+        self._image_display.clear_selected_area()
 
     def refresh_image(self):
-        self.__image_display.refresh_image()
+        self._image_display.refresh_image()
 
     def resizeEvent(self, event:QResizeEvent):
         size = event.size()
-        size -= QSize(10, 20)
-        self.__image_display.resize(size)
+        # size -= QSize(10, 20)
+        # self.__image_display.resize(size)
+
+
+class MainImageDisplayWindow(ImageDisplayWindow):
+
+    __LOG:logging.Logger = LogHelper.logger("MainImageDisplayWindow")
+
+    closed = pyqtSignal()
+
+    def __init__(self, image:Image, label, qimage_format:QImage.Format,
+                screen_geometry:QRect, parent=None):
+        super().__init__(image, label, qimage_format, screen_geometry, True, parent)
+
+        preferred_width = self._image_display.init_width + 10
+        if preferred_width > self._screen_geometry.width():
+            preferred_width = self._screen_geometry.width() - 10
+
+        preferred_height = self._image_display.init_height + 20
+        if preferred_height > self._screen_geometry.height():
+            preferred_height = self._screen_geometry.height() - 50
+
+        preferred_size = QSize(preferred_width, preferred_height)
+        self.setMinimumSize(preferred_size)
+
+        # TODO just debug stuff
+        size_policy: QSizePolicy = self.sizePolicy()
+        MainImageDisplayWindow.__LOG.debug("Window size policy: %s", str(size_policy))
+        MainImageDisplayWindow.__LOG.debug("Window: %d, %d", self.width(), self.height())
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()
         # accepting hides the window
         event.accept()
         # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
+
+
+class ZoomWidget(QWidget):
+
+    zoom_in = pyqtSignal()
+    zoom_out = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.__zoom_in_button = QPushButton("+")
+        self.__zoom_in_button.setFixedHeight(15)
+        self.__zoom_in_button.setFixedWidth(25)
+        self.__zoom_in_button.clicked.connect(self.zoom_in)
+
+        self.__zoom_out_button = QPushButton("-")
+        self.__zoom_out_button.setFixedHeight(15)
+        self.__zoom_out_button.setFixedWidth(25)
+        self.__zoom_out_button.clicked.connect(self.zoom_out)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.addWidget(self.__zoom_in_button)
+        layout.addWidget(self.__zoom_out_button)
+        self.setLayout(layout)
+
+
+class ZoomImageDisplayWindow(ImageDisplayWindow):
+
+    __LOG:logging.Logger = LogHelper.logger("ZoomImageDisplayWindow")
+
+    def __init__(self, image:Image, label, qimage_format:QImage.Format,
+                screen_geometry:QRect, parent=None):
+        super().__init__(image, label, qimage_format, screen_geometry, False, parent)
+
+        self.__zoom_widget = ZoomWidget(self)
+        self.__zoom_widget.zoom_in.connect(self.__handle_zoom_in)
+        self.__zoom_widget.zoom_out.connect(self.__handle_zoom_out)
+
+        self.__zoom_dock_widget = QDockWidget("Mouse", self)
+        self.__zoom_dock_widget.setTitleBarWidget(QWidget(None))
+        self.__zoom_dock_widget.setWidget(self.__zoom_widget)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.__zoom_dock_widget)
+
+    @pyqtSlot()
+    def __handle_zoom_in(self):
+        self._image_display.scale_image(1.5)
+
+    @pyqtSlot()
+    def __handle_zoom_out(self):
+        self._image_display.scale_image(1/1.5)
+

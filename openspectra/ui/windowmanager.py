@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import QTreeWidgetItem
 from openspectra.image import Image, GreyscaleImage, RGBImage
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
-from openspectra.ui.imagedisplay import ImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent
+from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
+    ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
 from openspectra.utils import LogHelper
@@ -21,12 +22,15 @@ class WindowManager(QObject):
     __LOG:logging.Logger = LogHelper.logger("WindowManager")
 
     def __init__(self, band_list:BandList):
-        super(WindowManager, self).__init__(None)
+        super().__init__()
         screen:QScreen = QGuiApplication.primaryScreen()
-        self.__screen_geometery:QRect = screen.geometry()
+        self.__screen_geometry:QRect = screen.geometry()
 
         WindowManager.__LOG.debug("Screen height: %d, width: %d",
-            self.__screen_geometery.height(), self.__screen_geometery.width())
+            self.__screen_geometry.height(), self.__screen_geometry.width())
+
+        WindowManager.__LOG.debug("Available height: %d, width: %d",
+            screen.availableSize().height(), screen.availableSize().width())
 
         self.__file_sets = dict()
         self.__band_list = band_list
@@ -34,7 +38,7 @@ class WindowManager(QObject):
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
 
     def __del__(self):
-        #TODO This works but for some reason throws an exception on shutdown
+        # TODO This works but for some reason throws an exception on shutdown
         try:
            WindowManager.__LOG.debug("WindowManager.__del__ called...")
         except Exception:
@@ -42,7 +46,7 @@ class WindowManager(QObject):
 
         self.__file_sets = None
         self.__band_list = None
-        self.__screen_geometery = None
+        self.__screen_geometry = None
 
     def add_file(self, file:OpenSpectraFile):
         file_widget = self.__band_list.add_file(file)
@@ -53,14 +57,18 @@ class WindowManager(QObject):
             # TODO Just throw a up a dialog box saying it's already open?
             return
 
-        file_set = FileManager(file, file_widget)
+        file_set = FileManager(file, file_widget, self)
         self.__file_sets[file_name] = file_set
 
         if WindowManager.__LOG.isEnabledFor(logging.DEBUG):
             WindowManager.__LOG.debug(file.header().dump())
 
-    def get_file(self, index=0) -> OpenSpectraFile:
+    # TODO - not used????
+    def file(self, index=0) -> OpenSpectraFile:
         return self.__file_sets[index]
+
+    def screen_geometry(self) -> QRect:
+        return self.__screen_geometry
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
@@ -90,8 +98,10 @@ class FileManager(QObject):
 
     __LOG:logging.Logger = LogHelper.logger("FileManager")
 
-    def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem):
-        super(FileManager, self).__init__(None)
+    def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem,
+                window_manager:WindowManager):
+        super().__init__()
+        self.__window_manager = window_manager
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
         self.__file_widget = file_widget
@@ -110,6 +120,7 @@ class FileManager(QObject):
         self.__file_widget = None
         self.__band_tools = None
         self.__file = None
+        self.__window_manager = None
 
     def add_rgb_window_set(self, red, green, blue, label:str):
         image = self.__file.rgb_image(red, green, blue)
@@ -127,6 +138,9 @@ class FileManager(QObject):
 
     def band_tools(self):
         return self.__band_tools
+
+    def window_manager(self) -> WindowManager:
+        return self.__window_manager
 
     def __create_window_set(self, image:Image, label:str):
         title = self.__file_name + ": " + label
@@ -159,46 +173,53 @@ class WindowSet(QObject):
     closed = pyqtSignal(QChildEvent)
 
     def __init__(self, image:Image, label:str, file_manager:FileManager):
-        super(WindowSet, self).__init__(None)
+        super().__init__()
+        self.__file_manager = file_manager
         self.__image = image
         self.__label = label
 
         self.__image_tools = OpenSpectraImageTools(self.__image, self.__label)
         self.__band_tools = file_manager.band_tools()
 
-        # TODO can probably remove self.__file_manager in favor of self.__band_tools??
-        self.__file_manager = file_manager
-
         self.__init_image_window()
         self.__init_plot_windows()
 
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
-            self.__image_window = ImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_Grayscale8)
+            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().screen_geometry())
+            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().screen_geometry())
         elif isinstance(self.__image, RGBImage):
-            self.__image_window = ImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_RGB32)
+            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_RGB32, self.__file_manager.window_manager().screen_geometry())
+            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
+                QImage.Format_RGB32, self.__file_manager.window_manager().screen_geometry())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
                 format(type(self.__image)))
 
-        self.__image_window.pixel_selected.connect(self.__handle_pixel_click)
-        self.__image_window.mouse_moved.connect(self.__handle_mouse_move)
-        self.__image_window.closed.connect(self.__handle_image_closed)
-        self.__image_window.area_selected.connect(self.__handle_area_selected)
+        self.__main_image_window.pixel_selected.connect(self.__handle_pixel_click)
+        self.__main_image_window.mouse_moved.connect(self.__handle_mouse_move)
+        self.__main_image_window.closed.connect(self.__handle_image_closed)
+        self.__main_image_window.area_selected.connect(self.__handle_area_selected)
+
+        self.__zoom_image_window.pixel_selected.connect(self.__handle_pixel_click)
+        self.__zoom_image_window.mouse_moved.connect(self.__handle_mouse_move)
+        self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
 
     def __init_plot_windows(self):
         # setting the image_window as the parent causes the children to
         # close when image_window is closed but it doesn't destroy them
         # i.e. call __del__.  I think it's more intended from parents contain
         # their children not really among QMainWindows
-        self.__spec_plot_window = LinePlotDisplayWindow(self.__image_window)
+        self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
-        self.__band_stats_window = LinePlotDisplayWindow(self.__image_window)
-        self.__band_stats_window.closed.connect(self.__image_window.handle_stats_closed)
+        self.__band_stats_window = LinePlotDisplayWindow(self.__main_image_window)
+        self.__band_stats_window.closed.connect(self.__main_image_window.handle_stats_closed)
+        self.__band_stats_window.closed.connect(self.__zoom_image_window.handle_stats_closed)
 
-        self.__histogram_window = HistogramDisplayWindow(self.__image_window)
+        self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
 
     def __del__(self):
@@ -206,7 +227,8 @@ class WindowSet(QObject):
         self.__spec_plot_window = None
         self.__band_stats_window = None
         self.__histogram_window = None
-        self.__image_window = None
+        self.__zoom_image_window = None
+        self.__main_image_window = None
         self.__file_manager = None
         self.__band_tools = None
         self.__image_tools = None
@@ -215,10 +237,13 @@ class WindowSet(QObject):
 
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
-        self.__image_window.move(x, y)
-        self.__image_window.show()
+        self.__main_image_window.move(x, y)
+        self.__main_image_window.show()
 
-        # TODO figure out what to do with RGB images
+        self.__zoom_image_window.move(x + 50, y + 50)
+        self.__zoom_image_window.show()
+
+        # TODO implement the RGB histogram screen
         if isinstance(self.__image, GreyscaleImage):
             self.__init_histogram(x, y)
 
@@ -232,7 +257,7 @@ class WindowSet(QObject):
         self.__histogram_window.show()
 
     def get_image_window_geometry(self):
-        return self.__image_window.geometry()
+        return self.__main_image_window.geometry()
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
@@ -255,7 +280,10 @@ class WindowSet(QObject):
     @pyqtSlot()
     def __handle_image_closed(self):
         WindowSet.__LOG.debug("__handle_image_closed called...")
-        self.__image_window = None
+        self.__main_image_window = None
+
+        self.__zoom_image_window.close()
+        self.__zoom_image_window = None
 
         self.__histogram_window.close()
         self.__histogram_window = None
@@ -283,7 +311,8 @@ class WindowSet(QObject):
 
         # TODO use event instead?
         # trigger update in image window
-        self.__image_window.refresh_image()
+        self.__main_image_window.refresh_image()
+        self.__zoom_image_window.refresh_image()
 
         # TODO replotting the whole thing is bit inefficient?
         # TODO don't have the label here
