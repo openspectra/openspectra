@@ -5,13 +5,13 @@ from typing import List, Union
 import numpy as np
 
 from openspectra.image import RGBImage, GreyscaleImage
-from openspectra.utils import LogHelper
+from openspectra.utils import LogHelper, Logger
 
 
 class OpenSpectraHeader:
     """A class that reads, validates and makes open spectra header file details available"""
 
-    __LOG:logging.Logger = LogHelper.logger("OpenSpectraHeader")
+    __LOG:Logger = LogHelper.logger("OpenSpectraHeader")
 
     __BAND_NAMES = "band names"
     __BANDS = "bands"
@@ -43,7 +43,7 @@ class OpenSpectraHeader:
         return "Props:\n" + str(self.__props)
 
     def load(self):
-        OpenSpectraHeader.__LOG.debug("File: %s exists: %s", self.__path.name, str(self.__path.exists()))
+        OpenSpectraHeader.__LOG.debug("File: {0} exists: {1}", self.__path.name, self.__path.exists())
 
         if self.__path.exists() and self.__path.is_file():
             OpenSpectraHeader.__LOG.info("Opening file %s with mode %d", self.__path.name, self.__path.stat().st_mode)
@@ -336,7 +336,7 @@ class MappedModel(FileModel):
 
 class OpenSpectraFile:
 
-    __LOG:logging.Logger = LogHelper.logger("OpenSpectraFile")
+    __LOG:Logger = LogHelper.logger("OpenSpectraFile")
 
     def __init__(self, header:OpenSpectraHeader, file_delegate:FileTypeDelegate,
             memory_model:FileModel):
@@ -353,10 +353,10 @@ class OpenSpectraFile:
         if OpenSpectraFile.__LOG.isEnabledFor(logging.DEBUG):
             # TODO seems a little weird, maybe the file delegate should provide access to the file?
             # TODO so how far do we want to go with the delegate, expose file?  Only expose file props/methods?
-            OpenSpectraFile.__LOG.debug("Shape: %s", str(self.__memory_model.file().shape))
-            OpenSpectraFile.__LOG.debug("NDim: %s", str(self.__memory_model.file().ndim))
-            OpenSpectraFile.__LOG.debug("Size: %s", str(self.__memory_model.file().size))
-            OpenSpectraFile.__LOG.debug("Type: %s", str(self.__memory_model.file().dtype))
+            OpenSpectraFile.__LOG.debug("Shape: {0}", self.__memory_model.file().shape)
+            OpenSpectraFile.__LOG.debug("NDim: {0}", self.__memory_model.file().ndim)
+            OpenSpectraFile.__LOG.debug("Size: {0}", self.__memory_model.file().size)
+            OpenSpectraFile.__LOG.debug("Type: {0}", self.__memory_model.file().dtype)
 
     def greyscale_image(self, band:int) -> GreyscaleImage:
         return GreyscaleImage(self.__file_delegate.image(band))
@@ -410,7 +410,7 @@ class OpenSpectraFileFactory:
         path = Path(file_name)
 
         if path.exists() and path.is_file():
-            OpenSpectraFileFactory.__LOG.info("Opening %s with mode %d", path.name, path.stat().st_mode)
+            OpenSpectraFileFactory.__LOG.info("Opening {0} with mode {1}", path.name, path.stat().st_mode)
 
             header = OpenSpectraHeader(file_name + ".hdr")
             header.load()

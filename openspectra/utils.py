@@ -7,9 +7,28 @@ import numpy as np
 from yaml import load
 
 
+class LogMessage(object):
+    def __init__(self, fmt, args):
+        self.fmt = fmt
+        self.args = args
+
+    def __str__(self):
+        return self.fmt.format(*self.args)
+
+
+class Logger(logging.LoggerAdapter):
+    def __init__(self, logger, extra=None):
+        super().__init__(logger, extra or {})
+
+    def log(self, level, msg, *args, **kwargs):
+        if self.isEnabledFor(level):
+            msg, kwargs = self.process(msg, kwargs)
+            self.logger._log(level, LogMessage(msg, args), (), **kwargs)
+
+
 class LogHelper:
 
-    __logger:logging.Logger = None
+    __logger:Logger = None
 
     @staticmethod
     def __initialize():
@@ -25,9 +44,9 @@ class LogHelper:
             if config_file.exists() and config_file.is_file():
                 conf = load(config_file.open("r"))
                 lc.dictConfig(conf)
-                LogHelper.__logger = logging.getLogger("openSpectra")
+                LogHelper.__logger = Logger(logging.getLogger("openSpectra"))
                 logger = LogHelper.logger("Logger")
-                logger.info("Logger initialize from default configuration, %s", file)
+                logger.info("Logger initialize from default configuration, {0}", file)
             else:
                 LogHelper.__fallback_initialize()
         else:
@@ -35,7 +54,8 @@ class LogHelper:
 
     @staticmethod
     def __fallback_initialize():
-        logging.basicConfig(format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s", level=logging.DEBUG)
+        logging.basicConfig(format="{asctime} [{levelname}] [{name}] {message}",
+            style="{", level=logging.DEBUG)
         LogHelper.__logger = logging.getLogger("openSpectra")
         logger = LogHelper.logger("Logger")
         logger.info("Could not find default logger configuration file, using fallback config.")
@@ -46,7 +66,7 @@ class LogHelper:
         if LogHelper.__logger is None:
             LogHelper.__initialize()
 
-        return LogHelper.__logger.getChild(name)
+        return Logger(logging.getLogger("openSpectra").getChild(name))
 
 
 class OpenSpectraDataTypes:

@@ -14,22 +14,22 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
-from openspectra.utils import LogHelper
+from openspectra.utils import LogHelper, Logger
 
 
 class WindowManager(QObject):
 
-    __LOG:logging.Logger = LogHelper.logger("WindowManager")
+    __LOG:Logger = LogHelper.logger("WindowManager")
 
     def __init__(self, band_list:BandList):
         super().__init__()
         screen:QScreen = QGuiApplication.primaryScreen()
         self.__screen_geometry:QRect = screen.geometry()
 
-        WindowManager.__LOG.debug("Screen height: %d, width: %d",
+        WindowManager.__LOG.debug("Screen height: {0}, width: {1}",
             self.__screen_geometry.height(), self.__screen_geometry.width())
 
-        WindowManager.__LOG.debug("Available height: %d, width: %d",
+        WindowManager.__LOG.debug("Available height: {0}, width: {1}",
             screen.availableSize().height(), screen.availableSize().width())
 
         self.__file_sets = dict()
@@ -61,7 +61,7 @@ class WindowManager(QObject):
         self.__file_sets[file_name] = file_set
 
         if WindowManager.__LOG.isEnabledFor(logging.DEBUG):
-            WindowManager.__LOG.debug(file.header().dump())
+            WindowManager.__LOG.debug("{0}", file.header().dump())
 
     # TODO - not used????
     def file(self, index=0) -> OpenSpectraFile:
@@ -96,7 +96,7 @@ class WindowManager(QObject):
 
 class FileManager(QObject):
 
-    __LOG:logging.Logger = LogHelper.logger("FileManager")
+    __LOG:Logger = LogHelper.logger("FileManager")
 
     def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem,
                 window_manager:WindowManager):
@@ -162,13 +162,13 @@ class FileManager(QObject):
     def __handle_windowset_closed(self, event:QChildEvent):
         window_set = event.child()
         self.__window_sets.remove(window_set)
-        FileManager.__LOG.debug("WindowSets open %d", len(self.__window_sets))
+        FileManager.__LOG.debug("WindowSets open {0}", len(self.__window_sets))
         del window_set
 
 
 class WindowSet(QObject):
 
-    __LOG:logging.Logger = LogHelper.logger("WindowSet")
+    __LOG:Logger = LogHelper.logger("WindowSet")
 
     closed = pyqtSignal(QChildEvent)
 
@@ -325,7 +325,7 @@ class WindowSet(QObject):
 
         lines = event.y_points()
         samples = event.x_points()
-        WindowSet.__LOG.debug("lines dim: %d, samples dim: %d", lines.ndim, samples.ndim)
+        WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         # TODO bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples)

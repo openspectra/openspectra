@@ -1,5 +1,4 @@
 import itertools
-import logging
 from enum import Enum
 from math import floor
 
@@ -13,7 +12,7 @@ from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDock
     QHBoxLayout
 
 from openspectra.image import Image
-from openspectra.utils import LogHelper
+from openspectra.utils import LogHelper, Logger
 
 
 class AdjustedMouseEvent(QObject):
@@ -66,7 +65,7 @@ class MouseCoordinates(QLabel):
 
 class ImageLabel(QLabel):
 
-    __LOG:logging.Logger = LogHelper.logger("ImageLabel")
+    __LOG:Logger = LogHelper.logger("ImageLabel")
 
     class Action(Enum):
         Nothing = 0
@@ -217,8 +216,7 @@ class ImageLabel(QLabel):
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
             x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
-            # TODO debug only
-            ImageLabel.__LOG.debug("Selected coords: %d, %d, %d, %d", x1, y1, x2, y2)
+            ImageLabel.__LOG.debug("Selected coords: {0}, {1}, {2}, {3}", x1, y1, x2, y2)
 
             # create an array of contained by the bounding rectangle
             x_range = ma.arange(x1, x2 + 1)
@@ -281,7 +279,7 @@ class ImageLabel(QLabel):
 
 class ImageDisplay(QScrollArea):
 
-    __LOG:logging.Logger = LogHelper.logger("ImageDisplay")
+    __LOG:Logger = LogHelper.logger("ImageDisplay")
 
     area_selected = pyqtSignal(AreaSelectedEvent)
     clicked = pyqtSignal(AdjustedMouseEvent)
@@ -339,7 +337,7 @@ class ImageDisplay(QScrollArea):
     @pyqtSlot(AdjustedMouseEvent)
     def __double_click_handler(self, event:AdjustedMouseEvent):
         # TODO remove?
-        ImageDisplay.__LOG.debug("Double clicked x: %d y: %d",
+        ImageDisplay.__LOG.debug("Double clicked x: {0} y: {1}",
             event.pixel_x() + 1, event.pixel_y() + 1)
 
     def refresh_image(self):
@@ -351,7 +349,7 @@ class ImageDisplay(QScrollArea):
         self.__imageLabel.clear_selected_area()
 
     def scale_image(self, factor:float):
-        ImageDisplay.__LOG.debug("scaling image by: %f", factor)
+        ImageDisplay.__LOG.debug("scaling image by: {0}", factor)
         new_size = self.__pixmap.size() * factor
         self.__pixmap = self.__pixmap.scaled(new_size,  Qt.KeepAspectRatio)
         self.__imageLabel.setPixmap(self.__pixmap)
@@ -364,7 +362,7 @@ class ImageDisplay(QScrollArea):
 
 class ImageDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = LogHelper.logger("ImageDisplayWindow")
+    __LOG:Logger = LogHelper.logger("ImageDisplayWindow")
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
@@ -420,7 +418,7 @@ class ImageDisplayWindow(QMainWindow):
 
 class MainImageDisplayWindow(ImageDisplayWindow):
 
-    __LOG:logging.Logger = LogHelper.logger("MainImageDisplayWindow")
+    __LOG:Logger = LogHelper.logger("MainImageDisplayWindow")
 
     closed = pyqtSignal()
 
@@ -441,8 +439,8 @@ class MainImageDisplayWindow(ImageDisplayWindow):
 
         # TODO just debug stuff
         size_policy: QSizePolicy = self.sizePolicy()
-        MainImageDisplayWindow.__LOG.debug("Window size policy: %s", str(size_policy))
-        MainImageDisplayWindow.__LOG.debug("Window: %d, %d", self.width(), self.height())
+        MainImageDisplayWindow.__LOG.debug("Window size policy: {0}", size_policy)
+        MainImageDisplayWindow.__LOG.debug("Window: {0}, {1}", self.width(), self.height())
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()
@@ -478,7 +476,7 @@ class ZoomWidget(QWidget):
 
 class ZoomImageDisplayWindow(ImageDisplayWindow):
 
-    __LOG:logging.Logger = LogHelper.logger("ZoomImageDisplayWindow")
+    __LOG:Logger = LogHelper.logger("ZoomImageDisplayWindow")
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, parent=None):

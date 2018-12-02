@@ -3,7 +3,7 @@ from enum import Enum
 
 import numpy as np
 
-from openspectra.utils import LogHelper, OpenSpectraDataTypes, OpenSpectraProperties
+from openspectra.utils import LogHelper, OpenSpectraDataTypes, OpenSpectraProperties, Logger
 
 
 class ImageAdjuster:
@@ -32,7 +32,7 @@ class ImageAdjuster:
 
 class BandImageAdjuster(ImageAdjuster):
 
-    __LOG:logging.Logger = LogHelper.logger("BandImageAdjuster")
+    __LOG:Logger = LogHelper.logger("BandImageAdjuster")
 
     def __init__(self, band:np.ndarray):
         self.__band = band
@@ -41,8 +41,8 @@ class BandImageAdjuster(ImageAdjuster):
         self.__low_cutoff = 0
         self.__high_cutoff = 0
         self.adjust_by_percentage(2, 98)
-        BandImageAdjuster.__LOG.debug("type: %s", str(self.__type))
-        BandImageAdjuster.__LOG.debug("min: %f, max: %f", self.__band.min(), self.__band.max())
+        BandImageAdjuster.__LOG.debug("type: {0}", self.__type)
+        BandImageAdjuster.__LOG.debug("min: {0}, max: {1}", self.__band.min(), self.__band.max())
 
     def __del__(self):
         self.__image_data = None
@@ -80,7 +80,7 @@ class BandImageAdjuster(ImageAdjuster):
         self.__high_cutoff = limit
 
     def adjust(self):
-        BandImageAdjuster.__LOG.debug("low cutoff: %f, hight cutoff: %f", self.low_cutoff(), self.high_cutoff())
+        BandImageAdjuster.__LOG.debug("low cutoff: {0}, high cutoff: {1}", self.low_cutoff(), self.high_cutoff())
 
         # TODO <= or <, looks like <=, with < I get strange dots on the image
         low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
@@ -227,7 +227,7 @@ class GreyscaleImage(Image, BandImageAdjuster):
 class RGBImage(Image, RGBImageAdjuster):
     """A 32-bit RGB image using format (0xffRRGGBB)"""
 
-    __LOG:logging.Logger = LogHelper.logger("RGBImage")
+    __LOG:Logger = LogHelper.logger("RGBImage")
 
     __HIGH_BYTE = 255 * 256 * 256 * 256
     __RED_SHIFT = 256 * 256
@@ -247,10 +247,10 @@ class RGBImage(Image, RGBImageAdjuster):
 
         if RGBImage.__LOG.isEnabledFor(logging.DEBUG):
             np.set_printoptions(8, formatter={'int_kind': '{:02x}'.format})
-            RGBImage.__LOG.debug(self.__data)
-            RGBImage.__LOG.debug("height: %d", self.__data.shape[0])
-            RGBImage.__LOG.debug("width: %d ", self.__data.shape[1])
-            RGBImage.__LOG.debug("size: %d", self.__data.size)
+            RGBImage.__LOG.debug("{0}", self.__data)
+            RGBImage.__LOG.debug("height: {0}", self.__data.shape[0])
+            RGBImage.__LOG.debug("width: {0}", self.__data.shape[1])
+            RGBImage.__LOG.debug("size: {0}", self.__data.size)
             np.set_printoptions()
 
     def __del__(self):

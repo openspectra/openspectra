@@ -1,4 +1,3 @@
-import logging
 from enum import Enum
 from math import floor, ceil
 from typing import Union
@@ -13,7 +12,7 @@ from matplotlib.figure import Figure
 import matplotlib.lines as lines
 
 from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
-from openspectra.utils import LogHelper
+from openspectra.utils import LogHelper, Logger
 
 
 class LimitChangeEvent(QObject):
@@ -133,7 +132,7 @@ class HistogramPlotCanvas(PlotCanvas):
 
 class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
-    __LOG:logging.Logger = LogHelper.logger("AdjustableHistogramPlotCanvas")
+    __LOG:Logger = LogHelper.logger("AdjustableHistogramPlotCanvas")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
     plot_changed = pyqtSignal(PlotChangeEvent)
@@ -168,7 +167,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         # TODO don't think this will work with float data, need figure out scale
         self.__min_adjust_x = ceil(self._axes.get_xlim()[0])
         self.__max_adjust_x = floor(self._axes.get_xlim()[1])
-        AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: %f, max_adjust_x %f",
+        AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: {0}, max_adjust_x {1}",
             self.__min_adjust_x, self.__max_adjust_x)
 
         plot_event = PlotChangeEvent(data.lower_limit, data.upper_limit,
@@ -182,7 +181,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
                 new_loc = floor(self.__dragging.get_xdata()[0])
                 limit_event = LimitChangeEvent(line_id, new_loc)
                 self.limit_changed.emit(limit_event)
-                AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: %f", new_loc)
+                AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: {0}", new_loc)
 
             self.__dragging = None
 
@@ -197,11 +196,9 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
     def __on_pick(self, event: PickEvent):
         if event.artist == self.__lower_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at %s",
-                str(self.__lower_limit.get_xdata()))
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at {0}", self.__lower_limit.get_xdata())
         elif event.artist == self.__upper_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at %s",
-                str(self.__upper_limit.get_xdata()))
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at {0}", self.__upper_limit.get_xdata())
 
         self.__dragging = event.artist
 
@@ -218,17 +215,16 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
         else:
             pass
-            # TODO???? Logger blows up because sometimes some values are None
             # TODO remove this
-            # AdjustableHistogramPlotCanvas.__LOG.debug(
-            #     "Mouse move - name: %s, canvas: %s, axes: %s, x: %f, y: %f, xdata: %f, ydata: %f",
-            #     event.name, event.canvas, event.inaxes,
-            #     event.x, event.y, event.xdata, event.ydata)
+            AdjustableHistogramPlotCanvas.__LOG.debug(
+                "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
+                event.name, event.canvas, event.inaxes,
+                event.x, event.y, event.xdata, event.ydata)
 
 
 class LinePlotDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = LogHelper.logger("LinePlotDisplayWindow")
+    __LOG:Logger = LogHelper.logger("LinePlotDisplayWindow")
 
     closed = pyqtSignal()
 
@@ -270,7 +266,7 @@ class LinePlotDisplayWindow(QMainWindow):
 
 class AdjustableHistogramControl(QWidget):
 
-    __LOG:logging.Logger = LogHelper.logger("AdjustableHistogramControl")
+    __LOG:Logger = LogHelper.logger("AdjustableHistogramControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 
@@ -375,7 +371,7 @@ class AdjustableHistogramControl(QWidget):
 
 class HistogramDisplayWindow(QMainWindow):
 
-    __LOG:logging.Logger = LogHelper.logger("HistogramDisplayWindow")
+    __LOG:Logger = LogHelper.logger("HistogramDisplayWindow")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 
