@@ -221,6 +221,9 @@ class FileModel():
     def name(self):
         return self._path.name
 
+    def data_type(self):
+        return self._file.dtype
+
     def _validate(self, shape:Shape):
         if self._file.size != shape.size():
             raise OpenSpectraFileError("Expected {0} data points but found {1}".
@@ -345,6 +348,7 @@ class OpenSpectraFile:
         self.__header = header
         self.__memory_model = memory_model
         self.__file_delegate = file_delegate
+        self.__validate()
 
         if OpenSpectraFile.__LOG.isEnabledFor(logging.DEBUG):
             # TODO seems a little weird, maybe the file delegate should provide access to the file?
@@ -371,6 +375,12 @@ class OpenSpectraFile:
 
     def header(self) -> OpenSpectraHeader:
         return self.__header
+
+    def __validate(self):
+        if self.__memory_model.data_type() != self.__header.data_type():
+            raise TypeError("Header file type {0}, does not match actually data type {1}",
+                self.__header.data_type(), self.__memory_model.data_type())
+
 
     def __validate_band_args(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]):
         if isinstance(line, int) and isinstance(sample, int):

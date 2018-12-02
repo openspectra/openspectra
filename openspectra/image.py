@@ -2,9 +2,8 @@ import logging
 from enum import Enum
 
 import numpy as np
-import numpy.ma as ma
 
-from openspectra.utils import LogHelper
+from openspectra.utils import LogHelper, OpenSpectraDataTypes, OpenSpectraProperties
 
 
 class ImageAdjuster:
@@ -31,45 +30,19 @@ class ImageAdjuster:
         pass
 
 
-def equalize_histogram(input_image: np.ndarray) -> np.ndarray:
-    # first create a histogram of the original image and it's
-    max_pixel = np.amax(input_image)
-    hist, bins = np.histogram(input_image.flatten(),
-        max_pixel + 2, [0, max_pixel + 1])
-
-    # cumulative distribution function
-    cdf = hist.cumsum()
-
-    # TODO only used for plotting??
-    # cdf_normalized = cdf * hist.max() / cdf.max()
-
-    # create a masked version of cdf where 0 values are removed
-    cdf_m = np.ma.masked_equal(cdf, 0)
-    cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
-    # add the masked zero values back to the array
-    cdf_adj = np.ma.filled(cdf_m, 0).astype('uint8')
-    return cdf_adj
-
-    # return cdf_adj[input_image]
-    # cdf = ((cdf - cdf.min()) * 255 / (cdf.max() - cdf.min())).astype('uint8')
-    # return cdf
-
-    # TODO this apparently ignores the masking and produces a new ndarray the size of the underlying data
-    # TODO not sure what it fills with.
-    # return cdf[input_image]
-
-
 class BandImageAdjuster(ImageAdjuster):
 
     __LOG:logging.Logger = LogHelper.logger("BandImageAdjuster")
 
     def __init__(self, band:np.ndarray):
         self.__band = band
+        self.__type = self.__band.dtype
         self.__image_data = None
         self.__low_cutoff = 0
         self.__high_cutoff = 0
         self.adjust_by_percentage(2, 98)
-        BandImageAdjuster.__LOG.debug("min: %d, max: %d", self.__band.min(), self.__band.max())
+        BandImageAdjuster.__LOG.debug("type: %s", str(self.__type))
+        BandImageAdjuster.__LOG.debug("min: %f, max: %f", self.__band.min(), self.__band.max())
 
     def __del__(self):
         self.__image_data = None
@@ -80,7 +53,13 @@ class BandImageAdjuster(ImageAdjuster):
         return self.__image_data
 
     def adjust_by_percentage(self, lower, upper):
-        self.__low_cutoff, self.__high_cutoff = np.percentile(self.__band, (lower, upper))
+        if self.__type in OpenSpectraDataTypes.Ints:
+            self.__low_cutoff, self.__high_cutoff = np.percentile(self.__band, (lower, upper))
+        elif self.__type in OpenSpectraDataTypes.Floats:
+            self.__calcualte_float_cutoffs(lower, upper)
+        else:
+            raise TypeError("Image data type {0} not supported".format(self.__type))
+
         self.adjust()
 
     def adjust_by_value(self, lower, upper):
@@ -101,53 +80,38 @@ class BandImageAdjuster(ImageAdjuster):
         self.__high_cutoff = limit
 
     def adjust(self):
-        self.__image_data = self.__band.copy()
         BandImageAdjuster.__LOG.debug("low cutoff: %f, hight cutoff: %f", self.low_cutoff(), self.high_cutoff())
 
-        low_mask = self.__image_data.view(ma.MaskedArray)
         # TODO <= or <, looks like <=, with < I get strange dots on the image
-        low_mask.mask = [self.__image_data <= self.__low_cutoff]
+        low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
 
-        high_mask = self.__image_data.view(ma.MaskedArray)
         # TODO >= or <, looks like >=, with < I get strange dots on the image
-        high_mask.mask = [self.__image_data >= self.__high_cutoff]
+        high_mask = np.ma.getmask(np.ma.masked_where(self.__band >= self.__high_cutoff, self.__band, False))
 
-        full_mask = low_mask & high_mask
+        full_mask = low_mask | high_mask
+        masked_band = np.ma.masked_where(full_mask, self.__band, True)
 
         # 0 and 256 assumes 8-bit images, the pixel value limits
+        # TODO why didn't 255 work?
         A, B = 0, 256
-        full_mask = ((full_mask - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
+        masked_band = ((masked_band - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
 
-        low_mask[low_mask.mask] = 0
-        high_mask[high_mask.mask] = 255
+        masked_band[low_mask] = 0
+        masked_band[high_mask] = 255
 
-        self.__image_data[~full_mask.mask] = full_mask[~full_mask.mask]
-        self.__image_data = self.__image_data.astype("uint8")
+        self.__image_data = masked_band.astype("uint8")
 
-        # TODO pretty sure I don't need this
-        # TODO can't find any step where doing the histogram equalization helps
-        # cdf = equalize_histogram(self.__image_data)
-        # self.__image_data = cdf[self.__image_data]
+    def __calcualte_float_cutoffs(self, lower, upper):
+        nbins = OpenSpectraProperties.FloatBins
+        min = self.__band.min()
+        max = self.__band.max()
 
-    # def __equalize_histogram(self):
-    #     # first create a histogram of the original image and it's
-    #     max_pixel = np.amax(self.__band)
-    #     hist, bins = np.histogram(self.__band.flatten(),
-    #         max_pixel + 1, [0, max_pixel + 1])
-    #
-    #     # cumulative distribution function
-    #     cdf = hist.cumsum()
-    #
-    #     # TODO only used for plotting??
-    #     # cdf_normalized = cdf * hist.max() / cdf.max()
-    #
-    #     # create a masked version of cdf where 0 values are removed
-    #     cdf_m = np.ma.masked_equal(cdf, 0)
-    #     cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
-    #     # add the masked zero values back to the array
-    #     cdf_adj = np.ma.filled(cdf_m, 0).astype('uint8')
-    #
-    #     self.__image_data = cdf_adj[self.__band]
+        # scale to generate histogram data
+        hist_scaled = np.floor((self.__band - min)/(max - min) * (nbins - 1))
+        scaled_low_cut, scaled_high_cut = np.percentile(hist_scaled, (lower, upper))
+
+        self.__low_cutoff = (scaled_low_cut / (nbins - 1) * (max - min)) + min
+        self.__high_cutoff = (scaled_high_cut / (nbins - 1) * (max - min)) + min
 
 
 class Band(Enum):

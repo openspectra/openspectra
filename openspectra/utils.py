@@ -3,6 +3,7 @@ import logging.config as lc
 import os
 from pathlib import Path
 
+import numpy as np
 from yaml import load
 
 
@@ -46,3 +47,15 @@ class LogHelper:
             LogHelper.__initialize()
 
         return LogHelper.__logger.getChild(name)
+
+
+class OpenSpectraDataTypes:
+
+    Floats = (np.float32, np.float64,)
+    Ints = (np.uint8, np.int16, np.int32, np.uint16,np.uint32, np.int64, np.uint64)
+    Complexes = (np.complex64, np.complex128)
+
+
+class OpenSpectraProperties:
+
+    FloatBins = 512

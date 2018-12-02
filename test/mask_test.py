@@ -1,39 +1,31 @@
 import numpy as np
-from numpy import ma
 
 if __name__ == "__main__":
 
-    data = np.arange(1, 10)
-    print(data)
+    data = np.arange(1.0, 10.0)
+    print("data start: ", data)
 
-    low_mask = data.view(ma.MaskedArray)
-    low_mask.mask = [data < 3]
+    low_masked = np.ma.masked_where(data < 3, data, False)
+    low_mask = np.ma.getmask(low_masked)
+    print("low_masked: ", low_masked)
     print("low_mask: ", low_mask)
     print("data: ", data)
 
-    high_mask = data.view(ma.MaskedArray)
-    high_mask.mask = [data > 7]
+    high_masked = np.ma.masked_where(data > 7 , data, False)
+    high_mask = np.ma.getmask(high_masked)
+    print("high_masked: ", high_masked)
     print("high_mask: ", high_mask)
     print("data: ", data)
 
-    full_mask = low_mask & high_mask
+    full_mask = low_mask | high_mask
     print("full_mask: ", full_mask)
-    print("data: ", data)
 
-    # data = full_mask * 3
-    full_mask = full_mask * 3
-    print("\nfull_mask * 3: ", full_mask)
-    print("data: ", data)
+    data_masked = np.ma.masked_where(full_mask, data)
+    print("data_masked: ", data_masked)
 
-    low_mask[low_mask.mask] = 0
-    print("\n0 low_mask: ", low_mask)
-    print("full_mask: ", full_mask)
-    print("data: ", data)
+    data_masked = data_masked * 3
+    print(data_masked)
 
-    high_mask[high_mask.mask] = 255
-    print("\n255 high_mask: ", high_mask)
-    print("full_mask: ", full_mask)
-    print("data: ", data)
-
-    data[~full_mask.mask] = full_mask[~full_mask.mask]
-    print("data: ", data)
+    data_masked[low_mask] = 0
+    data_masked[high_mask] = 255
+    print("data_adj: ", data_masked)

@@ -82,8 +82,8 @@ class PlotCanvas(FigureCanvas):
     def plot(self, data:PlotData):
         # TODO something better than setting it over and over??
         # TODO only reset if change is detected??  Seems to work though
-        self._axes.set_xlabel(data.xlabel)
-        self._axes.set_ylabel(data.ylabel)
+        self._axes.set_xlabel(data.x_label)
+        self._axes.set_ylabel(data.y_label)
         self._axes.set_title(data.title)
         self.draw()
 
@@ -97,15 +97,15 @@ class LinePlotCanvas(PlotCanvas):
         if self._current_plot is not None:
             self._current_plot.remove()
 
-        self._current_plot, = self._axes.plot(data.xdata, data.ydata,
-            color=data.color, linestyle=data.linestyle, label=data.legend)
+        self._current_plot, = self._axes.plot(data.x_data, data.y_data,
+            color=data.color, linestyle=data.line_style, label=data.legend)
         if data.legend is not None:
             self._axes.legend(loc='best')
         super().plot(data)
 
     def add_plot(self, data:LinePlotData):
-        self._axes.plot(data.xdata, data.ydata, color=data.color,
-            linestyle=data.linestyle, label=data.legend)
+        self._axes.plot(data.x_data, data.y_data, color=data.color,
+            linestyle=data.line_style, label=data.legend)
         if data.legend is not None:
             self._axes.legend(loc='best')
         self.draw()
@@ -121,8 +121,8 @@ class HistogramPlotCanvas(PlotCanvas):
         super().__init__(parent, width, height, dpi)
 
     def plot(self, data:HistogramPlotData):
-        self._axes.hist(data.ydata, data.xdata,
-            color=data.color, linestyle=data.linestyle)
+        self._axes.hist(data.y_data, data.bins, data.x_data,
+            color=data.color, linestyle=data.line_style)
         super().plot(data)
 
     def update_plot(self, data:HistogramPlotData):

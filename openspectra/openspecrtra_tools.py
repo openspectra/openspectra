@@ -4,33 +4,39 @@ import numpy as np
 
 from openspectra.image import Image
 from openspectra.openspectra_file import OpenSpectraFile
+from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties
 
 
 class PlotData:
-    def __init__(self, xdata, ydata, xlabel, ylabel, title,
-            color="b", linestyle="-", legend=None):
-        self.xdata = xdata
-        self.ydata = ydata
-        self.xlabel = xlabel
-        self.ylabel = ylabel
+    def __init__(self, x_data:np.ndarray, y_data:np.ndarray,
+            x_label:str=None, y_label:str=None, title:str=None, color:str= "b",
+            line_style:str= "-", legend:str=None):
+        self.x_data = x_data
+        self.y_data = y_data
+        self.x_label = x_label
+        self.y_label = y_label
         self.title = title
         self.color = color
-        self.linestyle = linestyle
+        self.line_style = line_style
         self.legend = legend
 
 
 class LinePlotData(PlotData):
 
-    def __init__(self, xdata, ydata, xlabel, ylabel, title,
-            color="b", linestyle="-", legend=None):
-        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle, legend)
+    def __init__(self, x_data:np.ndarray, y_data:np.ndarray,
+            x_label:str=None, y_label:str=None, title:str=None, color:str= "b",
+            line_style:str= "-", legend:str=None):
+        super().__init__(x_data, y_data, x_label, y_label, title, color, line_style, legend)
 
 
 class HistogramPlotData(PlotData):
 
-    def __init__(self, xdata, ydata, xlabel, ylabel, title, color="b",
-            linestyle="-", legend=None, lower_limit=None, upper_limit=None):
-        super().__init__(xdata, ydata, xlabel, ylabel, title, color, linestyle, legend)
+    def __init__(self, x_data:np.ndarray, y_data:np.ndarray, bins:int,
+            x_label:str=None, y_label:str=None, title:str=None, color:str= "b",
+            line_style:str= "-", legend:str=None,
+            lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
+        super().__init__(x_data, y_data, x_label, y_label, title, color, line_style, legend)
+        self.bins = bins
         self.lower_limit = lower_limit
         self.upper_limit = upper_limit
 
@@ -124,22 +130,46 @@ class OpenSpectraImageTools:
         self.__image = image
         self.__label = label
 
+    def __del__(self):
+        self.__label = None
+        self.__image = None
+
     def raw_histogram(self) -> HistogramPlotData:
         raw_data = self.__image.raw_data()
-        return HistogramPlotData(
-            np.arange(raw_data.min(), raw_data.max() + 1, 1),
-            raw_data.flatten(), "X-FixMe", "Y-FixMe", "Raw " + self.__label,
-            "r", lower_limit=self.__image.low_cutoff(),
-            upper_limit=self.__image.high_cutoff())
+        plot_data = OpenSpectraImageTools.__get_hist_data(raw_data)
+        plot_data.x_label = "X-FixMe"
+        plot_data.y_label = "Y-FixMe"
+        plot_data.title = "Raw " + self.__label
+        plot_data.color = "r"
+        plot_data.lower_limit = self.__image.low_cutoff()
+        plot_data.upper_limit = self.__image.high_cutoff()
+        return plot_data
 
     def adjusted_histogram(self) -> HistogramPlotData:
         image_data = self.__image.image_data()
-        return HistogramPlotData(
-            np.arange(image_data.min(), image_data.max() + 1, 1),
-            image_data.flatten(), "X-FixMe", "Y-FixMe", "Adjusted " + self.__label)
+        plot_data = OpenSpectraImageTools.__get_hist_data(image_data)
+        plot_data.x_label = "X-FixMe"
+        plot_data.y_label = "Y-FixMe"
+        plot_data.title = "Adjusted " + self.__label
+        plot_data.color = "b"
+        return plot_data
 
     def label(self):
         return self.__label
 
     def set_label(self, label):
         self.__label = label
+
+    @staticmethod
+    def __get_hist_data(data:np.ndarray) -> HistogramPlotData:
+        type = data.dtype
+        if type in OpenSpectraDataTypes.Ints:
+            x_range = (data.min(), data.max())
+            bins = data.max() - data.min()
+            return HistogramPlotData(x_range, data.flatten(), bins=bins)
+        elif type in OpenSpectraDataTypes.Floats:
+            x_range = (data.min(), data.max())
+            bins = OpenSpectraProperties.FloatBins
+            return HistogramPlotData(x_range, data.flatten(), bins=bins)
+        else:
+            raise TypeError("Data with type {0} is not supported".format(type))
