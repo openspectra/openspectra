@@ -164,9 +164,8 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
         self.mpl_connect("pick_event", self.__on_pick)
 
-        # TODO don't think this will work with float data, need figure out scale
-        self.__min_adjust_x = ceil(self._axes.get_xlim()[0])
-        self.__max_adjust_x = floor(self._axes.get_xlim()[1])
+        self.__min_adjust_x = self._axes.get_xlim()[0]
+        self.__max_adjust_x = self._axes.get_xlim()[1]
         AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: {0}, max_adjust_x {1}",
             self.__min_adjust_x, self.__max_adjust_x)
 
@@ -178,7 +177,7 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         if self.__dragging is not None:
             line_id = self.__get_limit_id(self.__dragging)
             if line_id is not None:
-                new_loc = floor(self.__dragging.get_xdata()[0])
+                new_loc = self.__dragging.get_xdata()[0]
                 limit_event = LimitChangeEvent(line_id, new_loc)
                 self.limit_changed.emit(limit_event)
                 AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: {0}", new_loc)
@@ -216,10 +215,10 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         else:
             pass
             # TODO remove this
-            AdjustableHistogramPlotCanvas.__LOG.debug(
-                "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
-                event.name, event.canvas, event.inaxes,
-                event.x, event.y, event.xdata, event.ydata)
+            # AdjustableHistogramPlotCanvas.__LOG.debug(
+            #     "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
+            #     event.name, event.canvas, event.inaxes,
+            #     event.x, event.y, event.xdata, event.ydata)
 
 
 class LinePlotDisplayWindow(QMainWindow):

@@ -298,8 +298,7 @@ class WindowSet(QObject):
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
-        # TODO blowing up
-        # WindowSet.__LOG.debug("Got limit change event ", event.id(), event.limit())
+        WindowSet.__LOG.debug("Got limit change event id: {0}, limit: {1}", event.id(), event.limit())
         if event.id() == LimitChangeEvent.Limit.Upper:
             self.__image.set_high_cutoff(event.limit())
         elif event.id() == LimitChangeEvent.Limit.Lower:
