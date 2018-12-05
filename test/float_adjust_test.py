@@ -59,5 +59,6 @@ def test_float_adj():
     print(low_mask)
     print(high_mask)
 
+
 if __name__ == "__main__":
     test_float_adj()

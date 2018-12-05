@@ -8,10 +8,10 @@ def band_stats_test():
 
     os_file: OpenSpectraFile = OpenSpectraFileFactory.create_open_spectra_file(file_name)
 
-    bands = os_file.band(10, 10)
+    bands = os_file.bands(10, 10)
     print("Bands: ", bands)
 
-    bands = os_file.band((10, 10), (10, 11))
+    bands = os_file.bands((10, 10), (10, 11))
     print("Bands: ", bands)
     print("Bands[0]: ", bands[0])
     print("Bands[1]: ", bands[1])

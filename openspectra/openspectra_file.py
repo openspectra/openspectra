@@ -46,7 +46,7 @@ class OpenSpectraHeader:
         OpenSpectraHeader.__LOG.debug("File: {0} exists: {1}", self.__path.name, self.__path.exists())
 
         if self.__path.exists() and self.__path.is_file():
-            OpenSpectraHeader.__LOG.info("Opening file %s with mode %d", self.__path.name, self.__path.stat().st_mode)
+            OpenSpectraHeader.__LOG.info("Opening file {0} with mode {1}", self.__path.name, self.__path.stat().st_mode)
 
             with self.__path.open() as headerFile:
                 for line in headerFile:
@@ -82,13 +82,13 @@ class OpenSpectraHeader:
         data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
         return self.__DATA_TYPE_DIC.get(data_type)
 
-    def samples(self):
+    def samples(self) -> int:
         return self.__samples
 
-    def lines(self):
+    def lines(self) -> int:
         return self.__lines
 
-    def bands(self):
+    def band_count(self) -> int:
         return self.__bands
 
     def wavelengths(self):
@@ -190,13 +190,67 @@ class Shape():
 
     def __init__(self, x, y, z):
         self.__shape = (x, y, z)
-        self.__size = np.prod(self.__shape)
+        self.__size = x * y * z
 
-    def shape(self):
+    def shape(self) -> (int, int, int):
         return self.__shape
 
-    def size(self):
+    def size(self) -> int:
         return self.__size
+
+    def lines(self) -> int:
+        pass
+
+    def samples(self) -> int:
+        pass
+
+    def bands(self) -> int:
+        pass
+
+
+class BILShape(Shape):
+
+    def __init__(self, lines, samples, bands):
+        super().__init__(lines, bands, samples)
+
+    def lines(self) -> int:
+        return self.shape()[0]
+
+    def samples(self) -> int:
+        return self.shape()[2]
+
+    def bands(self) -> int:
+        return self.shape()[1]
+
+
+class BQSShape(Shape):
+
+    def __init__(self, lines, samples, bands):
+        super().__init__(bands, lines, samples)
+
+    def lines(self) -> int:
+        return self.shape()[1]
+
+    def samples(self) -> int:
+        return self.shape()[2]
+
+    def bands(self) -> int:
+        return self.shape()[0]
+
+
+class BIPShape(Shape):
+
+    def __init__(self, lines, samples, bands):
+        super().__init__(lines, samples, bands)
+
+    def lines(self) -> int:
+        return self.shape()[0]
+
+    def samples(self) -> int:
+        return self.shape()[1]
+
+    def bands(self) -> int:
+        return self.shape()[2]
 
 
 class FileModel():
@@ -239,7 +293,7 @@ class FileTypeDelegate():
     def image(self, band) -> np.ndarray:
         pass
 
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         pass
 
     def shape(self) -> Shape:
@@ -256,13 +310,12 @@ class BILFileDelegate(FileTypeDelegate):
                 format(header.interleave()))
 
         super().__init__(
-            Shape(header.lines(), header.bands(), header.samples()),
-            file_model)
+            BILShape(header.lines(), header.samples(), header.band_count()), file_model)
 
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[:, band, :]
 
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[line, :, sample]
 
 
@@ -276,13 +329,12 @@ class BQSFileDelegate(FileTypeDelegate):
                 format(header.interleave()))
 
         super().__init__(
-            Shape(header.bands(), header.lines(), header.samples()),
-            file_model)
+            BQSShape(header.lines(), header.samples(), header.band_count()), file_model)
 
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[band, :, :]
 
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[:, line, sample]
 
 
@@ -296,13 +348,12 @@ class BIPFileDelegate(FileTypeDelegate):
                 format(header.interleave()))
 
         super().__init__(
-            Shape(header.lines(), header.samples(), header.bands()),
-            file_model)
+            BIPShape(header.lines(), header.samples(), header.band_count()), file_model)
 
     def image(self, band) -> np.ndarray:
         return self._file_model.file()[:, :, band]
 
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
         return self._file_model.file()[line, sample, :]
 
 
@@ -358,6 +409,16 @@ class OpenSpectraFile:
             OpenSpectraFile.__LOG.debug("Size: {0}", self.__memory_model.file().size)
             OpenSpectraFile.__LOG.debug("Type: {0}", self.__memory_model.file().dtype)
 
+            # TODO so this causes performance problems on large file even with memory mapped, probably has to read the whole file
+            # TODO doesn't consume a bunch of memory in the end.
+            # OpenSpectraFile.__LOG.debug("Min: {0}, Max: {1}", self.__memory_model.file().min(), self.__memory_model.file().max())
+
+        # TODO this causes all memory to get used up then released and takes a long time but works when copy=False
+        # TODO doesn't seem to recover at all if copy=True
+        # view = np.ma.masked_invalid(self.__memory_model.file(), False)
+        # view = np.ma.masked_outside(view, -1, 1, False)
+        # OpenSpectraFile.__LOG.debug("Filtered Min: {0}, Max: {1}, Size: {2}", view.min(), view.max(), view[~view.mask].size)
+
     def greyscale_image(self, band:int) -> GreyscaleImage:
         return GreyscaleImage(self.__file_delegate.image(band))
 
@@ -366,9 +427,14 @@ class OpenSpectraFile:
             self.__file_delegate.image(green),
             self.__file_delegate.image(blue))
 
-    def band(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+    #TODO keep this??  name??
+    def raw_band(self, band:int):
+        return self.__file_delegate.image(band)
+
+    # TODO name?  it's the spectra for a given pixel(s)
+    def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
         self.__validate_band_args(line, sample)
-        return self.__file_delegate.band(line, sample)
+        return self.__file_delegate.bands(line, sample)
 
     def name(self) -> str:
         return self.__memory_model.name()

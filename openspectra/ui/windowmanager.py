@@ -131,7 +131,7 @@ class FileManager(QObject):
         self.__create_window_set(image, label)
 
     def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
-        return self.__file.band(line, sample)
+        return self.__file.bands(line, sample)
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()

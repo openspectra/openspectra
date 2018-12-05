@@ -1,10 +1,11 @@
 from typing import Union
 
 import numpy as np
+from numpy import ma
 
 from openspectra.image import Image
 from openspectra.openspectra_file import OpenSpectraFile
-from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties
+from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
 class PlotData:
@@ -107,21 +108,45 @@ class BandStaticsPlotData():
 class OpenSpectraBandTools:
     """A class for working on OS files"""
 
+    __LOG:Logger = LogHelper.logger("OpenSpectraBandTools")
+
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
 
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
-        return BandStatistics(self.__file.band(lines, samples))
+        return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
 
     def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStaticsPlotData:
         band_stats = self.band_statistics(lines, samples)
         return BandStaticsPlotData(band_stats, self.__file.header().wavelengths())
 
     def spectral_plot(self, line:int, sample:int) -> LinePlotData:
-        band = self.__file.band(line, sample)
+        band = OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(line, sample))
+
         wavelengths = self.__file.header().wavelengths()
+        OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
         return LinePlotData(wavelengths, band, "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+
+    # TODO work around for now, remove noise from data for floats
+    # TODO will need a general solution also for images too?
+    # TODO where will this live
+    @staticmethod
+    def __bogus_noise_cleanup(bands:np.ndarray) -> np.ndarray:
+        clean_bands = bands
+        if clean_bands.dtype in OpenSpectraDataTypes.Floats:
+            if clean_bands.min() == np.nan or clean_bands.max() == np.nan or clean_bands.min() == np.inf or clean_bands.max() == np.inf:
+                clean_bands = ma.masked_invalid(clean_bands)
+
+            # TODO certain areas look a bit better when filtered by different criteria, must be a better way
+            # if clean_bands.std() > 1.0:
+            if clean_bands.std() > 0.1:
+                clean_bands = ma.masked_outside(clean_bands, -0.01, 0.05)
+                # clean_bands = ma.masked_outside(clean_bands, -0.1, 0.5)
+                # clean_bands = ma.masked_outside(clean_bands, -1, 1)
+                # clean_bands = ma.masked_outside(clean_bands, -1, 5)
+
+        return clean_bands
 
 
 class OpenSpectraImageTools:
