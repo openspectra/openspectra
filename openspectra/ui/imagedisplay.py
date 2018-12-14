@@ -9,7 +9,7 @@ from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlo
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
     QPolygon, QCursor
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
-    QHBoxLayout
+    QHBoxLayout, QApplication, QStyle
 
 from openspectra.image import Image
 from openspectra.utils import LogHelper, Logger
@@ -52,6 +52,8 @@ class AreaSelectedEvent(QObject):
 
 
 class MouseCoordinates(QLabel):
+
+    __LOG:Logger = LogHelper.logger("MouseCoordinates")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -168,6 +170,11 @@ class ImageLabel(QLabel):
     def mouseDoubleClickEvent(self, event:QMouseEvent):
         ImageLabel.__LOG.debug("mouseDoubleClickEvent")
         self.double_clicked.emit(self.__create_adjusted_mouse_event(event))
+
+    # TODO don't need??
+    def resize(self, size:QSize):
+        ImageLabel.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
+        super().resize(size)
 
     def eventFilter(self, object:QObject, event:QEvent):
         if event.type() == QEvent.MouseButtonPress:
@@ -289,6 +296,10 @@ class ImageDisplay(QScrollArea):
             location_rect:bool=True, parent=None):
         super().__init__(parent)
 
+        # TODO make settable prop?
+        self.__margin_width = 4
+        self.__margin_height = 4
+
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__qimage_format = qimage_format
@@ -314,15 +325,20 @@ class ImageDisplay(QScrollArea):
 
     def __display_image(self):
         # TODO do I need to keep self.__height, & self.__width?
-        self.init_height, self.init_width = self.__image.image_shape()
+        self.__image_height, self.__image_width = self.__image.image_shape()
 
-        self.__qimage:QImage = QImage(self.__image.image_data(), self.init_width,
-            self.init_height, self.__image.bytes_per_line(), self.__qimage_format)
+        self.__qimage:QImage = QImage(self.__image.image_data(), self.__image_width,
+            self.__image_height, self.__image.bytes_per_line(), self.__qimage_format)
 
         self.__pixmap:QPixmap = QPixmap.fromImage(self.__qimage)
         self.__imageLabel.setPixmap(self.__pixmap)
         self.setWidget(self.__imageLabel)
         self.setAlignment(Qt.AlignHCenter)
+
+        # small margins to give a little extra room so the cursor doesn't change too soon.
+        self.setViewportMargins(self.__margin_width, self.__margin_height,
+            self.__margin_width, self.__margin_height)
+
         self.show()
 
     def __del__(self):
@@ -355,7 +371,20 @@ class ImageDisplay(QScrollArea):
         self.__imageLabel.setPixmap(self.__pixmap)
         self.resize(new_size)
 
+    def image_width(self) -> int:
+        return self.__image_width
+
+    def image_height(self) -> int:
+        return self.__image_height
+
+    def margin_width(self) -> int:
+        return self.__margin_width
+
+    def margin_height(self) -> int:
+        return self.__margin_height
+
     def resize(self, size:QSize):
+        ImageDisplay.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
         super().resize(size)
         self.__imageLabel.resize(size)
 
@@ -383,17 +412,20 @@ class ImageDisplayWindow(QMainWindow):
         self.setCentralWidget(self._image_display)
         self._image_display.setAlignment(Qt.AlignHCenter)
 
-        self.__mouseWidget = QDockWidget("Mouse", self)
-        self.__mouseWidget.setTitleBarWidget(QWidget(None))
-        self.__mouseViewer = MouseCoordinates()
+        self._mouse_widget = QDockWidget("Mouse", self)
+        self._mouse_widget.setTitleBarWidget(QWidget(None))
+        self._mouse_viewer = MouseCoordinates()
+        # TODO make height configurable???
+        # set to fixed height so we know how to layout the image display window
+        self._mouse_viewer.setFixedHeight(16)
 
-        self._image_display.mouse_move.connect(self.__mouseViewer.on_mouse_move)
+        self._image_display.mouse_move.connect(self._mouse_viewer.on_mouse_move)
         self._image_display.clicked.connect(self.pixel_selected)
         self._image_display.mouse_move.connect(self.mouse_moved)
         self._image_display.area_selected.connect(self.area_selected)
 
-        self.__mouseWidget.setWidget(self.__mouseViewer)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.__mouseWidget)
+        self._mouse_widget.setWidget(self._mouse_viewer)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self._mouse_widget)
 
     def __del__(self):
         # TODO???
@@ -426,20 +458,56 @@ class MainImageDisplayWindow(ImageDisplayWindow):
                 screen_geometry:QRect, parent=None):
         super().__init__(image, label, qimage_format, screen_geometry, True, parent)
 
-        preferred_width = self._image_display.init_width + 10
-        if preferred_width > self._screen_geometry.width():
-            preferred_width = self._screen_geometry.width() - 10
+        self.__scroll_bar_width = QApplication.style().pixelMetric(QStyle.PM_ScrollBarExtent)
+        MainImageDisplayWindow.__LOG.debug("scroll_bar_width: {0}", self.__scroll_bar_width)
 
-        preferred_height = self._image_display.init_height + 20
-        if preferred_height > self._screen_geometry.height():
-            preferred_height = self._screen_geometry.height() - 50
+        self.__frame_width = QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth)
+        MainImageDisplayWindow.__LOG.debug("frame_width: {0}", self.__frame_width)
 
-        preferred_size = QSize(preferred_width, preferred_height)
-        self.setMinimumSize(preferred_size)
+        self.__margin_width = self._image_display.margin_width()
+        self.__margin_height = self._image_display.margin_height()
+        MainImageDisplayWindow.__LOG.debug("margin_width: {0}, margin_height {1}", self.__margin_width, self.__margin_height)
 
-        # TODO just debug stuff
-        size_policy: QSizePolicy = self.sizePolicy()
-        MainImageDisplayWindow.__LOG.debug("Window size policy: {0}", size_policy)
+        title_bar_height = QApplication.style().pixelMetric(QStyle.PM_TitleBarHeight)
+        MainImageDisplayWindow.__LOG.debug("title_bar_height: {0}", title_bar_height)
+
+        self.__mouse_viewer_height = self._mouse_viewer.height()
+        MainImageDisplayWindow.__LOG.debug("mouse_viewer_height: {0}", self.__mouse_viewer_height)
+
+        self.__oversize_width = self._screen_geometry.width() - self.__frame_width * 2
+        self.__oversize_height = self._screen_geometry.height() - title_bar_height
+
+        self.__set_size()
+
+    def __set_size(self):
+        MainImageDisplayWindow.__LOG.debug("self._image_display.image_width(): {0}", self._image_display.image_width())
+        MainImageDisplayWindow.__LOG.debug("self._image_display.image_height(): {0}", self._image_display.image_height())
+
+        self.__no_scroll_width = self._image_display.image_width() + self.__frame_width * 2 + self.__margin_width * 2
+        self.__scroll_width = self.__no_scroll_width + self.__scroll_bar_width
+
+        self.__no_scroll_height = self._image_display.image_height() + self.__frame_width * 2 + self.__margin_height * 2 + self.__mouse_viewer_height
+        self.__scroll_height = self.__no_scroll_height + self.__scroll_bar_width
+
+        MainImageDisplayWindow.__LOG.debug("no scroll w: {0}, h: {1}, scroll w: {2}, h: {3}",
+            self.__no_scroll_width, self.__no_scroll_height, self.__scroll_width, self.__scroll_height)
+
+        min_width = self.__no_scroll_width
+        min_height = self.__no_scroll_height
+
+        if min_height > self._screen_geometry.height() and min_width > self._screen_geometry.width():
+            min_height = self.__oversize_height
+            min_width = self.__oversize_width
+
+        elif min_height > self._screen_geometry.height():
+            min_width = self.__scroll_width
+            min_height = self.__oversize_height
+
+        elif min_width > self._screen_geometry.width():
+            min_height = self.__scroll_height
+            min_width = self.__oversize_width
+
+        self.setMinimumSize(min_width, min_height)
         MainImageDisplayWindow.__LOG.debug("Window: {0}, {1}", self.width(), self.height())
 
     def closeEvent(self, event:QCloseEvent):
@@ -447,6 +515,11 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         # accepting hides the window
         event.accept()
         # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
+
+    # TODO don't need?
+    def resizeEvent(self, event:QResizeEvent):
+        size = event.size()
+        MainImageDisplayWindow.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
 
 
 class ZoomWidget(QWidget):

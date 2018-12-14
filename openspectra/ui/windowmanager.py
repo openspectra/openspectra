@@ -29,8 +29,10 @@ class WindowManager(QObject):
         WindowManager.__LOG.debug("Screen height: {0}, width: {1}",
             self.__screen_geometry.height(), self.__screen_geometry.width())
 
+        # The available size is the size excluding window manager reserved areas such as task bars and system menus.
+        self.__available_geometry:QRect = screen.availableGeometry()
         WindowManager.__LOG.debug("Available height: {0}, width: {1}",
-            screen.availableSize().height(), screen.availableSize().width())
+            self.__available_geometry.height(), self.__available_geometry.width())
 
         self.__file_sets = dict()
         self.__band_list = band_list
@@ -47,6 +49,7 @@ class WindowManager(QObject):
         self.__file_sets = None
         self.__band_list = None
         self.__screen_geometry = None
+        self.__available_geometry = None
 
     def add_file(self, file:OpenSpectraFile):
         file_widget = self.__band_list.add_file(file)
@@ -69,6 +72,9 @@ class WindowManager(QObject):
 
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
+
+    def available_geometry(self) -> QRect:
+        return self.__available_geometry
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
@@ -187,14 +193,14 @@ class WindowSet(QObject):
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_Grayscale8, self.__file_manager.window_manager().screen_geometry())
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_Grayscale8, self.__file_manager.window_manager().screen_geometry())
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
         elif isinstance(self.__image, RGBImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_RGB32, self.__file_manager.window_manager().screen_geometry())
+                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
-                QImage.Format_RGB32, self.__file_manager.window_manager().screen_geometry())
+                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
                 format(type(self.__image)))
