@@ -24,7 +24,7 @@ class AdjustedMouseEvent(QObject):
         self.__pixel_y = floor(event.y() * yscale)
         self.__pixel_pos = (self.__pixel_x, self.__pixel_y)
 
-    def event(self) -> QMouseEvent:
+    def mouse_event(self) -> QMouseEvent:
         return self.__event
 
     def pixel_x(self):
@@ -77,7 +77,8 @@ class ImageLabel(QLabel):
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
     area_selected = pyqtSignal(AreaSelectedEvent)
-    clicked = pyqtSignal(AdjustedMouseEvent)
+    left_clicked = pyqtSignal(AdjustedMouseEvent)
+    right_clicked = pyqtSignal(AdjustedMouseEvent)
     double_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
 
@@ -124,6 +125,7 @@ class ImageLabel(QLabel):
         self.__last_mouse_loc = None
 
     def changeEvent(self, event:QEvent):
+        ImageLabel.__LOG.debug("ImageLabel.changeEvent called...")
         if event.type() == QEvent.ParentChange and self.pixmap() is not None \
                 and self.__initial_height == 0 and self.__initial_width == 0:
             self.__initial_height = self.pixmap().height()
@@ -145,10 +147,15 @@ class ImageLabel(QLabel):
         self.mouse_move.emit(adjusted_move)
 
     def mousePressEvent(self, event:QMouseEvent):
-        # TODO remove if not used
-        ImageLabel.__LOG.debug("mousePressEvent")
+        # only expect right clicks here due to event filter
+        ImageLabel.__LOG.debug("mousePressEvent left: {0} or right: {1}",
+            event.button() == Qt.LeftButton, event.button() == Qt.RightButton)
+        self.right_clicked.emit(self.__create_adjusted_mouse_event(event))
 
     def mouseReleaseEvent(self, event:QMouseEvent):
+        ImageLabel.__LOG.debug("mouseReleaseEvent left: {0} or right: {1}",
+            event.button() == Qt.LeftButton, event.button() == Qt.RightButton)
+
         if self.__current_action == ImageLabel.Action.Dragging:
             self.__current_action = ImageLabel.Action.Nothing
             self.setCursor(self.__default_cursor)
@@ -161,9 +168,9 @@ class ImageLabel(QLabel):
             self.__get_select_pixels()
             self.update()
 
-        # Then it's a click
+        # Then it's a left click
         elif self.__last_mouse_loc is not None:
-            self.clicked.emit(self.__create_adjusted_mouse_event(event))
+            self.left_clicked.emit(self.__create_adjusted_mouse_event(event))
 
         self.__last_mouse_loc = None
 
@@ -177,10 +184,14 @@ class ImageLabel(QLabel):
         super().resize(size)
 
     def eventFilter(self, object:QObject, event:QEvent):
-        if event.type() == QEvent.MouseButtonPress:
+        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             self.__last_mouse_loc = event.pos()
             QTimer.singleShot(300, self.__pressed)
             # event was handled
+            return True
+
+        # Mask right clicks from the mouse release handler
+        if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.RightButton:
             return True
 
         return False
@@ -245,7 +256,6 @@ class ImageLabel(QLabel):
             self.area_selected.emit(AreaSelectedEvent(x, y))
 
     def __pressed(self):
-        # TODO set special cursor depending on action??
         if self.__last_mouse_loc is not None:
             if self.__rect is not None and self.__rect.contains(self.__last_mouse_loc):
                 self.__current_action = ImageLabel.Action.Dragging
@@ -256,12 +266,10 @@ class ImageLabel(QLabel):
                 self.__polygon = QPolygon()
 
     def __create_adjusted_mouse_event(self, event:QMouseEvent):
-        return AdjustedMouseEvent(event, self.__initial_width/self.width(),
-            self.__initial_height/self.height())
-
-    # def __clicked(self):
-    #     if self.__clickEvent is not None:
-    #         self.clicked.emit(self.__clickEvent[0], self.__clickEvent[1])
+        # TODO seems to be a bit off for large images when scaled down to fit???
+        # TODO not sure this can work when scaling < 1??
+        return AdjustedMouseEvent(event, self.__initial_width/self.pixmap().width(),
+            self.__initial_height/self.pixmap().height())
 
     # TODO Get aspect ratio here?
     # def setPixmap(self, qPixmap:QPixmap):
@@ -289,8 +297,10 @@ class ImageDisplay(QScrollArea):
     __LOG:Logger = LogHelper.logger("ImageDisplay")
 
     area_selected = pyqtSignal(AreaSelectedEvent)
-    clicked = pyqtSignal(AdjustedMouseEvent)
+    left_clicked = pyqtSignal(AdjustedMouseEvent)
+    right_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
+    image_resized = pyqtSignal(QSize)
 
     def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
             location_rect:bool=True, parent=None):
@@ -304,35 +314,37 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__imageLabel = ImageLabel(location_rect, self)
-        self.__imageLabel.setBackgroundRole(QPalette.Base)
-        self.__imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.__image_label = ImageLabel(location_rect, self)
+        self.__image_label.setBackgroundRole(QPalette.Base)
+        self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
         # sizePolicy = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
         # sizePolicy.setHeightForWidth(True)
         # self.__imageLabel.setSizePolicy(sizePolicy)
 
         # self.__imageLabel.setScaledContents(True)
-        self.__imageLabel.setMouseTracking(True)
+        self.__image_label.setMouseTracking(True)
 
-        self.__imageLabel.area_selected.connect(self.area_selected)
-        self.__imageLabel.clicked.connect(self.clicked)
-        self.__imageLabel.double_clicked.connect(self.__double_click_handler)
-        self.__imageLabel.mouse_move.connect(self.mouse_move)
+        self.__image_label.area_selected.connect(self.area_selected)
+        self.__image_label.left_clicked.connect(self.left_clicked)
+        self.__image_label.right_clicked.connect(self.right_clicked)
+        self.__image_label.double_clicked.connect(self.__double_click_handler)
+        self.__image_label.mouse_move.connect(self.mouse_move)
 
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
 
     def __display_image(self):
-        # TODO do I need to keep self.__height, & self.__width?
-        self.__image_height, self.__image_width = self.__image.image_shape()
+        # height and width of the image in pixels or the 1 to 1 size
+        image_height, image_width = self.__image.image_shape()
+        self.__image_size = QSize(image_width, image_height)
 
-        self.__qimage:QImage = QImage(self.__image.image_data(), self.__image_width,
-            self.__image_height, self.__image.bytes_per_line(), self.__qimage_format)
+        self.__qimage:QImage = QImage(self.__image.image_data(), self.__image_size.width(),
+            self.__image_size.height(), self.__image.bytes_per_line(), self.__qimage_format)
 
-        self.__pixmap:QPixmap = QPixmap.fromImage(self.__qimage)
-        self.__imageLabel.setPixmap(self.__pixmap)
-        self.setWidget(self.__imageLabel)
+        self.__pix_map:QPixmap = QPixmap.fromImage(self.__qimage)
+        self.__image_label.setPixmap(self.__pix_map)
+        self.setWidget(self.__image_label)
         self.setAlignment(Qt.AlignHCenter)
 
         # small margins to give a little extra room so the cursor doesn't change too soon.
@@ -344,9 +356,10 @@ class ImageDisplay(QScrollArea):
     def __del__(self):
         # TODO ??
         ImageDisplay.__LOG.debug("ImageDisplay.__del__ called...")
-        self.__pixmap = None
+        self.__pix_map = None
         self.__qimage = None
-        self.__imageLabel = None
+        self.__image_size = None
+        self.__image_label = None
         self.__image = None
 
     # TODO not sure we need this but keep it for the example for now
@@ -356,26 +369,62 @@ class ImageDisplay(QScrollArea):
         ImageDisplay.__LOG.debug("Double clicked x: {0} y: {1}",
             event.pixel_x() + 1, event.pixel_y() + 1)
 
+    def __set_pixmap(self):
+        self.__image_label.setPixmap(self.__pix_map)
+        ImageDisplay.__LOG.debug("setting image size: {0}", self.__pix_map.size())
+        self.resize(self.__pix_map.size())
+
     def refresh_image(self):
         # TODO do I need to del the old QImage & QPixmap object???
         # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
     def clear_selected_area(self):
-        self.__imageLabel.clear_selected_area()
+        self.__image_label.clear_selected_area()
 
     def scale_image(self, factor:float):
+        """Changes the scale relative to the current size maintaining aspect ratio.
+        Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
         ImageDisplay.__LOG.debug("scaling image by: {0}", factor)
-        new_size = self.__pixmap.size() * factor
-        self.__pixmap = self.__pixmap.scaled(new_size,  Qt.KeepAspectRatio)
-        self.__imageLabel.setPixmap(self.__pixmap)
-        self.resize(new_size)
+        new_size = self.__pix_map.size() * factor
+        self.__pix_map = self.__pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.__set_pixmap()
+
+    def scale_to_size(self, new_size:QSize):
+        """Scale the image to the given size maintaining aspect ratio. See http://doc.qt.io/qt-5/qpixmap.html#scaled
+        for information about how the aspect ratio is handled using Qt.KeepAspectRatio
+        Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
+        self.__pix_map = self.__pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        ImageDisplay.__LOG.debug("scaling to size: {0}", new_size)
+        self.__set_pixmap()
+
+    def scale_to_height(self, height:int):
+        """Scale the image to the given height maintaining aspect ratio.
+        Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
+        self.__pix_map = self.__pix_map.scaledToHeight(height, Qt.SmoothTransformation)
+        ImageDisplay.__LOG.debug("scaling to height: {0}", height)
+        self.__set_pixmap()
+
+    def scale_to_width(self, width:int):
+        """Scale the image to the given width maintaining aspect ratio.
+        Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
+        self.__pix_map = self.__pix_map.scaledToWidth(width, Qt.SmoothTransformation)
+        ImageDisplay.__LOG.debug("scaling to width: {0}", width)
+        self.__set_pixmap()
+
+    def reset_size(self):
+        """reset the image size to 1 to 1"""
+        # Need to reload the image, repeated scaling blurs the image
+        self.__pix_map = QPixmap.fromImage(self.__qimage)
+        self.__set_pixmap()
 
     def image_width(self) -> int:
-        return self.__image_width
+        """image width in pixels at 1 to 1"""
+        return self.__image_size.width()
 
     def image_height(self) -> int:
-        return self.__image_height
+        """image height in pixels at 1 to 1"""
+        return self.__image_size.height()
 
     def margin_width(self) -> int:
         return self.__margin_width
@@ -385,8 +434,9 @@ class ImageDisplay(QScrollArea):
 
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
+        self.__image_label.resize(size)
         super().resize(size)
-        self.__imageLabel.resize(size)
+        self.image_resized.emit(size)
 
 
 class ImageDisplayWindow(QMainWindow):
@@ -420,7 +470,7 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_viewer.setFixedHeight(16)
 
         self._image_display.mouse_move.connect(self._mouse_viewer.on_mouse_move)
-        self._image_display.clicked.connect(self.pixel_selected)
+        self._image_display.left_clicked.connect(self.pixel_selected)
         self._image_display.mouse_move.connect(self.mouse_moved)
         self._image_display.area_selected.connect(self.area_selected)
 
@@ -457,7 +507,22 @@ class MainImageDisplayWindow(ImageDisplayWindow):
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, parent=None):
         super().__init__(image, label, qimage_format, screen_geometry, True, parent)
+        self._image_display.right_clicked.connect(self.__handle_right_click)
+        self._image_display.image_resized.connect(self.__handle_image_resize)
+        self.__calculate_sizes()
 
+    def __del__(self):
+        self.__fit_to_size = None
+        self.__oversize_height = None
+        self.__oversize_width = None
+        self.__mouse_viewer_height = None
+        self.__title_bar_height = None
+        self.__margin_height = None
+        self.__margin_width = None
+        self.__frame_width = None
+        self.__scroll_bar_width = None
+
+    def __calculate_sizes(self):
         self.__scroll_bar_width = QApplication.style().pixelMetric(QStyle.PM_ScrollBarExtent)
         MainImageDisplayWindow.__LOG.debug("scroll_bar_width: {0}", self.__scroll_bar_width)
 
@@ -468,25 +533,38 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         self.__margin_height = self._image_display.margin_height()
         MainImageDisplayWindow.__LOG.debug("margin_width: {0}, margin_height {1}", self.__margin_width, self.__margin_height)
 
-        title_bar_height = QApplication.style().pixelMetric(QStyle.PM_TitleBarHeight)
-        MainImageDisplayWindow.__LOG.debug("title_bar_height: {0}", title_bar_height)
+        self.__title_bar_height = QApplication.style().pixelMetric(QStyle.PM_TitleBarHeight)
+        MainImageDisplayWindow.__LOG.debug("title_bar_height: {0}", self.__title_bar_height)
 
         self.__mouse_viewer_height = self._mouse_viewer.height()
         MainImageDisplayWindow.__LOG.debug("mouse_viewer_height: {0}", self.__mouse_viewer_height)
 
         self.__oversize_width = self._screen_geometry.width() - self.__frame_width * 2
-        self.__oversize_height = self._screen_geometry.height() - title_bar_height
+        self.__oversize_height = self._screen_geometry.height() - self.__title_bar_height
 
-        self.__set_size()
+        # figure out how much screen space we have for size image to fit
+        fit_height = self._screen_geometry.height() - self.__title_bar_height - \
+                            self.__mouse_viewer_height - self.__frame_width * 2 - self.__margin_height * 2
+        fit_width = self._screen_geometry.width() - self.__frame_width * 2 - self.__margin_width * 2
 
-    def __set_size(self):
+        # This is the image size we'll ask for when we want to fit to available screen
+        self.__fit_to_size = QSize(fit_width, fit_height)
+        MainImageDisplayWindow.__LOG.debug("fit w: {0}, h: {1}", self.__fit_to_size.width(), self.__fit_to_size.height())
+
+        self.__init_size()
+
+    def __init_size(self):
         MainImageDisplayWindow.__LOG.debug("self._image_display.image_width(): {0}", self._image_display.image_width())
         MainImageDisplayWindow.__LOG.debug("self._image_display.image_height(): {0}", self._image_display.image_height())
+        self.__set_for_image_size(QSize(self._image_display.image_width(), self._image_display.image_height()))
+        self.__is_one_to_one = True
 
-        self.__no_scroll_width = self._image_display.image_width() + self.__frame_width * 2 + self.__margin_width * 2
+    def __set_for_image_size(self, size:QSize):
+        MainImageDisplayWindow.__LOG.debug("Setting for image size: {0}", size)
+        self.__no_scroll_width = size.width() + self.__frame_width * 2 + self.__margin_width * 2
         self.__scroll_width = self.__no_scroll_width + self.__scroll_bar_width
 
-        self.__no_scroll_height = self._image_display.image_height() + self.__frame_width * 2 + self.__margin_height * 2 + self.__mouse_viewer_height
+        self.__no_scroll_height = size.height() + self.__frame_width * 2 + self.__margin_height * 2 + self.__mouse_viewer_height
         self.__scroll_height = self.__no_scroll_height + self.__scroll_bar_width
 
         MainImageDisplayWindow.__LOG.debug("no scroll w: {0}, h: {1}, scroll w: {2}, h: {3}",
@@ -508,7 +586,29 @@ class MainImageDisplayWindow(ImageDisplayWindow):
             min_width = self.__oversize_width
 
         self.setMinimumSize(min_width, min_height)
+        self.resize(min_width, min_height)
         MainImageDisplayWindow.__LOG.debug("Window: {0}, {1}", self.width(), self.height())
+
+    def __handle_right_click(self, event:AdjustedMouseEvent):
+        MainImageDisplayWindow.__LOG.debug("Got right click!")
+        if self.__is_one_to_one:
+            self.__is_one_to_one = False
+            if self._image_display.height() > self.__fit_to_size.height() and self._image_display.width() > self.__fit_to_size.width():
+                self._image_display.scale_to_size(self.__fit_to_size)
+            elif self._image_display.height() > self.__fit_to_size.height():
+                self._image_display.scale_to_height(self.__fit_to_size.height())
+            elif self._image_display.width() > self.__fit_to_size.width():
+                self._image_display.scale_to_width(self.__fit_to_size.width())
+            else:
+                self.__is_one_to_one = True
+        else:
+            self._image_display.reset_size()
+            self.__is_one_to_one = True
+
+    def __handle_image_resize(self, new_size:QSize):
+        MainImageDisplayWindow.__LOG.debug("image resize event, new size: {0}", new_size)
+        self.__set_for_image_size(new_size)
+        MainImageDisplayWindow.__LOG.debug("window new size: {0}", self.size())
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()
@@ -519,7 +619,7 @@ class MainImageDisplayWindow(ImageDisplayWindow):
     # TODO don't need?
     def resizeEvent(self, event:QResizeEvent):
         size = event.size()
-        MainImageDisplayWindow.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
+        # MainImageDisplayWindow.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
 
 
 class ZoomWidget(QWidget):
