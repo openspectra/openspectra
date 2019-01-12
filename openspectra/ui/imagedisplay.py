@@ -192,6 +192,7 @@ class ImageLabel(QLabel):
 
         # Mask right clicks from the mouse release handler
         if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.RightButton:
+            # event was handled
             return True
 
         return False
@@ -474,6 +475,7 @@ class ImageDisplayWindow(QMainWindow):
         self._image_display.setAlignment(Qt.AlignHCenter)
 
         self._mouse_widget = QDockWidget("Mouse", self)
+        self._mouse_widget.setFeatures(QDockWidget.NoDockWidgetFeatures)
         self._mouse_widget.setTitleBarWidget(QWidget(None))
         self._mouse_viewer = MouseCoordinates()
         # TODO make height configurable???
@@ -521,6 +523,13 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         super().__init__(image, label, qimage_format, screen_geometry, True, parent)
         self._image_display.right_clicked.connect(self.__handle_right_click)
         self._image_display.image_resized.connect(self.__handle_image_resize)
+
+        # Prevents context menus from showing on right click
+        # Only way I could find to prevent dock widget context menu from
+        # appearing on right click event though it doesn't seem the right click
+        # show make it that far.
+        self.setContextMenuPolicy(Qt.PreventContextMenu)
+
         self.__calculate_sizes()
 
     def __del__(self):
