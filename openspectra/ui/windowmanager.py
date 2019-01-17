@@ -205,6 +205,8 @@ class WindowSet(QObject):
             raise TypeError("Image type not recognized, found type: {0}".
                 format(type(self.__image)))
 
+        self.__main_image_window.connect_zoom_window(self.__zoom_image_window)
+
         self.__main_image_window.pixel_selected.connect(self.__handle_pixel_click)
         self.__main_image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__main_image_window.closed.connect(self.__handle_image_closed)
