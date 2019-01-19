@@ -51,6 +51,20 @@ class AreaSelectedEvent(QObject):
         return self.__y_points
 
 
+class ImageResizeEvent(QObject):
+
+    def __init__(self, image_size:QSize, viewport_size:QSize):
+        super().__init__(None)
+        self.__image_size = image_size
+        self.__viewport_size = viewport_size
+
+    def image_size(self) -> QSize:
+        return self.__image_size
+
+    def viewport_size(self) -> QSize:
+        return self.__viewport_size
+
+
 class ViewZoomChangeEvent(QObject):
 
     def __init__(self, factor:float, size:QSize):
@@ -74,6 +88,9 @@ class ViewLocationChangeEvent(QObject):
     def center(self) -> QPoint:
         return self.__center
 
+    def scale(self, scale_factor:float):
+        self.__center *= scale_factor
+
 
 class ViewChangeEvent(QObject):
 
@@ -87,6 +104,10 @@ class ViewChangeEvent(QObject):
 
     def center(self) -> QPoint:
         return self.__center
+
+    def scale(self, scale_factor:float):
+        self.__center *= scale_factor
+        self.__size *= scale_factor
 
 
 class MouseCoordinates(QLabel):
@@ -426,7 +447,7 @@ class ImageDisplay(QScrollArea):
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
-    image_resized = pyqtSignal(QSize)
+    image_resized = pyqtSignal(ImageResizeEvent)
     viewport_changed = pyqtSignal(ViewChangeEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
@@ -471,15 +492,15 @@ class ImageDisplay(QScrollArea):
 
     @pyqtSlot(int)
     def __handle_horizontal_bar_changed(self, value:int):
-        # Only get events here when the user moves the scrollbar
+        # Events here when the user moves the scrollbar or we call setValue() on the scrollbar
         ImageDisplay.__LOG.debug("Horiz scroll change to: {0}", value)
-        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.__get_view_center()))
+        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
 
     @pyqtSlot(int)
     def __handle_vertical_bar_changed(self, value:int):
-        # Only get events here when the user moves the scrollbar
+        # Events here when the user moves the scrollbar or we call setValue() on the scrollbar
         ImageDisplay.__LOG.debug("Vert scroll change to: {0}", value)
-        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.__get_view_center()))
+        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
 
     def __display_image(self):
         # height and width of the image in pixels or the 1 to 1 size
@@ -511,7 +532,7 @@ class ImageDisplay(QScrollArea):
         new_size = self.__pix_map.size()
         ImageDisplay.__LOG.debug("setting image size: {0}", new_size)
         self.resize(new_size)
-        self.image_resized.emit(new_size)
+        self.image_resized.emit(ImageResizeEvent(new_size, self.viewport().size()))
 
     def __update_scroll_bars(self, old_viewport_size:QSize, new_viewport_size:QSize):
         doc_width = self.__image_label.size().width()
@@ -541,7 +562,7 @@ class ImageDisplay(QScrollArea):
             self.verticalScrollBar().setPageStep(new_vert_step)
             self.verticalScrollBar().setMaximum(new_max_height)
 
-    def __get_view_center(self) -> QPoint:
+    def get_view_center(self) -> QPoint:
         # x is horizontal scroll bar, y is vertical scroll bar
         x = floor(self.horizontalScrollBar().pageStep()/2) + self.horizontalScrollBar().value()
         y = floor(self.verticalScrollBar().pageStep()/2) + self.verticalScrollBar().value()
@@ -662,7 +683,7 @@ class ImageDisplay(QScrollArea):
 
         # adjust the scrollbars
         self.__update_scroll_bars(event.oldSize(), event.size())
-        self.viewport_changed.emit(ViewChangeEvent(self.__get_view_center(), event.size()))
+        self.viewport_changed.emit(ViewChangeEvent(self.get_view_center(), event.size()))
 
     # TODO test only
     def size(self):
@@ -764,8 +785,10 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
             screen_geometry:QRect, parent=None):
         super().__init__(image, label, qimage_format, screen_geometry, False, parent)
 
+        self.__last_display_center:QPoint = None
+
         self._image_display.image_resized.connect(self.__handle_image_resize)
-        self._image_display.viewport_changed.connect(self.view_changed)
+        self._image_display.viewport_changed.connect(self.__handle_view_changed)
         self._image_display.viewport_scrolled.connect(self.__handle_image_scroll)
 
         # TODO for testing only, remove if not used otherwise
@@ -798,25 +821,33 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     @pyqtSlot()
     def __handle_zoom_in(self):
         # TODO multiplier should be settable
+        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1.5
         self.__set_zoom()
 
     @pyqtSlot()
     def __handle_zoom_out(self):
         # TODO multiplier should be settable
+        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1/1.5
         self.__set_zoom()
 
     @pyqtSlot()
     def __handle_zoom_reset(self):
+        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor = 1.0
         self.__set_zoom()
 
-    # TODO may not need this, scrollbar adjust on image change is working
-    @pyqtSlot(QSize)
-    def __handle_image_resize(self, new_size:QSize):
+    @pyqtSlot(ImageResizeEvent)
+    def __handle_image_resize(self, event:ImageResizeEvent):
         """Receives notice of the new image size"""
-        ZoomImageDisplayWindow.__LOG.debug("image resize event, new size: {0}", new_size)
+        ZoomImageDisplayWindow.__LOG.debug("image resize event, new size: {0}, last center: {1}, new viewport size: {2}",
+            event.image_size(), self.__last_display_center, event.viewport_size())
+        if self.__last_display_center is not None:
+            new_center:QPoint = self.__last_display_center * self.__zoom_factor
+            ZoomImageDisplayWindow.__LOG.debug("new center: {0}", new_center)
+            self._image_display.center_in_viewport(new_center)
+            self.zoom_changed.emit(ViewZoomChangeEvent(self.__zoom_factor, event.viewport_size()/self.__zoom_factor))
 
     # TODO for testing only, remove if not used otherwise
     @pyqtSlot(AdjustedMouseEvent)
@@ -825,10 +856,16 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         ZoomImageDisplayWindow.__LOG.debug("ImageDisplay size: {0}", self._image_display.size())
         ZoomImageDisplayWindow.__LOG.debug("ImageDisplay.viewport size: {0}", self._image_display.viewport().size())
 
+    def __handle_view_changed(self, event:ViewChangeEvent):
+        # Handle when viewport is resized
+        event.scale(1 / self.__zoom_factor)
+        self.view_changed.emit(event)
+
     @pyqtSlot(ViewLocationChangeEvent)
     def __handle_image_scroll(self, event:ViewLocationChangeEvent):
-        # TODO wire directly if not otherwise needed
+        # Handle when scrollbars move
         ZoomImageDisplayWindow.__LOG.debug("image scroll handled, center: {0}", event.center())
+        event.scale(1 / self.__zoom_factor)
         self.location_changed.emit(event)
 
     def __set_zoom(self):
@@ -874,7 +911,8 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
     @pyqtSlot(ViewLocationChangeEvent)
     def handle_location_changed(self, event:ViewLocationChangeEvent):
-        self.__center_in_viewport(event.center())
+        # Handles when the locator is moved in the main window
+        self.__center_in_viewport(event.center() * self.__zoom_factor)
 
     # TODO for testing only, remove if not used otherwise
     def resizeEvent(self, event:QResizeEvent):
@@ -979,16 +1017,20 @@ class MainImageDisplayWindow(ImageDisplayWindow):
             self._image_display.reset_size()
             self.__is_one_to_one = True
 
-    @pyqtSlot(QSize)
-    def __handle_image_resize(self, new_size:QSize):
-        MainImageDisplayWindow.__LOG.debug("image resize event, new size: {0}", new_size)
-        self.__set_for_image_size(new_size)
+    @pyqtSlot(ImageResizeEvent)
+    def __handle_image_resize(self, event:ImageResizeEvent):
+        MainImageDisplayWindow.__LOG.debug("image resize event, new image size: {0}, viewport size: {1}",
+            event.image_size(), event.viewport_size())
+        self.__set_for_image_size(event.image_size())
         MainImageDisplayWindow.__LOG.debug("window new size: {0}", self.size())
 
     @pyqtSlot(ViewZoomChangeEvent)
     def __handle_zoom_changed(self, event:ViewZoomChangeEvent):
-        # TODO implement!!
-        pass
+        # Handle a zoom change in the zoom window
+        MainImageDisplayWindow.__LOG.debug("new zoom factor: {0}, size: {1}", event.factor(), event.size())
+        current_location = self._image_display.locator_position()
+        self._image_display.set_locator_size(event.size())
+        self._image_display.set_locator_position(current_location)
 
     @pyqtSlot(ViewLocationChangeEvent)
     def __handle_zoom_window_location_changed(self, event:ViewLocationChangeEvent):
