@@ -193,8 +193,9 @@ class ImageLabel(QLabel):
         self.installEventFilter(self)
 
         self.__last_mouse_loc:QPoint = None
-        self.__initial_height = 0
-        self.__initial_width = 0
+        self.__initial_size:QSize = None
+        self.__width_scale_factor = 1.0
+        self.__height_scale_factor = 1.0
 
         self.__default_cursor = self.cursor()
         self.__drag_cursor = QCursor(Qt.ClosedHandCursor)
@@ -228,25 +229,34 @@ class ImageLabel(QLabel):
 
         self.__last_mouse_loc = None
 
+    def has_locator(self) -> bool:
+        return self.__rect is not None
+
     def locator_position(self) -> QPoint:
         assert self.__rect is not None
-        return self.__rect.center()
+        return self.__unscale_point(self.__rect.center())
 
     def set_locator_position(self, postion:QPoint):
-        assert self.__rect is not None
-        #TODO put contraints on it?
-        self.__rect.moveCenter(postion)
-        self.update()
+        # calls to this method should always be in 1 to 1 coordinates
+        if self.has_locator():
+            #TODO put contraints on it?
+            new_position: QPoint = self.__scale_point(postion)
+            ImageLabel.__LOG.debug("setting locator position: {0}, scaled pos: {1}", postion, new_position)
+            self.__rect.moveCenter(new_position)
+            self.update()
 
     def locator_size(self) -> QSize:
         assert self.__rect is not None
-        return self.__rect.size()
+        return self.__unscale_size(self.__rect.size())
 
     def set_locator_size(self, size:QSize):
-        assert self.__rect is not None
-        #TODO constraints?
-        self.__rect.setSize(size)
-        self.update()
+        # calls to this method should always be in 1 to 1 coordinates
+        if self.has_locator():
+            #TODO constraints?
+            new_size: QSize = self.__scale_size(size)
+            ImageLabel.__LOG.debug("setting locator size: {0}, scaled size: {1}", size, new_size)
+            self.__rect.setSize(new_size)
+            self.update()
 
     def clear_selected_area(self):
         self.__polygon_bounds = None
@@ -254,20 +264,39 @@ class ImageLabel(QLabel):
         self.update()
 
     def setPixmap(self, pixel_map:QPixmap):
+        locator_size:QSize = None
+        locator_position:QPoint = None
+
+        if self.has_locator():
+            locator_size = self.locator_size()
+            locator_position = self.locator_position()
+
         super().setPixmap(pixel_map)
+        ImageLabel.__LOG.debug("super().setPixmap called")
         size = self.pixmap().size()
+
+        if self.__initial_size is not None:
+            self.__width_scale_factor = size.width() / self.__initial_size.width()
+            self.__height_scale_factor = size.height() / self.__initial_size.height()
+            ImageLabel.__LOG.debug("setting image size: {0}, scale factor w: {1}, h: {2}",
+                size, self.__width_scale_factor, self.__height_scale_factor)
+
+        # reset locator
+        if self.has_locator():
+            self.set_locator_size(locator_size)
+            self.set_locator_position(locator_position)
+
         self.setMinimumSize(size)
         self.setMaximumSize(size)
 
     def changeEvent(self, event:QEvent):
         ImageLabel.__LOG.debug("ImageLabel.changeEvent called...")
         if event.type() == QEvent.ParentChange and self.pixmap() is not None \
-                and self.__initial_height == 0 and self.__initial_width == 0:
-            size = self.pixmap().size()
-            self.__initial_height = size.height()
-            self.__initial_width = size.width()
+                and self.__initial_size is None:
+            self.__initial_size = self.pixmap().size()
 
     def mouseMoveEvent(self, event:QMouseEvent):
+        # TODO this has to account for scaling
         # TODO consider the behavior here might be if, elif, else instead
         if self.__current_action == ImageLabel.Action.Drawing:
             self.__polygon << event.pos()
@@ -278,6 +307,7 @@ class ImageLabel(QLabel):
             center = self.__rect.center()
             center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(center)
+            # TODO this has to account for scaling
             self.__last_mouse_loc = event.pos()
             self.locator_moved.emit(ViewLocationChangeEvent(center))
             self.update()
@@ -327,6 +357,7 @@ class ImageLabel(QLabel):
 
     def eventFilter(self, object:QObject, event:QEvent):
         if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            # TODO this has to account for scaling
             self.__last_mouse_loc = event.pos()
             QTimer.singleShot(300, self.__pressed)
             # event was handled
@@ -369,6 +400,45 @@ class ImageLabel(QLabel):
             self.__polygon_bounds = self.__polygon.boundingRect()
             painter.drawRect(self.__polygon_bounds)
 
+    def __scale_point(self, point:QPoint) -> QPoint:
+        new_point:QPoint = QPoint(point)
+        if self.__width_scale_factor != 1.0:
+            new_point.setX(floor(new_point.x() * self.__width_scale_factor))
+
+        if self.__height_scale_factor != 1.0:
+            new_point.setY(floor(new_point.y() * self.__height_scale_factor))
+
+        return new_point
+
+    def __scale_size(self, size:QSize) -> QSize:
+        new_size: QSize = QSize(size)
+        if self.__width_scale_factor != 1.0:
+            new_size.setWidth(floor(new_size.width() * self.__width_scale_factor))
+
+        if self.__height_scale_factor != 1.0:
+            new_size.setHeight(floor(new_size.height() * self.__height_scale_factor))
+
+        return new_size
+
+    def __unscale_point(self, point:QPoint) -> QPoint:
+        new_point:QPoint = QPoint(point)
+        if self.__width_scale_factor != 1.0:
+            new_point.setX(floor(new_point.x() / self.__width_scale_factor))
+
+        if self.__height_scale_factor != 1.0:
+            new_point.setY(floor(new_point.y() / self.__height_scale_factor))
+
+        return new_point
+
+    def __unscale_size(self, size:QSize) -> QSize:
+        new_size: QSize = QSize(size)
+        if self.__width_scale_factor != 1.0:
+            new_size.setWidth(floor(new_size.width() / self.__width_scale_factor))
+
+        if self.__height_scale_factor != 1.0:
+            new_size.setHeight(floor(new_size.height() / self.__height_scale_factor))
+
+        return new_size
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
             x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
@@ -406,8 +476,7 @@ class ImageLabel(QLabel):
     def __create_adjusted_mouse_event(self, event:QMouseEvent):
         # TODO seems to be a bit off for large images when scaled down to fit???
         # TODO not sure this can work when scaling < 1??
-        return AdjustedMouseEvent(event, self.__initial_width/self.pixmap().width(),
-            self.__initial_height/self.pixmap().height())
+        return AdjustedMouseEvent(event, self.__width_scale_factor, self.__height_scale_factor)
 
     # TODO Get aspect ratio here?
     # def setPixmap(self, qPixmap:QPixmap):
@@ -628,6 +697,10 @@ class ImageDisplay(QScrollArea):
     def scale_to_height(self, height:int):
         """Scale the image to the given height maintaining aspect ratio.
         Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
+
+        if self.__image_label.has_locator():
+            ImageDisplay.__LOG.debug("scale_to_height locator size: {0}, pos: {1}", self.__image_label.locator_size(), self.__image_label.locator_position())
+
         self.__pix_map = self.__pix_map.scaledToHeight(height, Qt.SmoothTransformation)
         ImageDisplay.__LOG.debug("scaling to height: {0}", height)
         self.__set_pixmap()
@@ -641,7 +714,11 @@ class ImageDisplay(QScrollArea):
 
     def reset_size(self):
         """reset the image size to 1 to 1"""
-        # Need to reload the image, repeated scaling blurs the image
+        # Reload the image, repeated scaling blurs the image
+        if self.__image_label.has_locator():
+            ImageDisplay.__LOG.debug("reset_size locator size: {0}, pos: {1}", self.__image_label.locator_size(),
+                self.__image_label.locator_position())
+
         self.__pix_map = QPixmap.fromImage(self.__qimage)
         self.__set_pixmap()
 
