@@ -45,10 +45,11 @@ class WindowManager(QObject):
 
     def __del__(self):
         # TODO This works but for some reason throws an exception on shutdown
-        try:
-           WindowManager.__LOG.debug("WindowManager.__del__ called...")
-        except Exception:
-            pass
+        # TODO this broke again after upgrade, don't really need it
+        # try:
+        #    WindowManager.__LOG.debug("WindowManager.__del__ called...")
+        # except Exception:
+        #     pass
 
         self.__file_sets = None
         self.__band_list = None
@@ -119,11 +120,12 @@ class FileManager(QObject):
         self.__window_sets = list()
 
     def __del__(self):
-        #TODO This works but for some reason throws an exception on shutdown
-        try:
-            FileManager.__LOG.debug("FileManager.__del__ called...")
-        except Exception:
-            pass
+        # TODO This works but for some reason throws an exception on shutdown
+        # TODO this broke again after upgrade, don't really need it
+        # try:
+        #     FileManager.__LOG.debug("FileManager.__del__ called...")
+        # except Exception:
+        #     pass
 
         self.__window_sets = None
         self.__file_name = None
