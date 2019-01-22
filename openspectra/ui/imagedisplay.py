@@ -21,7 +21,7 @@ from openspectra.utils import LogHelper, Logger
 
 class AdjustedMouseEvent(QObject):
 
-    def __init__(self, event:QMouseEvent, xscale, yscale):
+    def __init__(self, event:QMouseEvent, xscale:float, yscale:float):
         super().__init__(None)
         self.__event = event
         self.__pixel_x = floor(event.x() * xscale)
@@ -31,13 +31,13 @@ class AdjustedMouseEvent(QObject):
     def mouse_event(self) -> QMouseEvent:
         return self.__event
 
-    def pixel_x(self):
+    def pixel_x(self) -> int:
         return self.__pixel_x
 
-    def pixel_y(self):
+    def pixel_y(self) -> int:
         return self.__pixel_y
 
-    def pixel_pos(self):
+    def pixel_pos(self) -> (int, int):
         return self.__pixel_pos
 
 
@@ -443,6 +443,7 @@ class ImageLabel(QLabel):
             new_size.setHeight(floor(new_size.height() / self.__height_scale_factor))
 
         return new_size
+
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
             x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
@@ -480,7 +481,7 @@ class ImageLabel(QLabel):
     def __create_adjusted_mouse_event(self, event:QMouseEvent):
         # TODO seems to be a bit off for large images when scaled down to fit???
         # TODO not sure this can work when scaling < 1??
-        return AdjustedMouseEvent(event, self.__width_scale_factor, self.__height_scale_factor)
+        return AdjustedMouseEvent(event, 1 / self.__width_scale_factor, 1 / self.__height_scale_factor)
 
     # TODO Get aspect ratio here?
     # def setPixmap(self, qPixmap:QPixmap):
