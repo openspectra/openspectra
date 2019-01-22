@@ -141,10 +141,8 @@ class OpenSpectraBandTools:
             # TODO certain areas look a bit better when filtered by different criteria, must be a better way
             # if clean_bands.std() > 1.0:
             # if clean_bands.std() > 0.1:
-            clean_bands = ma.masked_outside(clean_bands, -0.01, 0.05)
-                # clean_bands = ma.masked_outside(clean_bands, -0.1, 0.5)
-                # clean_bands = ma.masked_outside(clean_bands, -1, 1)
-                # clean_bands = ma.masked_outside(clean_bands, -1, 5)
+            # clean_bands = ma.masked_outside(clean_bands, -0.01, 0.05)
+            clean_bands = ma.masked_outside(clean_bands, 0.0, 1.0)
 
         return clean_bands
 
