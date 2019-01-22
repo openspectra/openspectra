@@ -5,6 +5,17 @@
 import numpy as np
 from numpy import ma
 
+def test3():
+    scale:float = 1 / 1.333
+    data = np.arange(999, 1010, dtype=np.int16)
+    print(data)
+    data = data * scale
+    print(data)
+    # data = np.floor(data, dtype=np.int16)
+    data = np.floor(data).astype(np.int16)
+    # data = np.fix(data)
+    print(data)
+
 
 def test2():
     img = np.arange(9)
@@ -121,4 +132,4 @@ def test1():
 
 if __name__ == '__main__':
 
-    test2()
+    test3()

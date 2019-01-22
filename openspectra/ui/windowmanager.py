@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import QTreeWidgetItem
 from openspectra.image import Image, GreyscaleImage, RGBImage
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
-from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
+from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AdjustedAreaSelectedEvent, \
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
@@ -332,8 +332,8 @@ class WindowSet(QObject):
         image_hist = self.__image_tools.adjusted_histogram()
         self.__histogram_window.set_adjusted_data(image_hist)
 
-    @pyqtSlot(AreaSelectedEvent)
-    def __handle_area_selected(self, event:AreaSelectedEvent):
+    @pyqtSlot(AdjustedAreaSelectedEvent)
+    def __handle_area_selected(self, event:AdjustedAreaSelectedEvent):
         self.__band_stats_window.clear()
 
         lines = event.y_points()

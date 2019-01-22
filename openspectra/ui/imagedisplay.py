@@ -21,11 +21,11 @@ from openspectra.utils import LogHelper, Logger
 
 class AdjustedMouseEvent(QObject):
 
-    def __init__(self, event:QMouseEvent, xscale:float, yscale:float):
+    def __init__(self, event:QMouseEvent, x_scale:float, y_scale:float):
         super().__init__(None)
         self.__event = event
-        self.__pixel_x = floor(event.x() * xscale)
-        self.__pixel_y = floor(event.y() * yscale)
+        self.__pixel_x = floor(event.x() * x_scale)
+        self.__pixel_y = floor(event.y() * y_scale)
         self.__pixel_pos = (self.__pixel_x, self.__pixel_y)
 
     def mouse_event(self) -> QMouseEvent:
@@ -41,12 +41,13 @@ class AdjustedMouseEvent(QObject):
         return self.__pixel_pos
 
 
-class AreaSelectedEvent(QObject):
+class AdjustedAreaSelectedEvent(QObject):
 
-    def __init__(self, x_points:np.ndarray, y_points:np.ndarray):
+    def __init__(self, x_points:np.ndarray,  x_scale:float,
+            y_points:np.ndarray, y_scale:float):
         super().__init__(None)
-        self.__x_points = x_points
-        self.__y_points = y_points
+        self.__x_points = np.floor(x_points * x_scale).astype(np.int16)
+        self.__y_points = np.floor(y_points * y_scale).astype(np.int16)
 
     def x_points(self) -> np.ndarray:
         return self.__x_points
@@ -185,7 +186,7 @@ class ImageLabel(QLabel):
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
-    area_selected = pyqtSignal(AreaSelectedEvent)
+    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     double_clicked = pyqtSignal(AdjustedMouseEvent)
@@ -463,10 +464,11 @@ class ImageLabel(QLabel):
             x = points[:, 0]
             y = points[:, 1]
 
-            # take only the point that were inside the polygon
+            # take only the points that were inside the polygon
             x = x[~x.mask]
             y = y[~y.mask]
-            self.area_selected.emit(AreaSelectedEvent(x, y))
+            self.area_selected.emit(AdjustedAreaSelectedEvent(
+                x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
 
     def __pressed(self):
         if self.__last_mouse_loc is not None:
@@ -517,7 +519,7 @@ class ImageDisplay(QScrollArea):
 
     __LOG:Logger = LogHelper.logger("ImageDisplay")
 
-    area_selected = pyqtSignal(AreaSelectedEvent)
+    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
@@ -779,7 +781,7 @@ class ImageDisplayWindow(QMainWindow):
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
-    area_selected = pyqtSignal(AreaSelectedEvent)
+    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, parent=None):
