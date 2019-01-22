@@ -1,4 +1,6 @@
-### OpenSpectraDev is a development project for OpenSpectra
+### OpenSpectraDev 
+
+...is a development project for OpenSpectra
 
 You'll need Python 3.7 installed and can use,
 
