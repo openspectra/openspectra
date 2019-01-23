@@ -301,27 +301,26 @@ class ImageLabel(QLabel):
             self.__initial_size = self.pixmap().size()
 
     def mouseMoveEvent(self, event:QMouseEvent):
-        # TODO this has to account for scaling
-        # TODO consider the behavior here might be if, elif, else instead
+        # TODO this has to account for scaling?? maybe not
         if self.__current_action == ImageLabel.Action.Drawing:
             self.__polygon << event.pos()
             self.update()
-
-        if self.__current_action == ImageLabel.Action.Dragging and \
+        elif self.__current_action == ImageLabel.Action.Dragging and \
                 self.__last_mouse_loc is not None and self.__rect is not None:
             center = self.__rect.center()
             center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(center)
-            # TODO this has to account for scaling
+            # TODO this has to account for scaling?? maybe not
             self.__last_mouse_loc = event.pos()
             self.locator_moved.emit(ViewLocationChangeEvent(center))
             self.update()
-
-        # TODO may not want to emit pixels when dragging or drawing???
-        # TODO we're emitting out of range pixels here when mouse is dragging the box
-        # TODO and we move off the image/window
-        adjusted_move = self.__create_adjusted_mouse_event(event)
-        self.mouse_move.emit(adjusted_move)
+        else:
+            # don't emit pixel locations when drawing or dragging.  It doesn't
+            # really make sense and for some reason when the mouse is held down
+            # we get event even after we are no longer on the image creating
+            # out of range problems
+            adjusted_move = self.__create_adjusted_mouse_event(event)
+            self.mouse_move.emit(adjusted_move)
 
     def mousePressEvent(self, event:QMouseEvent):
         # only expect right clicks here due to event filter
