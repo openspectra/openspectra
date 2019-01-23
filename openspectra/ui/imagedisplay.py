@@ -301,7 +301,7 @@ class ImageLabel(QLabel):
             self.__initial_size = self.pixmap().size()
 
     def mouseMoveEvent(self, event:QMouseEvent):
-        # TODO this has to account for scaling?? maybe not
+        # ImageLabel.__LOG.debug("mouse move event, pos: {0}", event.pos())
         if self.__current_action == ImageLabel.Action.Drawing:
             self.__polygon << event.pos()
             self.update()
@@ -310,9 +310,8 @@ class ImageLabel(QLabel):
             center = self.__rect.center()
             center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(center)
-            # TODO this has to account for scaling?? maybe not
             self.__last_mouse_loc = event.pos()
-            self.locator_moved.emit(ViewLocationChangeEvent(center))
+            self.locator_moved.emit(ViewLocationChangeEvent(self.__unscale_point(center)))
             self.update()
         else:
             # don't emit pixel locations when drawing or dragging.  It doesn't
@@ -550,8 +549,11 @@ class ImageDisplay(QScrollArea):
         self.__image_label.mouse_move.connect(self.mouse_move)
         self.__image_label.locator_moved.connect(self.locator_moved)
 
+        self.__last_scrollbar_action:int = -1
         self.horizontalScrollBar().valueChanged.connect(self.__handle_horizontal_bar_changed)
+        self.horizontalScrollBar().actionTriggered.connect(self.__handle_bar_action)
         self.verticalScrollBar().valueChanged.connect(self.__handle_vertical_bar_changed)
+        self.verticalScrollBar().actionTriggered.connect(self.__handle_bar_action)
 
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
@@ -566,16 +568,29 @@ class ImageDisplay(QScrollArea):
         self.__image = None
 
     @pyqtSlot(int)
+    def __handle_bar_action(self, action:int):
+        # Action are triggered by user interactions with the scroll bars so capture
+        # the action when it happens so we can use it to filter scroll bar value changed events
+        # ImageDisplay.__LOG.debug("bar action handled: {0}", action)
+        self.__last_scrollbar_action = action
+
+    @pyqtSlot(int)
     def __handle_horizontal_bar_changed(self, value:int):
         # Events here when the user moves the scrollbar or we call setValue() on the scrollbar
-        ImageDisplay.__LOG.debug("Horiz scroll change to: {0}", value)
-        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
+        # Only emit if the an action was set meaning it came from a user interaction rather than a call to setValue
+        # ImageDisplay.__LOG.debug("Horiz scroll change to: {0}, last action: {1}", value, self.__last_scrollbar_action)
+        if self.__last_scrollbar_action != -1:
+            self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
+            self.__last_scrollbar_action = -1
 
     @pyqtSlot(int)
     def __handle_vertical_bar_changed(self, value:int):
         # Events here when the user moves the scrollbar or we call setValue() on the scrollbar
-        ImageDisplay.__LOG.debug("Vert scroll change to: {0}", value)
-        self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
+        # Only emit if the an action was set meaning it came from a user interaction rather than a call to setValue
+        # ImageDisplay.__LOG.debug("Vert scroll change to: {0}, last action: {1}", value, self.__last_scrollbar_action)
+        if self.__last_scrollbar_action != -1:
+            self.viewport_scrolled.emit(ViewLocationChangeEvent(self.get_view_center()))
+            self.__last_scrollbar_action = -1
 
     def __display_image(self):
         # height and width of the image in pixels or the 1 to 1 size
