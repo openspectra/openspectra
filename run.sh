@@ -2,17 +2,16 @@
 
 #Run this script after activating (workon) the virtual env.
 PYVER=3.7
-PYSUBVER=3.7.2
 
 if [ -z "$VIRTUAL_ENV" ] ; then
     echo "You must activate your virtualenv: set '$VIRTUAL_ENV'"
     exit 1
 fi
 
-
-BREW_PYTHON_ROOT="/usr/local/Cellar/python/3.7.2_1/Frameworks/Python.framework/Versions/$PYVER"
+# Modify PYTHON_ROOT to point to your globally installed version of Python
+PYTHON_ROOT="/usr/local/Cellar/python/3.7.2_1/Frameworks/Python.framework/Versions/$PYVER"
 PYTHON_BINARY="bin/python$PYVER"
-FRAMEWORK_PYTHON="$BREW_PYTHON_ROOT/$PYTHON_BINARY"
+FRAMEWORK_PYTHON="$PYTHON_ROOT/$PYTHON_BINARY"
 
 # Use the Framework Python to run the app
 export PYTHONHOME=$VIRTUAL_ENV
