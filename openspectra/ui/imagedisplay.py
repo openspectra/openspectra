@@ -301,12 +301,13 @@ class ImageLabel(QLabel):
             self.__initial_size = self.pixmap().size()
 
     def mouseMoveEvent(self, event:QMouseEvent):
-        # ImageLabel.__LOG.debug("mouse move event, pos: {0}", event.pos())
-        if self.__current_action == ImageLabel.Action.Drawing:
+        if self.__current_action == ImageLabel.Action.Drawing and self.__polygon is not None:
+            # ImageLabel.__LOG.debug("drawing mouse move event, pos: {0}, size: {1}", event.pos(), self.pixmap().size())
             self.__polygon << event.pos()
             self.update()
         elif self.__current_action == ImageLabel.Action.Dragging and \
                 self.__last_mouse_loc is not None and self.__rect is not None:
+            # ImageLabel.__LOG.debug("dragging mouse move event, pos: {0}, size: {1}", event.pos(), self.pixmap().size())
             center = self.__rect.center()
             center += event.pos() - self.__last_mouse_loc
             self.__rect.moveCenter(center)
@@ -318,6 +319,7 @@ class ImageLabel(QLabel):
             # really make sense and for some reason when the mouse is held down
             # we get event even after we are no longer on the image creating
             # out of range problems
+            # ImageLabel.__LOG.debug("mouse move event, pos: {0}, size: {1}", event.pos(), self.pixmap().size())
             adjusted_move = self.__create_adjusted_mouse_event(event)
             self.mouse_move.emit(adjusted_move)
 
@@ -359,17 +361,24 @@ class ImageLabel(QLabel):
         super().resize(size)
 
     def eventFilter(self, object:QObject, event:QEvent):
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-            # TODO this has to account for scaling
-            self.__last_mouse_loc = event.pos()
-            QTimer.singleShot(300, self.__pressed)
-            # event was handled
-            return True
+        if isinstance(event, QMouseEvent):
+            image_size:QSize = self.pixmap().size()
+            if event.x() >= image_size.width() or event.y() >= image_size.height():
+                # suppress mouse events outside the image,
+                # can happen when mouse button is held while moving mouse
+                return True
 
-        # Mask right clicks from the mouse release handler
-        if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.RightButton:
-            # event was handled
-            return True
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                # TODO this has to account for scaling
+                self.__last_mouse_loc = event.pos()
+                QTimer.singleShot(300, self.__pressed)
+                # event was handled
+                return True
+
+            # Mask right clicks from the mouse release handler
+            if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.RightButton:
+                # event was handled
+                return True
 
         return False
 
@@ -469,14 +478,17 @@ class ImageLabel(QLabel):
                 x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
 
     def __pressed(self):
+        # ImageLabel.__LOG.debug("press called, last_mouse_loc: {0}", self.__last_mouse_loc)
         if self.__last_mouse_loc is not None:
             if self.__rect is not None and self.__rect.contains(self.__last_mouse_loc):
                 self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
+                # ImageLabel.__LOG.debug("press called, drag start")
             else:
                 self.__current_action = ImageLabel.Action.Drawing
                 self.setCursor(self.__draw_cursor)
                 self.__polygon = QPolygon()
+                # ImageLabel.__LOG.debug("press called, draw start")
 
     def __create_adjusted_mouse_event(self, event:QMouseEvent):
         # TODO seems to be a bit off for large images when scaled down to fit???
@@ -1004,7 +1016,8 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     #     self.resize(new_size)
 
     def __center_in_viewport(self, center:QPoint):
-        ZoomImageDisplayWindow.__LOG.debug("centering view to: {0}", center)
+        # TODO Logging here is huge overkill
+        # ZoomImageDisplayWindow.__LOG.debug("centering view to: {0}", center)
         self._image_display.center_in_viewport(center)
 
     @pyqtSlot(ViewLocationChangeEvent)
@@ -1138,8 +1151,8 @@ class MainImageDisplayWindow(ImageDisplayWindow):
     @pyqtSlot(ViewLocationChangeEvent)
     def __handle_location_changed(self, event:ViewLocationChangeEvent):
         # Handle locator moves in my ImageDisplay
-        # TODO if nothing else needs to be done, hook signal to signal
-        MainImageDisplayWindow.__LOG.debug("handle view location to: {0}", event.center())
+        # TODO if nothing else needs to be done, hook signal to signal, logging is huge overkill here
+        # MainImageDisplayWindow.__LOG.debug("handle view location to: {0}", event.center())
         self.view_location_changed.emit(event)
 
     @pyqtSlot(ViewChangeEvent)
