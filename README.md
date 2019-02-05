@@ -1,4 +1,4 @@
-##OpenSpectraDev 
+## OpenSpectraDev 
 
 ...is a development project for OpenSpectra
 
@@ -14,7 +14,7 @@ Here is a good guide for setting up Python and your project on multiple platform
 
 Note: On Mac you'll want to update and use the provided run.sh script.  It contains a workaround for a permissing problem when running from within a virtual environment.
 
-###Unit tests
+### Unit tests
 
 To run unit tests from the command line make sure your project is active and you are in the project root directory.  Then run,
 ````
