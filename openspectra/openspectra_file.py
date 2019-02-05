@@ -68,7 +68,11 @@ class OpenSpectraHeader:
                                 self.__props[key] = value
 
                         else:
-                            raise OpenSpectraHeaderError("Invalid format, found more than one '=' on a line")
+                            # raise OpenSpectraHeaderError("Invalid format, found more than one '=' on a line")
+                            # TODO need to support lines like,
+                            # map info = {UTM, 1.000, 1.000, 620006.407, 2376995.930, 7.8000000000e+000, 7.8000000000e+000, 4, North, WGS-84, units=Meters, rotation=29.00000000}
+                            OpenSpectraHeader.__LOG.warning("Encountered line with more than one '=', I'm not "
+                                "smart enough to handle that yet! Ignoring it for now.  Line is:\n {0}", line)
 
             # now verify what we read makes sense and do some conversion to data type we want
             self.__validate()
