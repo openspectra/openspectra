@@ -16,7 +16,7 @@ from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AdjustedAreaSelectedEvent, \
     ZoomImageDisplayWindow
-from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, Limit
 from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
 from openspectra.utils import LogHelper, Logger
 
@@ -313,9 +313,9 @@ class WindowSet(QObject):
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
         WindowSet.__LOG.debug("Got limit change event id: {0}, limit: {1}", event.id(), event.limit())
-        if event.id() == LimitChangeEvent.Limit.Upper:
+        if event.id() == Limit.Upper:
             self.__image.set_high_cutoff(event.limit())
-        elif event.id() == LimitChangeEvent.Limit.Lower:
+        elif event.id() == Limit.Lower:
             self.__image.set_low_cutoff(event.limit())
         else:
             return

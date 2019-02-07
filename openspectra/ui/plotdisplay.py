@@ -18,11 +18,11 @@ from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlot
 from openspectra.utils import LogHelper, Logger
 
 
-class LimitChangeEvent(QObject):
+class Limit(Enum):
+    Lower = 0
+    Upper = 1
 
-    class Limit(Enum):
-        Lower = 0
-        Upper = 1
+class LimitChangeEvent(QObject):
 
     def __init__(self, id:Limit, limit:Union[int, float]):
         super().__init__()
@@ -185,6 +185,8 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         super().__init__(parent, width, height, dpi)
+        self.__lower_limit = None
+        self.__upper_limit = None
         self.__min_adjust_x = None
         self.__max_adjust_x = None
         self.__dragging:lines.Line2D = None
@@ -193,6 +195,61 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.__dragging = None
         self.__min_adjust_x = None
         self.__max_adjust_x = None
+        self.__lower_limit = None
+        self.__upper_limit = None
+
+    def __on_mouse_release(self, event:MouseEvent):
+        if self.__dragging is not None:
+            line_id = self.__get_limit_id(self.__dragging)
+            if line_id is not None:
+                new_loc = self.__dragging.get_xdata()[0]
+                limit_event = LimitChangeEvent(line_id, new_loc)
+                self.limit_changed.emit(limit_event)
+                AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: {0}", new_loc)
+
+            self.__dragging = None
+
+    # TODO why do I need this? eventually need to tell them apart? better way?
+    def __get_limit_id(self, limit_line:lines.Line2D) -> Limit:
+        if limit_line is self.__lower_limit:
+            return Limit.Lower
+        elif limit_line is self.__upper_limit:
+            return Limit.Upper
+        else:
+            return None
+
+    def __get_limit_from_id(self, limit:Limit) -> lines.Line2D:
+        if limit == Limit.Lower:
+            return self.__lower_limit
+        else:
+            return self.__upper_limit
+
+    def __on_pick(self, event:PickEvent):
+        if event.artist == self.__lower_limit:
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at {0}", self.__lower_limit.get_xdata())
+        elif event.artist == self.__upper_limit:
+            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at {0}", self.__upper_limit.get_xdata())
+
+        self.__dragging = event.artist
+
+    def __on_mouse_move(self, event:MouseEvent):
+        if self.__dragging is not None and event.xdata is not None:
+            new_x = event.xdata
+            if new_x > self.__max_adjust_x:
+                new_x = self.__max_adjust_x
+            elif new_x < self.__min_adjust_x:
+                new_x = self.__min_adjust_x
+
+            self.__dragging.set_xdata([new_x, new_x])
+            self.draw()
+
+        else:
+            pass
+            # TODO remove this
+            # AdjustableHistogramPlotCanvas.__LOG.debug(
+            #     "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
+            #     event.name, event.canvas, event.inaxes,
+            #     event.x, event.y, event.xdata, event.ydata)
 
     def plot(self, data:HistogramPlotData):
         super().plot(data)
@@ -219,52 +276,10 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
             self.__min_adjust_x, self.__max_adjust_x)
         self.plot_changed.emit(plot_event)
 
-    def __on_mouse_release(self, event: MouseEvent):
-        if self.__dragging is not None:
-            line_id = self.__get_limit_id(self.__dragging)
-            if line_id is not None:
-                new_loc = self.__dragging.get_xdata()[0]
-                limit_event = LimitChangeEvent(line_id, new_loc)
-                self.limit_changed.emit(limit_event)
-                AdjustableHistogramPlotCanvas.__LOG.debug("New limit loc: {0}", new_loc)
-
-            self.__dragging = None
-
-    # TODO why do I need this? eventually need to tell them apart? better way?
-    def __get_limit_id(self, limit_line: lines.Line2D) -> LimitChangeEvent.Limit:
-        if limit_line is self.__lower_limit:
-            return LimitChangeEvent.Limit.Lower
-        elif limit_line is self.__upper_limit:
-            return LimitChangeEvent.Limit.Upper
-        else:
-            return None
-
-    def __on_pick(self, event: PickEvent):
-        if event.artist == self.__lower_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked lower limit at {0}", self.__lower_limit.get_xdata())
-        elif event.artist == self.__upper_limit:
-            AdjustableHistogramPlotCanvas.__LOG.debug("picked upper limit at {0}", self.__upper_limit.get_xdata())
-
-        self.__dragging = event.artist
-
-    def __on_mouse_move(self, event: MouseEvent):
-        if self.__dragging is not None and event.xdata is not None:
-            new_x = event.xdata
-            if new_x > self.__max_adjust_x:
-                new_x = self.__max_adjust_x
-            elif new_x < self.__min_adjust_x:
-                new_x = self.__min_adjust_x
-
-            self.__dragging.set_xdata([new_x, new_x])
-            self.draw()
-
-        else:
-            pass
-            # TODO remove this
-            # AdjustableHistogramPlotCanvas.__LOG.debug(
-            #     "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
-            #     event.name, event.canvas, event.inaxes,
-            #     event.x, event.y, event.xdata, event.ydata)
+    def update_limit_line(self, limit:Limit, new_value:Union[int, float]):
+        # TODO range check new value
+        self.__get_limit_from_id(limit).set_xdata([new_value, new_value])
+        self.draw()
 
 
 class LinePlotDisplayWindow(QMainWindow):
@@ -403,22 +418,32 @@ class AdjustableHistogramControl(QWidget):
         else:
             self.__adjusted_data_canvas.update_plot(data)
 
-    @pyqtSlot()
-    def __handle_lower_limit_edit(self):
+    @pyqtSlot(float)
+    def __handle_lower_limit_edit(self, new_value:float):
         AdjustableHistogramControl.__LOG.debug("lower edit limit: {0}",
-            self.__lower_edit.text())
+            new_value)
+        # emit limit_changed to bubble up and notify
+        self.limit_changed.emit(LimitChangeEvent(
+            Limit.Lower, new_value))
+        # update plot lines
+        self.__raw_data_canvas.update_limit_line(Limit.Lower, new_value)
 
-    @pyqtSlot()
-    def __handle_upper_limit_edit(self):
+    @pyqtSlot(float)
+    def __handle_upper_limit_edit(self, new_value:float):
         AdjustableHistogramControl.__LOG.debug("upper edit limit: {0}",
-            self.__upper_edit.text())
+            new_value)
+        # emit limit_changed to bubble up and notify
+        self.limit_changed.emit(LimitChangeEvent(
+            Limit.Upper, new_value))
+        # update plot lines
+        self.__raw_data_canvas.update_limit_line(Limit.Upper, new_value)
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
         self.limit_changed.emit(event)
-        if event.id() == LimitChangeEvent.Limit.Lower:
+        if event.id() == Limit.Lower:
             self.__lower_edit.set_value(event.limit())
-        elif event.id() == LimitChangeEvent.Limit.Upper:
+        elif event.id() == Limit.Upper:
             self.__upper_edit.set_value(event.limit())
 
     @pyqtSlot(PlotChangeEvent)
