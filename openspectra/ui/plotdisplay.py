@@ -3,13 +3,12 @@
 #  Copyright (c) 2019. All rights reserved.
 
 from enum import Enum
-from math import floor, ceil
 from typing import Union
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
-from PyQt5.QtGui import QResizeEvent, QCloseEvent
-from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, QGroupBox, \
-    QLineEdit, QInputDialog
+from PyQt5.QtGui import QResizeEvent, QCloseEvent, QDoubleValidator, QFocusEvent, QKeyEvent
+from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, \
+    QLineEdit
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -132,6 +131,49 @@ class HistogramPlotCanvas(PlotCanvas):
         # TODO clear and replace whole plot is a bit inefficient
         self._axes.clear()
         self.plot(data)
+
+
+class LimitValueLineEdit(QLineEdit):
+
+    __LOG:Logger = LogHelper.logger("LimitValueLineEdit")
+
+    value_changed = pyqtSignal(float)
+
+    def __init__(self, name:str, parent:QWidget=None):
+        super().__init__(parent)
+        self.__name = name
+        self.__set_precision(3)
+
+    def __set_precision(self, precision:int):
+        self.__precision = precision
+        self.__limit_display_format = "{{:.{}f}}".format(self.__precision)
+
+    def set_value(self, value:float):
+        super().setText(self.__limit_display_format.format(value))
+
+    def set_validator(self, lower_limit:float, upper_limit:float, precision:int):
+        super().setValidator(QDoubleValidator(lower_limit, upper_limit, precision))
+        self.__set_precision(precision)
+
+    def focusOutEvent(self, event:QFocusEvent):
+        # http://doc.qt.io/qt-5/qt.html#FocusReason-enum
+        # LimitValueLineEdit.__LOG.debug("{0} edit focus out, reason: {1}",
+        #     self.__name, event.reason())
+        reason = event.reason()
+        if reason == Qt.MouseFocusReason or reason == Qt.TabFocusReason:
+            if self.hasAcceptableInput():
+                self.value_changed.emit(float(self.text()))
+                super().focusOutEvent(event)
+            else:
+                self.setFocus()
+
+    def keyPressEvent(self, event:QKeyEvent):
+        # http://doc.qt.io/qt-5/qt.html#Key-enum
+        # LimitValueLineEdit.__LOG.debug("{0} edit key press, key: {1}",
+        #     self.__name, event.key())
+        super().keyPressEvent(event)
+        if event.key() == Qt.Key_Return and self.hasAcceptableInput():
+            self.value_changed.emit(float(self.text()))
 
 
 class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
@@ -301,26 +343,29 @@ class AdjustableHistogramControl(QWidget):
         low_label.setFixedWidth(60)
         control_layout.addWidget(low_label)
 
-        self.__low_edit = QLineEdit()
-        self.__low_edit.setMaximumWidth(60)
-        self.__low_edit.deselect()
-        # TODO low_edit.setInputMask()
-        # TODO low_edit.setValidator()
-        # TODO low_edit.addAction()
-        control_layout.addWidget(self.__low_edit)
+        # TODO need to set the data's precision
+        self.__edit_precision = 3
+
+        self.__lower_edit:LimitValueLineEdit = LimitValueLineEdit("lower limit")
+        self.__lower_edit.setMaximumWidth(80)
+        self.__lower_edit.deselect()
+        self.__lower_edit.setAlignment(Qt.AlignLeft)
+        self.__lower_validator = None
+        self.__lower_edit.value_changed.connect(self.__handle_lower_limit_edit)
+        control_layout.addWidget(self.__lower_edit)
         control_layout.addSpacing(10)
 
         high_label = QLabel("high limit:")
         high_label.setFixedWidth(60)
         control_layout.addWidget(high_label)
 
-        self.__high_edit = QLineEdit()
-        self.__high_edit.setMaximumWidth(60)
-        self.__high_edit.deselect()
-        # TODO high_edit.setInputMask()
-        # TODO high_edit.setValidator()
-        # TODO high_edit.addAction()
-        control_layout.addWidget(self.__high_edit)
+        self.__upper_edit:LimitValueLineEdit = LimitValueLineEdit("upper limit")
+        self.__upper_edit.setMaximumWidth(80)
+        self.__upper_edit.deselect()
+        self.__upper_edit.setAlignment(Qt.AlignLeft)
+        self.__upper_validator = None
+        self.__upper_edit.value_changed.connect(self.__handle_upper_limit_edit)
+        control_layout.addWidget(self.__upper_edit)
 
         control_frame.setLayout(control_layout)
         layout.addWidget(control_frame)
@@ -345,8 +390,8 @@ class AdjustableHistogramControl(QWidget):
         AdjustableHistogramControl.__LOG.debug("AdjustableHistogramControl.__del__ called...")
         self.__adjusted_data_canvas = None
         self.__raw_data_canvas = None
-        self.__low_edit = None
-        self.__high_edit = None
+        self.__lower_edit = None
+        self.__upper_edit = None
 
     def set_raw_data(self, data:HistogramPlotData):
         self.__raw_data_canvas.plot(data)
@@ -358,18 +403,32 @@ class AdjustableHistogramControl(QWidget):
         else:
             self.__adjusted_data_canvas.update_plot(data)
 
+    @pyqtSlot()
+    def __handle_lower_limit_edit(self):
+        AdjustableHistogramControl.__LOG.debug("lower edit limit: {0}",
+            self.__lower_edit.text())
+
+    @pyqtSlot()
+    def __handle_upper_limit_edit(self):
+        AdjustableHistogramControl.__LOG.debug("upper edit limit: {0}",
+            self.__upper_edit.text())
+
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
         self.limit_changed.emit(event)
         if event.id() == LimitChangeEvent.Limit.Lower:
-            self.__low_edit.setText(str(event.limit()))
+            self.__lower_edit.set_value(event.limit())
         elif event.id() == LimitChangeEvent.Limit.Upper:
-            self.__high_edit.setText(str(event.limit()))
+            self.__upper_edit.set_value(event.limit())
 
     @pyqtSlot(PlotChangeEvent)
     def __handle_plot_change(self, event:PlotChangeEvent):
-        self.__low_edit.setText(str(event.lower_limit()))
-        self.__high_edit.setText(str(event.upper_limit()))
+        self.__upper_edit.set_validator(
+            event.lower_min(), event.upper_max(), self.__edit_precision)
+        self.__lower_edit.set_validator(
+            event.lower_min(), event.upper_max(), self.__edit_precision)
+        self.__lower_edit.set_value(event.lower_limit())
+        self.__upper_edit.set_value(event.upper_limit())
 
 
 class HistogramDisplayWindow(QMainWindow):
