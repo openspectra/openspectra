@@ -312,25 +312,32 @@ class WindowSet(QObject):
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
-        WindowSet.__LOG.debug("Got limit change event id: {0}, limit: {1}", event.id(), event.limit())
-        if event.id() == Limit.Upper:
-            self.__image.set_high_cutoff(event.limit())
-        elif event.id() == Limit.Lower:
-            self.__image.set_low_cutoff(event.limit())
+        updated:bool = False
+        if event.has_upper_limit_change():
+            self.__image.set_high_cutoff(event.upper_limit())
+            updated = True
+            WindowSet.__LOG.debug("limit change event upper limit: {0}", event.upper_limit())
+
+        if event.has_lower_limit_change():
+            self.__image.set_low_cutoff(event.lower_limit())
+            updated = True
+            WindowSet.__LOG.debug("Got limit change event lower limit: {0}", event.lower_limit())
+
+        if updated:
+            self.__image.adjust()
+
+            # TODO use event instead?
+            # trigger update in image window
+            self.__main_image_window.refresh_image()
+            self.__zoom_image_window.refresh_image()
+
+            # TODO replotting the whole thing is bit inefficient?
+            # TODO don't have the label here
+            image_hist = self.__image_tools.adjusted_histogram()
+            self.__histogram_window.set_adjusted_data(image_hist)
         else:
-            return
+            WindowSet.__LOG.warning("Got limit change event with no limits")
 
-        self.__image.adjust()
-
-        # TODO use event instead?
-        # trigger update in image window
-        self.__main_image_window.refresh_image()
-        self.__zoom_image_window.refresh_image()
-
-        # TODO replotting the whole thing is bit inefficient?
-        # TODO don't have the label here
-        image_hist = self.__image_tools.adjusted_histogram()
-        self.__histogram_window.set_adjusted_data(image_hist)
 
     @pyqtSlot(AdjustedAreaSelectedEvent)
     def __handle_area_selected(self, event:AdjustedAreaSelectedEvent):

@@ -22,18 +22,51 @@ class Limit(Enum):
     Lower = 0
     Upper = 1
 
+
 class LimitChangeEvent(QObject):
 
-    def __init__(self, id:Limit, limit:Union[int, float]):
+    def __init__(self, limit:Limit=None, value:Union[int, float]=None,
+            lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
+        """Expects either limit and value or at least one of lower_limit or upper_limit.
+        If limit and value are set lower_limit and upper_limit are ignored."""
         super().__init__()
-        self.__id = id
-        self.__limit = limit
+        self.__has_lower:bool = False
+        self.__has_upper:bool = False
+        self.__lower_limit:Union[int, float] = None
+        self.__upper_limit:Union[int, float] = None
 
-    def id(self) -> Limit:
-        return self.__id
+        if limit is not None and value is not None:
+            if limit == Limit.Lower:
+                self.__init_lower(value)
 
-    def limit(self) -> Union[int, float]:
-        return self.__limit
+            if limit == Limit.Upper:
+                self.__init_upper(value)
+        else:
+            if lower_limit is not None:
+                self.__init_lower(lower_limit)
+
+            if upper_limit is not None:
+                self.__init_upper(upper_limit)
+
+    def __init_lower(self, value:Union[int, float]):
+        self.__lower_limit = value
+        self.__has_lower = True
+
+    def __init_upper(self, value:Union[int, float]):
+        self.__upper_limit = value
+        self.__has_upper = True
+
+    def has_lower_limit_change(self) -> bool:
+        return self.__has_lower
+
+    def has_upper_limit_change(self) -> bool:
+        return self.__has_upper
+
+    def lower_limit(self) -> Union[int, float]:
+        return self.__lower_limit
+
+    def upper_limit(self) -> Union[int, float]:
+        return self.__upper_limit
 
 
 class PlotChangeEvent(QObject):
@@ -268,15 +301,31 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
             self.__min_adjust_x, self.__max_adjust_x)
         self.plot_changed.emit(plot_event)
 
-    def update_limit_line(self, limit:Limit, new_value:Union[int, float]):
-        if self.__max_adjust_x >= new_value >= self.__min_adjust_x:
-            self.__get_limit_from_id(limit).set_xdata([new_value, new_value])
+    def update_limit_line(self, lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
+
+        updated:bool = False
+        if lower_limit is not None:
+            if self.__max_adjust_x >= lower_limit >= self.__min_adjust_x:
+                self.__get_limit_from_id(Limit.Lower).set_xdata([lower_limit, lower_limit])
+                updated = True
+            else:
+                # TODO then what? Throw?  It's really a programming error if it happens so assert?
+                AdjustableHistogramPlotCanvas.__LOG.error(
+                    "Attempt was made to set lower limit to an invalid value {0}, min of {1}, max of {2} allowed",
+                    lower_limit, self.__min_adjust_x, self.__max_adjust_x)
+
+        if upper_limit is not None:
+            if self.__max_adjust_x >= upper_limit >= self.__min_adjust_x:
+                self.__get_limit_from_id(Limit.Upper).set_xdata([upper_limit, upper_limit])
+                updated = True
+            else:
+                # TODO then what? Throw?  It's really a programming error if it happens so assert?
+                AdjustableHistogramPlotCanvas.__LOG.error(
+                    "Attempt was made to set upper limit to an invalid value {0}, min of {1}, max of {2} allowed",
+                    upper_limit, self.__min_adjust_x, self.__max_adjust_x)
+
+        if updated:
             self.draw()
-        else:
-            # TODO then what? Throw?  It's really a programming error if it happens so assert?
-            AdjustableHistogramPlotCanvas.__LOG.error(
-                "Attempt was made to set limit {0} to an invalid value {1}, min of {2}, max of {3} allowed",
-                limit, new_value, self.__min_adjust_x, self.__max_adjust_x)
 
 
 class LinePlotDisplayWindow(QMainWindow):
@@ -426,37 +475,39 @@ class AdjustableHistogramControl(QWidget):
     @pyqtSlot()
     def __handle_reset_clicked(self):
         self.__lower_edit.set_value(self.__lower_limit_default)
-        self.__handle_lower_limit_edit(self.__lower_limit_default)
         self.__upper_edit.set_value(self.__upper_limit_default)
-        self.__handle_upper_limit_edit(self.__upper_limit_default)
+        # emit limit_changed to bubble up and notify
+        self.limit_changed.emit(LimitChangeEvent(
+            lower_limit=self.__lower_limit_default, upper_limit=self.__upper_limit_default))
+        self.__raw_data_canvas.update_limit_line(
+            self.__lower_limit_default, self.__upper_limit_default)
 
     @pyqtSlot(float)
     def __handle_lower_limit_edit(self, new_value:Union[int, float]):
         AdjustableHistogramControl.__LOG.debug("lower edit limit: {0}",
             new_value)
         # emit limit_changed to bubble up and notify
-        self.limit_changed.emit(LimitChangeEvent(
-            Limit.Lower, new_value))
+        self.limit_changed.emit(LimitChangeEvent(lower_limit=new_value))
         # update plot lines
-        self.__raw_data_canvas.update_limit_line(Limit.Lower, new_value)
+        self.__raw_data_canvas.update_limit_line(lower_limit=new_value)
 
     @pyqtSlot(float)
     def __handle_upper_limit_edit(self, new_value:Union[int, float]):
         AdjustableHistogramControl.__LOG.debug("upper edit limit: {0}",
             new_value)
         # emit limit_changed to bubble up and notify
-        self.limit_changed.emit(LimitChangeEvent(
-            Limit.Upper, new_value))
+        self.limit_changed.emit(LimitChangeEvent(upper_limit=new_value))
         # update plot lines
-        self.__raw_data_canvas.update_limit_line(Limit.Upper, new_value)
+        self.__raw_data_canvas.update_limit_line(upper_limit=new_value)
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
         self.limit_changed.emit(event)
-        if event.id() == Limit.Lower:
-            self.__lower_edit.set_value(event.limit())
-        elif event.id() == Limit.Upper:
-            self.__upper_edit.set_value(event.limit())
+        if event.has_lower_limit_change():
+            self.__lower_edit.set_value(event.lower_limit())
+
+        if event.has_upper_limit_change():
+            self.__upper_edit.set_value(event.upper_limit())
 
     @pyqtSlot(PlotChangeEvent)
     def __handle_plot_change(self, event:PlotChangeEvent):
