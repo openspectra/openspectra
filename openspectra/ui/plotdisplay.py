@@ -8,7 +8,7 @@ from typing import Union
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QResizeEvent, QCloseEvent, QDoubleValidator, QFocusEvent, QKeyEvent
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, \
-    QLineEdit
+    QLineEdit, QPushButton
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -148,10 +148,10 @@ class LimitValueLineEdit(QLineEdit):
         self.__precision = precision
         self.__limit_display_format = "{{:.{}f}}".format(self.__precision)
 
-    def set_value(self, value:float):
+    def set_value(self, value:Union[int, float]):
         super().setText(self.__limit_display_format.format(value))
 
-    def set_validator(self, lower_limit:float, upper_limit:float, precision:int):
+    def set_validator(self, lower_limit:Union[int, float], upper_limit:Union[int, float], precision:int):
         super().setValidator(QDoubleValidator(lower_limit, upper_limit, precision))
         self.__set_precision(precision)
 
@@ -243,14 +243,6 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
             self.__dragging.set_xdata([new_x, new_x])
             self.draw()
 
-        else:
-            pass
-            # TODO remove this
-            # AdjustableHistogramPlotCanvas.__LOG.debug(
-            #     "Mouse move - name: {0}, canvas: {1}, axes: {2}, x: {3}, y: {4}, xdata: {5}, ydata: {6}",
-            #     event.name, event.canvas, event.inaxes,
-            #     event.x, event.y, event.xdata, event.ydata)
-
     def plot(self, data:HistogramPlotData):
         super().plot(data)
 
@@ -277,9 +269,14 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.plot_changed.emit(plot_event)
 
     def update_limit_line(self, limit:Limit, new_value:Union[int, float]):
-        # TODO range check new value
-        self.__get_limit_from_id(limit).set_xdata([new_value, new_value])
-        self.draw()
+        if self.__max_adjust_x >= new_value >= self.__min_adjust_x:
+            self.__get_limit_from_id(limit).set_xdata([new_value, new_value])
+            self.draw()
+        else:
+            # TODO then what? Throw?  It's really a programming error if it happens so assert?
+            AdjustableHistogramPlotCanvas.__LOG.error(
+                "Attempt was made to set limit {0} to an invalid value {1}, min of {2}, max of {3} allowed",
+                limit, new_value, self.__min_adjust_x, self.__max_adjust_x)
 
 
 class LinePlotDisplayWindow(QMainWindow):
@@ -338,6 +335,11 @@ class AdjustableHistogramControl(QWidget):
         self.__raw_data_canvas.plot_changed.connect(self.__handle_plot_change)
         self.__adjusted_data_canvas = HistogramPlotCanvas(self, width=5, height=4)
 
+        # TODO need to set the data's precision
+        self.__edit_precision:int = 3
+        self.__lower_limit_default:Union[int, float] = None
+        self.__upper_limit_default:Union[int, float] = None
+
         self.__init_ui()
 
     def __init_ui(self):
@@ -357,9 +359,6 @@ class AdjustableHistogramControl(QWidget):
         low_label = QLabel("low limit:")
         low_label.setFixedWidth(60)
         control_layout.addWidget(low_label)
-
-        # TODO need to set the data's precision
-        self.__edit_precision = 3
 
         self.__lower_edit:LimitValueLineEdit = LimitValueLineEdit("lower limit")
         self.__lower_edit.setMaximumWidth(80)
@@ -381,6 +380,12 @@ class AdjustableHistogramControl(QWidget):
         self.__upper_validator = None
         self.__upper_edit.value_changed.connect(self.__handle_upper_limit_edit)
         control_layout.addWidget(self.__upper_edit)
+        control_layout.addSpacing(10)
+
+        self.__reset_button = QPushButton("Reset")
+        self.__reset_button.setFixedWidth(60)
+        self.__reset_button.clicked.connect(self.__handle_reset_clicked)
+        control_layout.addWidget(self.__reset_button)
 
         control_frame.setLayout(control_layout)
         layout.addWidget(control_frame)
@@ -418,8 +423,15 @@ class AdjustableHistogramControl(QWidget):
         else:
             self.__adjusted_data_canvas.update_plot(data)
 
+    @pyqtSlot()
+    def __handle_reset_clicked(self):
+        self.__lower_edit.set_value(self.__lower_limit_default)
+        self.__handle_lower_limit_edit(self.__lower_limit_default)
+        self.__upper_edit.set_value(self.__upper_limit_default)
+        self.__handle_upper_limit_edit(self.__upper_limit_default)
+
     @pyqtSlot(float)
-    def __handle_lower_limit_edit(self, new_value:float):
+    def __handle_lower_limit_edit(self, new_value:Union[int, float]):
         AdjustableHistogramControl.__LOG.debug("lower edit limit: {0}",
             new_value)
         # emit limit_changed to bubble up and notify
@@ -429,7 +441,7 @@ class AdjustableHistogramControl(QWidget):
         self.__raw_data_canvas.update_limit_line(Limit.Lower, new_value)
 
     @pyqtSlot(float)
-    def __handle_upper_limit_edit(self, new_value:float):
+    def __handle_upper_limit_edit(self, new_value:Union[int, float]):
         AdjustableHistogramControl.__LOG.debug("upper edit limit: {0}",
             new_value)
         # emit limit_changed to bubble up and notify
@@ -452,8 +464,12 @@ class AdjustableHistogramControl(QWidget):
             event.lower_min(), event.upper_max(), self.__edit_precision)
         self.__lower_edit.set_validator(
             event.lower_min(), event.upper_max(), self.__edit_precision)
-        self.__lower_edit.set_value(event.lower_limit())
-        self.__upper_edit.set_value(event.upper_limit())
+
+        self.__lower_limit_default = event.lower_limit()
+        self.__lower_edit.set_value(self.__lower_limit_default)
+
+        self.__upper_limit_default = event.upper_limit()
+        self.__upper_edit.set_value(self.__upper_limit_default)
 
 
 class HistogramDisplayWindow(QMainWindow):
