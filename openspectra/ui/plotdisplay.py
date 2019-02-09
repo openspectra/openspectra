@@ -112,7 +112,6 @@ class PlotCanvas(FigureCanvas):
         self._current_plot = None
         self._axes.clear()
         self._axes = None
-        # TODO anything else?
 
     def plot(self, data:PlotData):
         # TODO something better than setting it over and over??
@@ -337,6 +336,7 @@ class LinePlotDisplayWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.__plot_canvas = LinePlotCanvas(self, width=5, height=4)
+        self.setCentralWidget(self.__plot_canvas)
 
         # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
         # TODO this requires the user to create a new instance to reuse
@@ -359,10 +359,8 @@ class LinePlotDisplayWindow(QMainWindow):
     def clear(self):
         self.__plot_canvas.clear()
 
-    # TODO do we need this??
     def resizeEvent(self, event:QResizeEvent):
-        size = event.size()
-        self.__plot_canvas.resize(size)
+        self.__plot_canvas.resize(event.size())
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()
