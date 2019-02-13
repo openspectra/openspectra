@@ -6,7 +6,7 @@ import openspectra.image as img
 import openspectra.openspectra_file as osf
 from openspectra.openspectra_file import OpenSpectraFile
 import numpy as np
-from PIL import Image
+# from PIL import Image
 from matplotlib import pyplot as plt
 
 
@@ -43,7 +43,7 @@ def image_processor_test():
 
     open_spectra_file: OpenSpectraFile = osf.create_open_spectra_file(file_name)
 
-    image_data = open_spectra_file.greyscale_image(10).raw_data()
+    image_data = open_spectra_file.raw_image(10)
     min = np.amin(image_data)
     max = np.amax(image_data)
     print("min {0}, max {1}, diff {2}".format(min, max, max - min))

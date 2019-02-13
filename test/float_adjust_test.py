@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from numpy import ma
 
+from openspecrtra_tools import OpenSpectraImageTools
 from openspectra.openspectra_file import OpenSpectraFileFactory
 from openspectra.utils import OpenSpectraProperties
 
@@ -14,8 +15,9 @@ def test_float_adj():
 
     file_name = "/Users/jconti/dev/data/JoeSamples/ang20160928t135411_rfl_v1nx_nonortho"
     osf = OpenSpectraFileFactory.create_open_spectra_file(file_name)
+    image_tools = OpenSpectraImageTools(osf)
 
-    gs_image = osf.greyscale_image(1)
+    gs_image = image_tools.greyscale_image(1)
     float_data = gs_image.raw_data()
     print(float_data)
 

@@ -29,7 +29,7 @@ def test_float_bands():
     # band_index = 1
     # 202 has some inf and nan, masked_invalid gets them both
     band_index = 202
-    band = osf.raw_band(band_index)
+    band = osf.raw_image(band_index)
     print("raw band size: {0}".format(band.size))
     min = band.min()
     print(math.isnan(min))

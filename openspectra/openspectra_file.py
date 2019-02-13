@@ -298,10 +298,18 @@ class FileTypeDelegate():
         self.__shape = shape
         self._file_model = file_model
 
-    def image(self, band) -> np.ndarray:
+    def image(self, band:Union[int, tuple]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         pass
 
-    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple or ndarray returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         pass
 
     def shape(self) -> Shape:
@@ -320,10 +328,18 @@ class BILFileDelegate(FileTypeDelegate):
         super().__init__(
             BILShape(header.lines(), header.samples(), header.band_count()), file_model)
 
-    def image(self, band) -> np.ndarray:
+    def image(self, band:Union[int, tuple]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[:, band, :]
 
-    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple or ndarray returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[line, :, sample]
 
 
@@ -339,10 +355,18 @@ class BQSFileDelegate(FileTypeDelegate):
         super().__init__(
             BQSShape(header.lines(), header.samples(), header.band_count()), file_model)
 
-    def image(self, band) -> np.ndarray:
+    def image(self, band:Union[int, tuple]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[band, :, :]
 
-    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple or ndarray returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[:, line, sample]
 
 
@@ -358,10 +382,18 @@ class BIPFileDelegate(FileTypeDelegate):
         super().__init__(
             BIPShape(header.lines(), header.samples(), header.band_count()), file_model)
 
-    def image(self, band) -> np.ndarray:
+    def image(self, band:Union[int, tuple]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[:, :, band]
 
-    def bands(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
+    def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        """It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple or ndarray returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self._file_model.file()[line, sample, :]
 
 
@@ -427,20 +459,20 @@ class OpenSpectraFile:
         # view = np.ma.masked_outside(view, -1, 1, False)
         # OpenSpectraFile.__LOG.debug("Filtered Min: {0}, Max: {1}, Size: {2}", view.min(), view.max(), view[~view.mask].size)
 
-    def greyscale_image(self, band:int) -> GreyscaleImage:
-        return GreyscaleImage(self.__file_delegate.image(band))
-
-    def rgb_image(self, red:int, green:int, blue:int) -> RGBImage:
-        return RGBImage(self.__file_delegate.image(red),
-            self.__file_delegate.image(green),
-            self.__file_delegate.image(blue))
-
-    #TODO keep this??  name??
-    def raw_band(self, band:int):
+    def raw_image(self, band:Union[int, tuple]) -> np.ndarray:
+        """Return the image data for the given band.
+        It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         return self.__file_delegate.image(band)
 
-    # TODO name?  it's the spectra for a given pixel(s)
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
+        """Return all of the band values for a given pixel.
+        It's important to understand that selecting images with an int index
+        returns a view of the underlying data while using a tuple or ndarray returns a copy.
+        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        for more details"""
         self.__validate_band_args(line, sample)
         return self.__file_delegate.bands(line, sample)
 
@@ -454,7 +486,6 @@ class OpenSpectraFile:
         if self.__memory_model.data_type() != self.__header.data_type():
             raise TypeError("Header file type {0}, does not match actually data type {1}",
                 self.__header.data_type(), self.__memory_model.data_type())
-
 
     def __validate_band_args(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]):
         if isinstance(line, int) and isinstance(sample, int):

@@ -11,13 +11,13 @@ from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage
 from PyQt5.QtWidgets import QTreeWidgetItem
 
-from openspectra.image import Image, GreyscaleImage, RGBImage
+from openspectra.image import Image, GreyscaleImage, RGBImage, Band
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AdjustedAreaSelectedEvent, \
     ZoomImageDisplayWindow
-from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, Limit
-from openspectra.openspecrtra_tools import OpenSpectraImageTools, OpenSpectraBandTools
+from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools
 from openspectra.utils import LogHelper, Logger
 
 
@@ -115,6 +115,7 @@ class FileManager(QObject):
         self.__window_manager = window_manager
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
+        self.__image_tools = OpenSpectraImageTools(self.__file)
         self.__file_widget = file_widget
         self.__file_name = file_widget.text(0)
         self.__window_sets = list()
@@ -134,16 +135,13 @@ class FileManager(QObject):
         self.__file = None
         self.__window_manager = None
 
-    def add_rgb_window_set(self, red, green, blue, label:str):
-        image = self.__file.rgb_image(red, green, blue)
+    def add_rgb_window_set(self, red:int, green:int, blue:int, label:str):
+        image = self.__image_tools.rgb_image(red, green, blue)
         self.__create_window_set(image, label)
 
-    def add_grey_window_set(self, index, label:str):
-        image = self.__file.greyscale_image(index)
+    def add_grey_window_set(self, index:int, label:str):
+        image = self.__image_tools.greyscale_image(index)
         self.__create_window_set(image, label)
-
-    def band(self, line:Union[int, tuple], sample:Union[int, tuple]) -> np.ndarray:
-        return self.__file.bands(line, sample)
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
@@ -190,7 +188,7 @@ class WindowSet(QObject):
         self.__image = image
         self.__label = label
 
-        self.__image_tools = OpenSpectraImageTools(self.__image, self.__label)
+        self.__histogram_tools = OpenSpectraHistogramTools(self.__image, self.__label)
         self.__band_tools = file_manager.band_tools()
 
         self.__init_image_window()
@@ -245,7 +243,7 @@ class WindowSet(QObject):
         self.__main_image_window = None
         self.__file_manager = None
         self.__band_tools = None
-        self.__image_tools = None
+        self.__histogram_tools = None
         self.__label = None
         self.__image = None
 
@@ -257,14 +255,26 @@ class WindowSet(QObject):
         self.__zoom_image_window.move(x + 50, y + 50)
         self.__zoom_image_window.show()
 
-        # TODO implement the RGB histogram screen
-        if isinstance(self.__image, GreyscaleImage):
-            self.__init_histogram(x, y)
+        self.__init_histogram(x, y)
 
     def __init_histogram(self, x:int, y:int):
-        raw_hist = self.__image_tools.raw_histogram()
-        image_hist = self.__image_tools.adjusted_histogram()
-        self.__histogram_window.create_plot_control(raw_hist, image_hist)
+        if isinstance(self.__image, GreyscaleImage):
+            raw_hist = self.__histogram_tools.raw_histogram()
+            image_hist = self.__histogram_tools.adjusted_histogram()
+            self.__histogram_window.create_plot_control(raw_hist, image_hist, Band.GREY)
+        elif isinstance(self.__image, RGBImage):
+            self.__histogram_window.create_plot_control(
+                self.__histogram_tools.raw_histogram(Band.RED),
+                self.__histogram_tools.adjusted_histogram(Band.RED), Band.RED)
+            self.__histogram_window.create_plot_control(
+                self.__histogram_tools.raw_histogram(Band.GREEN),
+                self.__histogram_tools.adjusted_histogram(Band.GREEN), Band.GREEN)
+            self.__histogram_window.create_plot_control(
+                self.__histogram_tools.raw_histogram(Band.BLUE),
+                self.__histogram_tools.adjusted_histogram(Band.BLUE), Band.BLUE)
+        else:
+            # TODO this shouldn't happen, throw something?
+            WindowSet.__LOG.error("Window set has unknown image type")
 
         # TODO need some sort of layout manager?
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
@@ -312,14 +322,15 @@ class WindowSet(QObject):
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
+        WindowSet.__LOG.debug("limit change event {0}, {1}", event.lower_limit(), event.upper_limit())
         updated:bool = False
         if event.has_upper_limit_change():
-            self.__image.set_high_cutoff(event.upper_limit())
+            self.__image.set_high_cutoff(event.upper_limit(), event.band())
             updated = True
             WindowSet.__LOG.debug("limit change event upper limit: {0}", event.upper_limit())
 
         if event.has_lower_limit_change():
-            self.__image.set_low_cutoff(event.lower_limit())
+            self.__image.set_low_cutoff(event.lower_limit(), event.band())
             updated = True
             WindowSet.__LOG.debug("Got limit change event lower limit: {0}", event.lower_limit())
 
@@ -333,8 +344,8 @@ class WindowSet(QObject):
 
             # TODO replotting the whole thing is bit inefficient?
             # TODO don't have the label here
-            image_hist = self.__image_tools.adjusted_histogram()
-            self.__histogram_window.set_adjusted_data(image_hist)
+            image_hist = self.__histogram_tools.adjusted_histogram(event.band())
+            self.__histogram_window.set_adjusted_data(image_hist, event.band())
         else:
             WindowSet.__LOG.warning("Got limit change event with no limits")
 
