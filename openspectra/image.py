@@ -264,15 +264,20 @@ class Image(ImageAdjuster):
     def bytes_per_line(self) -> int:
         pass
 
+    def label(self, band:Band) -> str:
+        pass
+
 
 class GreyscaleImage(Image, BandImageAdjuster):
     """An 8-bit 8-bit grayscale image"""
-    def __init__(self, band:np.ndarray):
+    def __init__(self, band:np.ndarray, label:str=None):
         super().__init__(band)
         self.__band = band
+        self.__label = label
 
     def __del__(self):
         super().__del__()
+        self.__label = None
         self.__band = None
 
     def adjusted_data(self) -> np.ndarray:
@@ -297,6 +302,10 @@ class GreyscaleImage(Image, BandImageAdjuster):
     def bytes_per_line(self) -> int:
         return self.image_data().shape[1]
 
+    def label(self, band:Band=None) -> str:
+        """band is ignored here if passed"""
+        return self.__label
+
 
 # TODO this is definately not thread safe
 class RGBImage(Image, RGBImageAdjuster):
@@ -308,12 +317,15 @@ class RGBImage(Image, RGBImageAdjuster):
     __RED_SHIFT = 256 * 256
     __GREEN_SHIFT = 256
 
-    def __init__(self, red: np.ndarray, green: np.ndarray, blue: np.ndarray):
+    def __init__(self, red:np.ndarray, green:np.ndarray, blue:np.ndarray,
+            red_label:str=None, green_label:str=None, blue_label:str=None):
         if not ((red.size == green.size == blue.size) and
                 (red.shape == green.shape == blue.shape)):
             raise ValueError("All bands must have the same size and shape")
 
         super().__init__(red, green, blue)
+        self.__labels = {Band.RED: red_label, Band.GREEN: green_label, Band.BLUE: blue_label}
+        self.__label = (red_label + " " + blue_label + " " + green_label).strip()
         self.__bands = {Band.RED: red, Band.GREEN: green, Band.BLUE: blue}
         self.__high_bytes = np.full(red.shape, RGBImage.__HIGH_BYTE, np.uint32)
 
@@ -331,6 +343,8 @@ class RGBImage(Image, RGBImageAdjuster):
         super().__del__()
         self.__image_data = None
         self.__high_bytes = None
+        self.__label = None
+        del self.__labels
         del self.__bands
 
     def adjust(self):
@@ -361,6 +375,12 @@ class RGBImage(Image, RGBImageAdjuster):
 
     def bytes_per_line(self) -> int:
         return self.__image_data.shape[1] * 4
+
+    def label(self, band:Band=None) -> str:
+        if band is None:
+            return self.__label
+        else:
+            return self.__labels[band]
 
     def __calculate_image(self):
         self.__image_data = self.__high_bytes + \

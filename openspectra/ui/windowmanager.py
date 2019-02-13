@@ -90,7 +90,7 @@ class WindowManager(QObject):
             file_set.add_grey_window_set(
                 parent_item.indexOfChild(item), item.text(0))
         else:
-            # TODO report or log somehow?
+            # TODO report or log?
             pass
 
     @pyqtSlot(RGBSelectedBands)
@@ -98,10 +98,9 @@ class WindowManager(QObject):
         file_name = bands.file_name()
         if file_name in self.__file_sets:
             file_set = self.__file_sets[file_name]
-            file_set.add_rgb_window_set(bands.red_index(), bands.green_index(),
-                bands.blue_index(), bands.label())
+            file_set.add_rgb_window_set(bands)
         else:
-            # TODO report or log somehow?
+            # TODO report or log?
             pass
 
 
@@ -135,13 +134,15 @@ class FileManager(QObject):
         self.__file = None
         self.__window_manager = None
 
-    def add_rgb_window_set(self, red:int, green:int, blue:int, label:str):
-        image = self.__image_tools.rgb_image(red, green, blue)
-        self.__create_window_set(image, label)
+    def add_rgb_window_set(self, bands:RGBSelectedBands):
+        image = self.__image_tools.rgb_image(
+            bands.red_index(), bands.green_index(), bands.blue_index(),
+            bands.red_label(), bands.green_label(), bands.blue_label())
+        self.__create_window_set(image)
 
     def add_grey_window_set(self, index:int, label:str):
-        image = self.__image_tools.greyscale_image(index)
-        self.__create_window_set(image, label)
+        image = self.__image_tools.greyscale_image(index, label)
+        self.__create_window_set(image)
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
@@ -152,8 +153,8 @@ class FileManager(QObject):
     def window_manager(self) -> WindowManager:
         return self.__window_manager
 
-    def __create_window_set(self, image:Image, label:str):
-        title = self.__file_name + ": " + label
+    def __create_window_set(self, image:Image):
+        title = self.__file_name + ": " + image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
 
@@ -182,13 +183,13 @@ class WindowSet(QObject):
 
     closed = pyqtSignal(QChildEvent)
 
-    def __init__(self, image:Image, label:str, file_manager:FileManager):
+    def __init__(self, image:Image, title:str, file_manager:FileManager):
         super().__init__()
         self.__file_manager = file_manager
         self.__image = image
-        self.__label = label
+        self.__title = title
 
-        self.__histogram_tools = OpenSpectraHistogramTools(self.__image, self.__label)
+        self.__histogram_tools = OpenSpectraHistogramTools(self.__image)
         self.__band_tools = file_manager.band_tools()
 
         self.__init_image_window()
@@ -196,14 +197,14 @@ class WindowSet(QObject):
 
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
-            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
+            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
-            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
+            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
         elif isinstance(self.__image, RGBImage):
-            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__label,
+            self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
-            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__label,
+            self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
@@ -244,7 +245,7 @@ class WindowSet(QObject):
         self.__file_manager = None
         self.__band_tools = None
         self.__histogram_tools = None
-        self.__label = None
+        self.__title = None
         self.__image = None
 
     def init_position(self, x:int, y:int):

@@ -163,21 +163,21 @@ class OpenSpectraImageTools:
     def __del__(self):
         self.__file = None
 
-    def greyscale_image(self, band:int) -> GreyscaleImage:
-        return GreyscaleImage(self.__file.raw_image(band))
+    def greyscale_image(self, band:int, label:str=None) -> GreyscaleImage:
+        return GreyscaleImage(self.__file.raw_image(band), label)
 
-    def rgb_image(self, red:int, green:int, blue:int) -> RGBImage:
+    def rgb_image(self, red:int, green:int, blue:int,
+            red_label:str=None, green_label:str=None, blue_label:str=None) -> RGBImage:
         # Access each band seperately so we get views of the data for efficiency
         return RGBImage(self.__file.raw_image(red), self.__file.raw_image(green),
-            self.__file.raw_image(blue))
+            self.__file.raw_image(blue), red_label, green_label, blue_label)
 
 
 class OpenSpectraHistogramTools:
     """A class for generating histogram data from Images"""
 
-    def __init__(self, image:Image, label:str):
+    def __init__(self, image:Image):
         self.__image = image
-        self.__label = label
         if isinstance(self.__image, GreyscaleImage):
             self.__type = "greyscale"
         elif isinstance(self.__image, RGBImage):
@@ -186,7 +186,6 @@ class OpenSpectraHistogramTools:
             raise TypeError("Unknown image type")
 
     def __del__(self):
-        self.__label = None
         self.__image = None
 
     def raw_histogram(self, band:Band=None) -> HistogramPlotData:
@@ -200,7 +199,7 @@ class OpenSpectraHistogramTools:
         plot_data = OpenSpectraHistogramTools.__get_hist_data(raw_data)
         plot_data.x_label = "X-FixMe"
         plot_data.y_label = "Y-FixMe"
-        plot_data.title = "Raw " + self.__label
+        plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
         plot_data.lower_limit = self.__image.low_cutoff(band)
         plot_data.upper_limit = self.__image.high_cutoff(band)
@@ -215,15 +214,9 @@ class OpenSpectraHistogramTools:
         plot_data = OpenSpectraHistogramTools.__get_hist_data(image_data)
         plot_data.x_label = "X-FixMe"
         plot_data.y_label = "Y-FixMe"
-        plot_data.title = "Adjusted " + self.__label
+        plot_data.title = "Adjusted " + self.__image.label(band)
         plot_data.color = "b"
         return plot_data
-
-    def label(self):
-        return self.__label
-
-    def set_label(self, label):
-        self.__label = label
 
     @staticmethod
     def __get_hist_data(data:np.ndarray) -> HistogramPlotData:
