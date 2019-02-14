@@ -8,7 +8,7 @@ from typing import Union
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QResizeEvent, QCloseEvent, QDoubleValidator, QFocusEvent, QKeyEvent
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, \
-    QLineEdit, QPushButton, QStackedLayout
+    QLineEdit, QPushButton, QStackedLayout, QRadioButton
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -550,22 +550,98 @@ class HistogramDisplayControl(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.__bands = dict()
-        # self.__layout = QStackedLayout()
-        self.__layout = QHBoxLayout()
+        self.__layout = QVBoxLayout()
+        self.__layout.setSpacing(1)
         self.__layout.setContentsMargins(1, 1, 1, 1)
+
+        self.__plot_layout = QStackedLayout()
+        # self.__layout = QHBoxLayout()
+        self.__plot_layout.setContentsMargins(1, 1, 1, 1)
+        self.__plot_layout.setSpacing(1)
+
+        self.__tab_widget = QWidget()
+        self.__tab_widget.setFixedHeight(20)
+        self.__tab_widget.hide()
+
+        self.__tab_layout = QHBoxLayout()
+        self.__tab_layout.setContentsMargins(1, 1, 1, 1)
+        self.__tab_layout.setAlignment(Qt.AlignLeft)
+        self.__tab_layout.addSpacing(10)
+
+        self.__red_button = QRadioButton("Red")
+        self.__red_button.setStyleSheet("QRadioButton {color: red}")
+        self.__red_button.toggled.connect(self.__handle_red_toggled)
+        self.__tab_layout.addWidget(self.__red_button)
+        self.__red_plot_index = None
+
+        self.__green_button = QRadioButton("Green")
+        self.__green_button.setStyleSheet("QRadioButton {color: green}")
+        self.__green_button.toggled.connect(self.__handle_green_toggled)
+        self.__tab_layout.addWidget(self.__green_button)
+        self.__green_plot_index = None
+
+        self.__blue_button = QRadioButton("Blue")
+        self.__blue_button.setStyleSheet("QRadioButton {color: blue}")
+        self.__blue_button.toggled.connect(self.__handle_blue_toggled)
+        self.__tab_layout.addWidget(self.__blue_button)
+        self.__tab_widget.setLayout(self.__tab_layout)
+        self.__blue_plot_index = None
+
+        self.__layout.addWidget(self.__tab_widget)
+        self.__layout.addLayout(self.__plot_layout)
         self.setLayout(self.__layout)
 
     def __del__(self):
         self.__bands = None
-        self.__layout = None
+        self.__plot_layout = None
 
+    def __wire_band(self, band:Band, plot:AdjustableHistogramControl):
+        set_checked:bool = False
+        if self.__plot_layout.count() == 1:
+            set_checked = True
+            self.__tab_widget.show()
+
+        if band == Band.RED:
+            self.__red_plot_index = self.__plot_layout.indexOf(plot)
+            self.__red_button.setChecked(self.__plot_layout.count() == 1)
+
+        if band == Band.GREEN:
+            self.__green_plot_index = self.__plot_layout.indexOf(plot)
+            self.__green_button.setChecked(self.__plot_layout.count() == 1)
+
+        if band == Band.BLUE:
+            self.__blue_plot_index = self.__plot_layout.indexOf(plot)
+            self.__blue_button.setChecked(self.__plot_layout.count() == 1)
+
+    @pyqtSlot(bool)
+    def __handle_red_toggled(self, checked:bool):
+        if checked:
+            HistogramDisplayControl.__LOG.debug("red toggle checked")
+            self.__plot_layout.setCurrentIndex(self.__red_plot_index)
+
+    @pyqtSlot(bool)
+    def __handle_green_toggled(self, checked:bool):
+        if checked:
+            HistogramDisplayControl.__LOG.debug("green toggle checked")
+            self.__plot_layout.setCurrentIndex(self.__green_plot_index)
+
+    @pyqtSlot(bool)
+    def __handle_blue_toggled(self, checked:bool):
+        if checked:
+            HistogramDisplayControl.__LOG.debug("blue toggle checked")
+            self.__plot_layout.setCurrentIndex(self.__blue_plot_index)
+
+    # TODO limit to 3, better yet 1 or 3? Tighten by band type?
     def add_plot(self, raw_data:HistogramPlotData, adjusted_data:HistogramPlotData, band:Band):
         plots = AdjustableHistogramControl(band)
         plots.set_raw_data(raw_data)
         plots.set_adjusted_data(adjusted_data)
         plots.limit_changed.connect(self.limit_changed)
         self.__bands[band] = plots
-        self.__layout.addWidget(plots)
+        self.__plot_layout.addWidget(plots)
+
+        if band == Band.RED or band == Band.GREEN or band == Band.BLUE:
+            self.__wire_band(band, plots)
 
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
         plots:AdjustableHistogramControl = self.__bands[band]
@@ -589,6 +665,10 @@ class HistogramDisplayWindow(QMainWindow):
         self.__histogram_control.limit_changed.connect(self.limit_changed)
         self.setCentralWidget(self.__histogram_control)
 
+        # TODO set size based on plot count and layout
+        # TODO Perhaps in HistogramDisplayControl with sizeHints, other?
+        # self.setFixedWidth(2400)
+
     def __del__(self):
         HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
         self.__histogram_control = None
@@ -598,3 +678,7 @@ class HistogramDisplayWindow(QMainWindow):
 
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
         self.__histogram_control.set_adjusted_data(data, band)
+
+    def resizeEvent(self, event:QResizeEvent):
+        HistogramDisplayWindow.__LOG.debug("resize to {0}", event.size())
+
