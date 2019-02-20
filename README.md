@@ -20,3 +20,7 @@ To run unit tests from the command line make sure your project is active and you
 ````
 python -m unittest discover -t . -s test/unit_tests -p "*_test.py"
 ````
+
+### Wiki links
+*  [Home page](https://gitlab.com/openspectradev/openspectradev/wikis/OpenSpectraDev-Wiki-Home)
+*  [Git Tips](https://gitlab.com/openspectradev/openspectradev/wikis/git/Git-Tips)
