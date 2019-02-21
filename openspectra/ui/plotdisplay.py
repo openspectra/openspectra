@@ -551,20 +551,21 @@ class HistogramDisplayControl(QWidget):
         HORIZONTAL = 1
         VERTICAL = 2
 
+    class DisplayType(Enum):
+        GREY_SCALE = 0
+        RBG = 1
+
     __LOG:Logger = LogHelper.logger("HistogramDisplayControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.__menu = None
         self.__bands = dict()
-        self.__plots = list()
 
+        # Use stacked layout as default
         self.__create_stacked_layout()
-
-        # TODO only set if RGB
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.__handle_custom_context_menu)
 
     def __create_horizontal_layout(self):
         self.__plot_layout = QHBoxLayout()
@@ -622,27 +623,31 @@ class HistogramDisplayControl(QWidget):
         self.setLayout(layout)
         self.__current_layout = HistogramDisplayControl.Layout.STACKED
 
-    def __del__(self):
-        del self.__bands
-        del self.__plots
-
-    def __handle_custom_context_menu(self, position:QPoint):
-        HistogramDisplayControl.__LOG.debug("__handle_custom_context_menu called position: {0}", position)
-        menu:QMenu = QMenu(self)
+    def __init_menu(self):
+        self.__menu:QMenu = QMenu(self)
 
         stacked_action = QAction("Stacked", self)
         stacked_action.triggered.connect(self.__handle_stacked_selected)
-        menu.addAction(stacked_action)
+        self.__menu.addAction(stacked_action)
 
         horizontal_action = QAction("Horizontal", self)
         horizontal_action.triggered.connect(self.__handle_horizontal_selected)
-        menu.addAction(horizontal_action)
+        self.__menu.addAction(horizontal_action)
 
         vertical_action = QAction("Vertical", self)
         vertical_action.triggered.connect(self.__handle_vertical_selected)
-        menu.addAction(vertical_action)
+        self.__menu.addAction(vertical_action)
 
-        menu.popup(self.mapToGlobal(position))
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.__handle_custom_context_menu)
+
+    def __del__(self):
+        self.__menu = None
+        del self.__bands
+
+    def __handle_custom_context_menu(self, position:QPoint):
+        HistogramDisplayControl.__LOG.debug("__handle_custom_context_menu called position: {0}", position)
+        self.__menu.popup(self.mapToGlobal(position))
 
     def __handle_stacked_selected(self):
         self.__swap_layout(HistogramDisplayControl.Layout.STACKED)
@@ -656,7 +661,7 @@ class HistogramDisplayControl(QWidget):
     def __swap_layout(self, new_layout:Layout):
         # The plot's will have had their parent set to the layout so first
         # we undo that so they won't get deleted when the layout does.
-        for plot in self.__plots:
+        for band, plot in self.__bands.items():
             plot.setParent(None)
 
         if self.__current_layout == HistogramDisplayControl.Layout.STACKED:
@@ -725,21 +730,27 @@ class HistogramDisplayControl(QWidget):
             HistogramDisplayControl.__LOG.debug("blue toggle checked")
             self.__plot_layout.setCurrentIndex(self.__blue_plot_index)
 
-    # TODO limit to 3, better yet 1 or 3? Tighten by band type?
     def add_plot(self, raw_data:HistogramPlotData, adjusted_data:HistogramPlotData, band:Band):
+        """Expects either one band with band of Band.GREY or three bands one each of
+        Band.RED, Band.GREEN, Band.BLUE.  If these conditions are not met the code will attempt
+        to be accommodating and won't throw and error but you might get strange results."""
         plots = AdjustableHistogramControl(band)
         plots.set_raw_data(raw_data)
         plots.set_adjusted_data(adjusted_data)
         plots.limit_changed.connect(self.limit_changed)
 
         self.__bands[band] = plots
-        self.__plots.append(plots)
         self.__plot_layout.addWidget(plots)
+
+        if self.__plot_layout.count() == 2:
+            self.__init_menu()
 
         if band == Band.RED or band == Band.GREEN or band == Band.BLUE:
             self.__wire_band(band, plots)
 
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
+        """Update the adjusted data for a Band that has already been added using
+        add_plot"""
         plots:AdjustableHistogramControl = self.__bands[band]
         if plots is not None:
             plots.set_adjusted_data(data)
