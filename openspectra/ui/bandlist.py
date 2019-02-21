@@ -18,9 +18,9 @@ class RGBSelectedBands(QObject):
         self.__red = red
         self.__green = green
         self.__blue = blue
-        self.__label = "R: " + self.__red.data().strip() + \
-                       ", G: " + self.__green.data().strip() + \
-                       ", B: " + self.__blue.data().strip()
+        self.__red_label = "R: " + self.__red.data().strip()
+        self.__green_label = "G: " + self.__green.data().strip()
+        self.__blue_label = "B: " + self.__blue.data().strip()
 
     def file_name(self) -> str:
         return self.__red.parent().data()
@@ -37,8 +37,14 @@ class RGBSelectedBands(QObject):
     def blue_index(self) -> int:
         return self.__blue.row()
 
-    def label(self):
-        return self.__label
+    def red_label(self):
+        return self.__red_label
+
+    def green_label(self):
+        return self.__green_label
+
+    def blue_label(self):
+        return self.__blue_label
 
 
 class TypeSelector(QWidget):

@@ -7,7 +7,7 @@ from typing import Union
 import numpy as np
 from numpy import ma
 
-from openspectra.image import Image
+from openspectra.image import Image, GreyscaleImage, RGBImage, Band
 from openspectra.openspectra_file import OpenSpectraFile
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
@@ -110,12 +110,15 @@ class BandStaticsPlotData():
 
 
 class OpenSpectraBandTools:
-    """A class for working on OS files"""
+    """A class for working on OpenSpectra files"""
 
     __LOG:Logger = LogHelper.logger("OpenSpectraBandTools")
 
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
+
+    def __del__(self):
+        self.__file = None
 
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
@@ -152,40 +155,68 @@ class OpenSpectraBandTools:
 
 
 class OpenSpectraImageTools:
+    """A class for creating Images from OpenSpectra files"""
 
-    def __init__(self, image:Image, label:str):
-        self.__image = image
-        self.__label = label
+    def __init__(self, file:OpenSpectraFile):
+        self.__file = file
 
     def __del__(self):
-        self.__label = None
+        self.__file = None
+
+    def greyscale_image(self, band:int, label:str=None) -> GreyscaleImage:
+        return GreyscaleImage(self.__file.raw_image(band), label)
+
+    def rgb_image(self, red:int, green:int, blue:int,
+            red_label:str=None, green_label:str=None, blue_label:str=None) -> RGBImage:
+        # Access each band seperately so we get views of the data for efficiency
+        return RGBImage(self.__file.raw_image(red), self.__file.raw_image(green),
+            self.__file.raw_image(blue), red_label, green_label, blue_label)
+
+
+class OpenSpectraHistogramTools:
+    """A class for generating histogram data from Images"""
+
+    def __init__(self, image:Image):
+        self.__image = image
+        if isinstance(self.__image, GreyscaleImage):
+            self.__type = "greyscale"
+        elif isinstance(self.__image, RGBImage):
+            self.__type = "rgb"
+        else:
+            raise TypeError("Unknown image type")
+
+    def __del__(self):
         self.__image = None
 
-    def raw_histogram(self) -> HistogramPlotData:
-        raw_data = self.__image.raw_data()
-        plot_data = OpenSpectraImageTools.__get_hist_data(raw_data)
+    def raw_histogram(self, band:Band=None) -> HistogramPlotData:
+        """If band is included and the image is Greyscale it is ignores
+        If image is RGB and band is missing an error is raised"""
+
+        if self.__type == "rgb" and band is None:
+            raise ValueError("band argument is required when image is RGB")
+
+        raw_data = self.__image.raw_data(band)
+        plot_data = OpenSpectraHistogramTools.__get_hist_data(raw_data)
         plot_data.x_label = "X-FixMe"
         plot_data.y_label = "Y-FixMe"
-        plot_data.title = "Raw " + self.__label
+        plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
-        plot_data.lower_limit = self.__image.low_cutoff()
-        plot_data.upper_limit = self.__image.high_cutoff()
+        plot_data.lower_limit = self.__image.low_cutoff(band)
+        plot_data.upper_limit = self.__image.high_cutoff(band)
         return plot_data
 
-    def adjusted_histogram(self) -> HistogramPlotData:
-        image_data = self.__image.image_data()
-        plot_data = OpenSpectraImageTools.__get_hist_data(image_data)
+    def adjusted_histogram(self, band:Band=None) -> HistogramPlotData:
+
+        if self.__type == "rgb" and band is None:
+            raise ValueError("band argument is required when image is RGB")
+
+        image_data = self.__image.image_data(band)
+        plot_data = OpenSpectraHistogramTools.__get_hist_data(image_data)
         plot_data.x_label = "X-FixMe"
         plot_data.y_label = "Y-FixMe"
-        plot_data.title = "Adjusted " + self.__label
+        plot_data.title = "Adjusted " + self.__image.label(band)
         plot_data.color = "b"
         return plot_data
-
-    def label(self):
-        return self.__label
-
-    def set_label(self, label):
-        self.__label = label
 
     @staticmethod
     def __get_hist_data(data:np.ndarray) -> HistogramPlotData:
