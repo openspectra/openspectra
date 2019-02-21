@@ -541,8 +541,8 @@ class AdjustableHistogramControl(QWidget):
         self.__upper_edit.set_value(self.__upper_limit_default)
 
     # TODO test only!!
-    def resizeEvent(self, event:QResizeEvent):
-        AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
+    # def resizeEvent(self, event:QResizeEvent):
+    #     AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
 
 class HistogramDisplayControl(QWidget):
 
@@ -558,6 +558,7 @@ class HistogramDisplayControl(QWidget):
     __LOG:Logger = LogHelper.logger("HistogramDisplayControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
+    layout_changed = pyqtSignal(Layout)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -693,6 +694,8 @@ class HistogramDisplayControl(QWidget):
                 # stacked layout hides plots not displayed so set them back
                 plot.show()
 
+        self.layout_changed.emit(new_layout)
+
     def __wire_band(self, band:Band, plot:AdjustableHistogramControl):
         if self.__current_layout == HistogramDisplayControl.Layout.STACKED:
             set_checked:bool = False
@@ -755,6 +758,10 @@ class HistogramDisplayControl(QWidget):
         if plots is not None:
             plots.set_adjusted_data(data)
 
+    # TODO test only!!
+    # def resizeEvent(self, event:QResizeEvent):
+    #     HistogramDisplayControl.__LOG.debug("resize to {0}", event.size())
+
 
 class HistogramDisplayWindow(QMainWindow):
 
@@ -770,15 +777,25 @@ class HistogramDisplayWindow(QMainWindow):
         self.setWindowTitle("Histogram")
         self.__histogram_control = HistogramDisplayControl()
         self.__histogram_control.limit_changed.connect(self.limit_changed)
+        self.__histogram_control.layout_changed.connect(self.__handle_layout_changed)
         self.setCentralWidget(self.__histogram_control)
-
-        # TODO set size based on plot count and layout
-        # TODO Perhaps in HistogramDisplayControl with sizeHints, other?
-        # self.setFixedWidth(2400)
 
     def __del__(self):
         HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
         self.__histogram_control = None
+
+    @pyqtSlot(HistogramDisplayControl.Layout)
+    def __handle_layout_changed(self, new_layout:HistogramDisplayControl.Layout):
+        # TODO need a more sensible to pick a size, maybe based on screen geo?
+        # TODO if user resizes keep a ratio and apply to base sizes below?
+        if new_layout == HistogramDisplayControl.Layout.STACKED:
+            self.resize(800, 400)
+
+        if new_layout == HistogramDisplayControl.Layout.HORIZONTAL:
+            self.resize(1300, 400)
+
+        if new_layout == HistogramDisplayControl.Layout.VERTICAL:
+            self.resize(800, 800)
 
     def create_plot_control(self, raw_data:HistogramPlotData, adjusted_data:HistogramPlotData, band:Band):
         self.__histogram_control.add_plot(raw_data, adjusted_data, band)
@@ -786,5 +803,6 @@ class HistogramDisplayWindow(QMainWindow):
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
         self.__histogram_control.set_adjusted_data(data, band)
 
-    def resizeEvent(self, event:QResizeEvent):
-        HistogramDisplayWindow.__LOG.debug("resize to {0}", event.size())
+    # TODO test only
+    # def resizeEvent(self, event:QResizeEvent):
+    #     HistogramDisplayWindow.__LOG.debug("resize to {0}", event.size())
