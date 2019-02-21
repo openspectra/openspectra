@@ -5,14 +5,14 @@
 from enum import Enum
 from typing import Union
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
+import matplotlib.lines as lines
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt, QPoint
 from PyQt5.QtGui import QResizeEvent, QCloseEvent, QDoubleValidator, QFocusEvent, QKeyEvent
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QHBoxLayout, QWidget, QVBoxLayout, QLabel, QFrame, \
-    QLineEdit, QPushButton, QStackedLayout, QRadioButton
+    QLineEdit, QPushButton, QStackedLayout, QRadioButton, QAction, QMenu
 from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.lines as lines
 
 from openspectra.image import Band
 from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
@@ -540,8 +540,16 @@ class AdjustableHistogramControl(QWidget):
         self.__upper_limit_default = event.upper_limit()
         self.__upper_edit.set_value(self.__upper_limit_default)
 
+    # TODO test only!!
+    def resizeEvent(self, event:QResizeEvent):
+        AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
 
 class HistogramDisplayControl(QWidget):
+
+    class Layout(Enum):
+        STACKED = 0
+        HORIZONTAL = 1
+        VERTICAL = 2
 
     __LOG:Logger = LogHelper.logger("HistogramDisplayControl")
 
@@ -550,12 +558,34 @@ class HistogramDisplayControl(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.__bands = dict()
-        self.__layout = QVBoxLayout()
-        self.__layout.setSpacing(1)
-        self.__layout.setContentsMargins(1, 1, 1, 1)
+        self.__plots = list()
+
+        self.__create_stacked_layout()
+
+        # TODO only set if RGB
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.__handle_custom_context_menu)
+
+    def __create_horizontal_layout(self):
+        self.__plot_layout = QHBoxLayout()
+        self.__plot_layout.setSpacing(1)
+        self.__plot_layout.setContentsMargins(1, 1, 1, 1)
+        self.setLayout(self.__plot_layout)
+        self.__current_layout = HistogramDisplayControl.Layout.HORIZONTAL
+
+    def __create_vertical_layout(self):
+        self.__plot_layout = QVBoxLayout()
+        self.__plot_layout.setSpacing(1)
+        self.__plot_layout.setContentsMargins(1, 1, 1, 1)
+        self.setLayout(self.__plot_layout)
+        self.__current_layout = HistogramDisplayControl.Layout.VERTICAL
+
+    def __create_stacked_layout(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(1)
+        layout.setContentsMargins(1, 1, 1, 1)
 
         self.__plot_layout = QStackedLayout()
-        # self.__layout = QHBoxLayout()
         self.__plot_layout.setContentsMargins(1, 1, 1, 1)
         self.__plot_layout.setSpacing(1)
 
@@ -587,31 +617,95 @@ class HistogramDisplayControl(QWidget):
         self.__tab_widget.setLayout(self.__tab_layout)
         self.__blue_plot_index = None
 
-        self.__layout.addWidget(self.__tab_widget)
-        self.__layout.addLayout(self.__plot_layout)
-        self.setLayout(self.__layout)
+        layout.addWidget(self.__tab_widget)
+        layout.addLayout(self.__plot_layout)
+        self.setLayout(layout)
+        self.__current_layout = HistogramDisplayControl.Layout.STACKED
 
     def __del__(self):
-        self.__bands = None
-        self.__plot_layout = None
+        del self.__bands
+        del self.__plots
+
+    def __handle_custom_context_menu(self, position:QPoint):
+        HistogramDisplayControl.__LOG.debug("__handle_custom_context_menu called position: {0}", position)
+        menu:QMenu = QMenu(self)
+
+        stacked_action = QAction("Stacked", self)
+        stacked_action.triggered.connect(self.__handle_stacked_selected)
+        menu.addAction(stacked_action)
+
+        horizontal_action = QAction("Horizontal", self)
+        horizontal_action.triggered.connect(self.__handle_horizontal_selected)
+        menu.addAction(horizontal_action)
+
+        vertical_action = QAction("Vertical", self)
+        vertical_action.triggered.connect(self.__handle_vertical_selected)
+        menu.addAction(vertical_action)
+
+        menu.popup(self.mapToGlobal(position))
+
+    def __handle_stacked_selected(self):
+        self.__swap_layout(HistogramDisplayControl.Layout.STACKED)
+
+    def __handle_horizontal_selected(self):
+        self.__swap_layout(HistogramDisplayControl.Layout.HORIZONTAL)
+
+    def __handle_vertical_selected(self):
+        self.__swap_layout(HistogramDisplayControl.Layout.VERTICAL)
+
+    def __swap_layout(self, new_layout:Layout):
+        # The plot's will have had their parent set to the layout so first
+        # we undo that so they won't get deleted when the layout does.
+        for plot in self.__plots:
+            plot.setParent(None)
+
+        if self.__current_layout == HistogramDisplayControl.Layout.STACKED:
+            self.__red_button.setParent(None)
+            self.__green_button.setParent(None)
+            self.__blue_button.setParent(None)
+            self.__tab_widget.setParent(None)
+
+        # Per Qt docs we need to delete the current layout before we can set a new one
+        # And it turns out we can't delete the layout until we reassign it to another widget
+        # who becomes it's parent, then we delete the parent.
+        tmp = QWidget()
+        tmp.setLayout(self.layout())
+        del tmp
+
+        if new_layout == HistogramDisplayControl.Layout.STACKED:
+            self.__create_stacked_layout()
+
+        if new_layout == HistogramDisplayControl.Layout.HORIZONTAL:
+            self.__create_horizontal_layout()
+
+        if new_layout == HistogramDisplayControl.Layout.VERTICAL:
+            self.__create_vertical_layout()
+
+        for band, plot in self.__bands.items():
+            self.__plot_layout.addWidget(plot)
+            self.__wire_band(band, plot)
+            if new_layout != HistogramDisplayControl.Layout.STACKED:
+                # stacked layout hides plots not displayed so set them back
+                plot.show()
 
     def __wire_band(self, band:Band, plot:AdjustableHistogramControl):
-        set_checked:bool = False
-        if self.__plot_layout.count() == 1:
-            set_checked = True
-            self.__tab_widget.show()
+        if self.__current_layout == HistogramDisplayControl.Layout.STACKED:
+            set_checked:bool = False
+            if self.__plot_layout.count() == 1:
+                set_checked = True
+                self.__tab_widget.show()
 
-        if band == Band.RED:
-            self.__red_plot_index = self.__plot_layout.indexOf(plot)
-            self.__red_button.setChecked(self.__plot_layout.count() == 1)
+            if band == Band.RED:
+                self.__red_plot_index = self.__plot_layout.indexOf(plot)
+                self.__red_button.setChecked(set_checked)
 
-        if band == Band.GREEN:
-            self.__green_plot_index = self.__plot_layout.indexOf(plot)
-            self.__green_button.setChecked(self.__plot_layout.count() == 1)
+            if band == Band.GREEN:
+                self.__green_plot_index = self.__plot_layout.indexOf(plot)
+                self.__green_button.setChecked(set_checked)
 
-        if band == Band.BLUE:
-            self.__blue_plot_index = self.__plot_layout.indexOf(plot)
-            self.__blue_button.setChecked(self.__plot_layout.count() == 1)
+            if band == Band.BLUE:
+                self.__blue_plot_index = self.__plot_layout.indexOf(plot)
+                self.__blue_button.setChecked(set_checked)
 
     @pyqtSlot(bool)
     def __handle_red_toggled(self, checked:bool):
@@ -637,7 +731,9 @@ class HistogramDisplayControl(QWidget):
         plots.set_raw_data(raw_data)
         plots.set_adjusted_data(adjusted_data)
         plots.limit_changed.connect(self.limit_changed)
+
         self.__bands[band] = plots
+        self.__plots.append(plots)
         self.__plot_layout.addWidget(plots)
 
         if band == Band.RED or band == Band.GREEN or band == Band.BLUE:
@@ -681,4 +777,3 @@ class HistogramDisplayWindow(QMainWindow):
 
     def resizeEvent(self, event:QResizeEvent):
         HistogramDisplayWindow.__LOG.debug("resize to {0}", event.size())
-
