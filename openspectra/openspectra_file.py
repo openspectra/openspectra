@@ -80,10 +80,22 @@ class OpenSpectraHeader:
         else:
             raise OpenSpectraHeaderError("File {0} not found".format(self.__path.name))
 
-    def band_labels(self):
+    def band_label(self, band:int) -> tuple:
+        """Returns a tuple where that contains two strings,
+        the band name and wavelength """
+        return self.__band_labels[band]
+
+    def band_labels(self) -> list:
+        """Returns a list of tuples where each tuple is contains two strings,
+        the band name and wavelength """
         return self.__band_labels
 
-    def band_names(self):
+    def band_name(self, band:int) -> str:
+        """Returns the band name for the given band index"""
+        return self.__props.get(OpenSpectraHeader.__BAND_NAMES)[band]
+
+    def band_names(self) -> list:
+        """Returns a list of strings of the band names"""
         return self.__props.get(OpenSpectraHeader.__BAND_NAMES)
 
     def data_type(self):
@@ -538,7 +550,7 @@ class OpenSpectraFileFactory:
             return OpenSpectraFile(header, file_delegate, memory_model)
 
         else:
-            raise OpenSpectraFileError("File {0} not found".format(path.name))
+            raise OpenSpectraFileError("File {0} not found".format(path))
 
 
 def create_open_spectra_file(file_name) -> OpenSpectraFile:
