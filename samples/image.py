@@ -48,6 +48,13 @@ def image_sample():
     # you can get from the os_file
     os_header:OpenSpectraHeader = os_file.header()
 
+    # You can get the dimensions of the raw data by looking at it's shape
+    # Image data arrays will be 2 dimensional
+    print("shape of raw image is {0}".format(raw_image.shape))
+    # And those dimensions should correspond to the "lines" and "samples"
+    # specified in the header
+    print("header lines {0}, samples {1}".format(os_header.lines(), os_header.samples()))
+
     # The header will give you the total number of bands.  So the maximum
     # valid index that can be used to retrieve raw_data or an image (see below)
     # is band_count - 1
