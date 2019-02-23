@@ -322,10 +322,15 @@ class RGBImage(Image, RGBImageAdjuster):
         if not ((red.size == green.size == blue.size) and
                 (red.shape == green.shape == blue.shape)):
             raise ValueError("All bands must have the same size and shape")
-
         super().__init__(red, green, blue)
+
         self.__labels = {Band.RED: red_label, Band.GREEN: green_label, Band.BLUE: blue_label}
-        self.__label = (red_label + " " + blue_label + " " + green_label).strip()
+        self.__label:str = ""
+        if red_label is not None: self.__label += red_label + " "
+        if green_label is not None: self.__label += green_label + " "
+        if blue_label is not None: self.__label += blue_label
+        if self.__label is not None: self.__label = self.__label.strip()
+
         self.__bands = {Band.RED: red, Band.GREEN: green, Band.BLUE: blue}
         self.__high_bytes = np.full(red.shape, RGBImage.__HIGH_BYTE, np.uint32)
 
