@@ -454,28 +454,35 @@ class ImageLabel(QLabel):
 
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
-            x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
-            ImageLabel.__LOG.debug("Selected coords: {0}, {1}, {2}, {3}", x1, y1, x2, y2)
+            if self.__polygon_bounds.size().height() > 1 and \
+               self.__polygon_bounds.size().width() > 1:
 
-            # create an array of contained by the bounding rectangle
-            x_range = ma.arange(x1, x2 + 1)
-            y_range = ma.arange(y1, y2 + 1)
-            points = ma.array(list(itertools.product(x_range, y_range)))
+                x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
+                ImageLabel.__LOG.debug("Selected coords: {0}, {1}, {2}, {3}, size: {4}",
+                    x1, y1, x2, y2, self.__polygon_bounds.size())
 
-            # check to see which points also fall inside of the polygon
-            for i in range(len(points)):
-                if not self.__polygon.containsPoint(QPoint(points[i][0], points[i][1]), Qt.WindingFill):
-                    points[i] = ma.masked
+                # create an array of pixel locations contained by the bounding rectangle
+                x_range = ma.arange(x1, x2 + 1)
+                y_range = ma.arange(y1, y2 + 1)
+                points = ma.array(list(itertools.product(x_range, y_range)))
 
-            # split the points back into x and y values
-            x = points[:, 0]
-            y = points[:, 1]
+                # check to see which points also fall inside of the polygon
+                for i in range(len(points)):
+                    if not self.__polygon.containsPoint(QPoint(points[i][0], points[i][1]), Qt.WindingFill):
+                        points[i] = ma.masked
 
-            # take only the points that were inside the polygon
-            x = x[~x.mask]
-            y = y[~y.mask]
-            self.area_selected.emit(AdjustedAreaSelectedEvent(
-                x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
+                # split the points back into x and y values
+                x = points[:, 0]
+                y = points[:, 1]
+
+                # take only the points that were inside the polygon
+                x = x[~x.mask]
+                y = y[~y.mask]
+                self.area_selected.emit(AdjustedAreaSelectedEvent(
+                    x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
+            else:
+                ImageLabel.__LOG.debug("Zero dimension polygon rejected, size: {0}", self.__polygon_bounds.size())
+                self.clear_selected_area()
 
     def __pressed(self):
         # ImageLabel.__LOG.debug("press called, last_mouse_loc: {0}", self.__last_mouse_loc)
