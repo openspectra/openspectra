@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import QTreeWidgetItem
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
-from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AdjustedAreaSelectedEvent, \
+from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools
@@ -351,12 +351,12 @@ class WindowSet(QObject):
             WindowSet.__LOG.warning("Got limit change event with no limits")
 
 
-    @pyqtSlot(AdjustedAreaSelectedEvent)
-    def __handle_area_selected(self, event:AdjustedAreaSelectedEvent):
+    @pyqtSlot(AreaSelectedEvent)
+    def __handle_area_selected(self, event:AreaSelectedEvent):
         self.__band_stats_window.clear()
 
-        lines = event.y_points()
-        samples = event.x_points()
+        lines = event.area().adjusted_y_points()
+        samples = event.area().adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         # TODO bug here when image window has been resized, need adjusted coords

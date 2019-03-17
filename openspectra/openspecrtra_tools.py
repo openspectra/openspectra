@@ -1,7 +1,7 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-
+import time
 from typing import Union
 
 import numpy as np
@@ -12,7 +12,47 @@ from openspectra.openspectra_file import OpenSpectraFile
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
+class RegionOfInterest:
+
+    def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
+            image_height:int, image_width:int):
+        self.__id = str(time.time_ns())
+        self.__area = area
+        self.__x_scale = x_scale
+        self.__y_scale = y_scale
+        self.__image_height = image_height
+        self.__image_width = image_width
+
+        # split the points back into x and y values
+        self.__x_points = self.__area[:, 0]
+        self.__y_points = self.__area[:, 1]
+
+        # take only the points that were inside the polygon
+        self.__x_points = self.__x_points[~self.__x_points.mask]
+        self.__y_points = self.__y_points[~self.__y_points.mask]
+
+        # calculate the points in the region if the image is scaled
+        self.__adjusted_x_points = np.floor(self.__x_points * x_scale).astype(np.int16)
+        self.__adjusted_y_points = np.floor(self.__y_points * y_scale).astype(np.int16)
+
+    def id(self) -> str:
+        return self.__id
+
+    def x_points(self) -> np.ndarray:
+        return self.__x_points
+
+    def y_points(self) -> np.ndarray:
+        return self.__y_points
+
+    def adjusted_x_points(self) -> np.ndarray:
+        return self.__adjusted_x_points
+
+    def adjusted_y_points(self) -> np.ndarray:
+        return self.__adjusted_y_points
+
+
 class PlotData:
+
     def __init__(self, x_data:np.ndarray, y_data:np.ndarray,
             x_label:str=None, y_label:str=None, title:str=None, color:str= "b",
             line_style:str= "-", legend:str=None):

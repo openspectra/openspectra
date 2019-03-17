@@ -11,12 +11,28 @@ from numpy import ma
 
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
-    QPolygon, QCursor
+    QPolygon, QCursor, QColor
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
 
+from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.image import Image
 from openspectra.utils import LogHelper, Logger
+
+
+class ColorPicker:
+
+    def __init__(self):
+        self.__colors = [Qt.red, Qt.green, Qt.blue, Qt.cyan, Qt.yellow,
+            Qt.magenta, Qt.gray, Qt.darkRed, Qt.darkGreen, Qt.darkBlue,
+            Qt.darkCyan, Qt.darkMagenta, Qt.darkYellow, Qt.darkGray,
+            Qt.lightGray]
+        self.__index = 0
+
+    def color(self) -> QColor:
+        color = self.__colors[self.__index]
+        self.__index += 1
+        return color
 
 
 class AdjustedMouseEvent(QObject):
@@ -41,19 +57,18 @@ class AdjustedMouseEvent(QObject):
         return self.__pixel_pos
 
 
-class AdjustedAreaSelectedEvent(QObject):
+class AreaSelectedEvent(QObject):
 
-    def __init__(self, x_points:np.ndarray,  x_scale:float,
-            y_points:np.ndarray, y_scale:float):
+    def __init__(self, area:RegionOfInterest, color:QColor):
         super().__init__(None)
-        self.__x_points = np.floor(x_points * x_scale).astype(np.int16)
-        self.__y_points = np.floor(y_points * y_scale).astype(np.int16)
+        self.__area = area
+        self.__color = color
 
-    def x_points(self) -> np.ndarray:
-        return self.__x_points
+    def area(self) -> RegionOfInterest:
+        return self.__area
 
-    def y_points(self) -> np.ndarray:
-        return self.__y_points
+    def color(self) -> QColor:
+        return  self.__color
 
 
 class ImageResizeEvent(QObject):
@@ -186,7 +201,7 @@ class ImageLabel(QLabel):
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     double_clicked = pyqtSignal(AdjustedMouseEvent)
@@ -215,6 +230,8 @@ class ImageLabel(QLabel):
 
         self.__dragging = False
 
+        self.__regions = dict()
+        self.__color_picker = ColorPicker()
         self.__polygon:QPolygon = None
         self.__polygon_bounds:QRect = None
         self.__drawing = False
@@ -223,6 +240,9 @@ class ImageLabel(QLabel):
 
     def __del__(self):
         ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
+        del self.__regions
+        self.__regions = None
+        self.__color_picker = None
         self.__polygon_bounds = None
         self.__polygon = None
 
@@ -400,8 +420,12 @@ class ImageLabel(QLabel):
         super().paintEvent(qPaintEvent)
         # TODO not sure why but these seem to need to be created here each time
         painter = QPainter(self)
-        painter.setPen(Qt.red)
 
+        for region_pair in self.__regions.values():
+            painter.setPen(region_pair[1])
+            painter.drawPoints(region_pair[0])
+
+        painter.setPen(Qt.red)
         if self.__rect is not None:
             painter.drawRect(self.__rect)
 
@@ -443,7 +467,7 @@ class ImageLabel(QLabel):
         return new_point
 
     def __unscale_size(self, size:QSize) -> QSize:
-        new_size: QSize = QSize(size)
+        new_size:QSize = QSize(size)
         if self.__width_scale_factor != 1.0:
             new_size.setWidth(floor(new_size.width() / self.__width_scale_factor))
 
@@ -466,20 +490,24 @@ class ImageLabel(QLabel):
                 y_range = ma.arange(y1, y2 + 1)
                 points = ma.array(list(itertools.product(x_range, y_range)))
 
+                ImageLabel.__LOG.debug("Points: {0}", points)
+
                 # check to see which points also fall inside of the polygon
+                new_polygon = QPolygon()
                 for i in range(len(points)):
-                    if not self.__polygon.containsPoint(QPoint(points[i][0], points[i][1]), Qt.WindingFill):
+                    point = QPoint(points[i][0], points[i][1])
+                    if not self.__polygon.containsPoint(point, Qt.WindingFill):
                         points[i] = ma.masked
+                    else:
+                        new_polygon << point
 
-                # split the points back into x and y values
-                x = points[:, 0]
-                y = points[:, 1]
+                # capture the region of interest and save to the map
+                region_of_interest = RegionOfInterest(points, self.__width_scale_factor, self.__height_scale_factor,
+                    self.__initial_size.height(), self.__initial_size.width())
+                color = self.__color_picker.color()
+                self.__regions[region_of_interest.id()] = (new_polygon, color)
 
-                # take only the points that were inside the polygon
-                x = x[~x.mask]
-                y = y[~y.mask]
-                self.area_selected.emit(AdjustedAreaSelectedEvent(
-                    x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
+                self.area_selected.emit(AreaSelectedEvent(region_of_interest, color))
             else:
                 ImageLabel.__LOG.debug("Zero dimension polygon rejected, size: {0}", self.__polygon_bounds.size())
                 self.clear_selected_area()
@@ -536,7 +564,7 @@ class ImageDisplay(QScrollArea):
 
     __LOG:Logger = LogHelper.logger("ImageDisplay")
 
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
@@ -814,7 +842,7 @@ class ImageDisplayWindow(QMainWindow):
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, parent=None):
