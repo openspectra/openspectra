@@ -415,16 +415,18 @@ class ImageLabel(QLabel):
     #         self.__clickEvent = None
     #     return False
 
-    def paintEvent(self, qPaintEvent:QPaintEvent):
+    def paintEvent(self, paint_event:QPaintEvent):
         # first render the image
-        super().paintEvent(qPaintEvent)
-        # TODO not sure why but these seem to need to be created here each time
+        super().paintEvent(paint_event)
+        # not sure why but it seems we need to create the painter each time
         painter = QPainter(self)
 
+        # paint the selected regions
         for region_pair in self.__regions.values():
             painter.setPen(region_pair[1])
             painter.drawPoints(region_pair[0])
 
+        # TODO current selector is always red?  next color?
         painter.setPen(Qt.red)
         if self.__rect is not None:
             painter.drawRect(self.__rect)
@@ -432,7 +434,7 @@ class ImageLabel(QLabel):
         if self.__polygon is not None:
             painter.drawPoints(self.__polygon)
 
-            # TODO not sure this is how we want to go but interesting
+            # TODO probabaly don't need, only for debgging?
             self.__polygon_bounds = self.__polygon.boundingRect()
             painter.drawRect(self.__polygon_bounds)
 
@@ -482,15 +484,25 @@ class ImageLabel(QLabel):
                self.__polygon_bounds.size().width() > 1:
 
                 x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
-                ImageLabel.__LOG.debug("Selected coords: {0}, {1}, {2}, {3}, size: {4}",
+                ImageLabel.__LOG.debug("Selected coords, x1: {0}, y1: {1}, x2: {2}, y2: {3}, size: {4}",
                     x1, y1, x2, y2, self.__polygon_bounds.size())
 
-                # create an array of pixel locations contained by the bounding rectangle
+                # can get negative x1 & y1 if user drags off image to the left or top
+                if x1 < 0 : x1 = 0
+                if y1 < 0 : y1 = 0
+
+                # testing showed lower and right edges seemed to clip at the
+                # correct last pixels but make sure that doesn't change
+                image_size = self.pixmap().size()
+                ImageLabel.__LOG.debug("Image w: {0}, h: {1}", image_size.width(), image_size.height())
+                if x2 > image_size.width() - 1 : x2 = image_size.width() - 1
+                if y2 > image_size.height() - 1 : y2 = image_size.height() - 1
+
+                # create an array of pixel locations contained by the
+                # adjusted bounding rectangle coordinates
                 x_range = ma.arange(x1, x2 + 1)
                 y_range = ma.arange(y1, y2 + 1)
                 points = ma.array(list(itertools.product(x_range, y_range)))
-
-                ImageLabel.__LOG.debug("Points: {0}", points)
 
                 # check to see which points also fall inside of the polygon
                 new_polygon = QPolygon()
@@ -498,16 +510,26 @@ class ImageLabel(QLabel):
                     point = QPoint(points[i][0], points[i][1])
                     if not self.__polygon.containsPoint(point, Qt.WindingFill):
                         points[i] = ma.masked
+                        # ImageLabel.__LOG.debug("Point out: {0}", point)
                     else:
                         new_polygon << point
+                        # ImageLabel.__LOG.debug("Point in: {0}", point)
 
-                # capture the region of interest and save to the map
-                region_of_interest = RegionOfInterest(points, self.__width_scale_factor, self.__height_scale_factor,
-                    self.__initial_size.height(), self.__initial_size.width())
-                color = self.__color_picker.color()
-                self.__regions[region_of_interest.id()] = (new_polygon, color)
+                ImageLabel.__LOG.debug("Points size: {0}, count: {1}", points.size, points.count())
 
-                self.area_selected.emit(AreaSelectedEvent(region_of_interest, color))
+                # make sure we haven't masked all the elements
+                if points.count() > 0:
+                    # capture the region of interest and save to the map
+                    region_of_interest = RegionOfInterest(points,
+                        1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
+                        self.__initial_size.height(), self.__initial_size.width())
+                    color = self.__color_picker.color()
+                    self.__regions[region_of_interest.id()] = (new_polygon, color)
+
+                    self.area_selected.emit(AreaSelectedEvent(region_of_interest, color))
+                else:
+                    ImageLabel.__LOG.debug("No points found in region, size: {0}", self.__polygon_bounds.size())
+                    self.clear_selected_area()
             else:
                 ImageLabel.__LOG.debug("Zero dimension polygon rejected, size: {0}", self.__polygon_bounds.size())
                 self.clear_selected_area()

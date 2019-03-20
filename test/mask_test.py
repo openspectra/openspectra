@@ -26,6 +26,10 @@ if __name__ == "__main__":
 
     data_masked = np.ma.masked_where(full_mask, data)
     print("data_masked: ", data_masked)
+    # size gives total number of elements in the array ignoring masking
+    print("data_masked size: ", data_masked.size)
+    # count() gives number of unmasked elements
+    print("data_masked count: ", data_masked.count())
 
     data_masked = data_masked * 3
     print(data_masked)

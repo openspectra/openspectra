@@ -17,6 +17,7 @@ class RegionOfInterest:
     def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
             image_height:int, image_width:int):
         self.__id = str(time.time_ns())
+        self.__name = self.__id
         self.__area = area
         self.__x_scale = x_scale
         self.__y_scale = y_scale
@@ -49,6 +50,18 @@ class RegionOfInterest:
 
     def adjusted_y_points(self) -> np.ndarray:
         return self.__adjusted_y_points
+
+    def image_height(self) -> int:
+        return self.__image_height
+
+    def image_width(self) -> int:
+        return self.__image_width
+
+    def name(self) -> str:
+        return self.__name
+
+    def set_name(self, name:str):
+        self.__name = name
 
 
 class PlotData:

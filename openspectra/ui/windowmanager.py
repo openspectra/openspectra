@@ -2,10 +2,7 @@
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
 
-from typing import Union
 import logging
-
-import numpy as np
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage
@@ -19,6 +16,7 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools
 from openspectra.utils import LogHelper, Logger
+from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow
 
 
 class WindowManager(QObject):
@@ -195,6 +193,9 @@ class WindowSet(QObject):
         self.__init_image_window()
         self.__init_plot_windows()
 
+        # TODO this might need to be shared among all WindowSets
+        self.__roi_window = RegionOfInterestDisplayWindow()
+
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
@@ -258,6 +259,8 @@ class WindowSet(QObject):
 
         self.__init_histogram(x, y)
 
+        self.__roi_window.move(x + 150, y)
+
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
             raw_hist = self.__histogram_tools.raw_histogram()
@@ -319,6 +322,9 @@ class WindowSet(QObject):
         self.__spec_plot_window.close()
         self.__spec_plot_window = None
 
+        self.__roi_window.close()
+        self.__roi_window = None
+
         self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
 
     @pyqtSlot(LimitChangeEvent)
@@ -350,13 +356,17 @@ class WindowSet(QObject):
         else:
             WindowSet.__LOG.warning("Got limit change event with no limits")
 
-
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
         self.__band_stats_window.clear()
 
-        lines = event.area().adjusted_y_points()
-        samples = event.area().adjusted_x_points()
+        region = event.area()
+        self.__roi_window.add_item(region, event.color())
+        if not self.__roi_window.isVisible():
+            self.__roi_window.show()
+
+        lines = region.adjusted_y_points()
+        samples = region.adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         # TODO bug here when image window has been resized, need adjusted coords

@@ -544,6 +544,7 @@ class AdjustableHistogramControl(QWidget):
     # def resizeEvent(self, event:QResizeEvent):
     #     AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
 
+
 class HistogramDisplayControl(QWidget):
 
     class Layout(Enum):
