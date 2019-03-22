@@ -6,17 +6,15 @@ import itertools
 from enum import Enum
 from math import floor
 
-import numpy as np
-from numpy import ma
-
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
     QPolygon, QCursor, QColor
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
+from numpy import ma
 
-from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.image import Image
+from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.utils import LogHelper, Logger
 
 
@@ -208,9 +206,10 @@ class ImageLabel(QLabel):
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, location_rect:bool=True, parent=None):
+    def __init__(self, label:str, location_rect:bool=True, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
+        self.__label = label
 
         self.__last_mouse_loc:QPoint = None
         self.__initial_size:QSize = None
@@ -522,7 +521,7 @@ class ImageLabel(QLabel):
                     # capture the region of interest and save to the map
                     region_of_interest = RegionOfInterest(points,
                         1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
-                        self.__initial_size.height(), self.__initial_size.width())
+                        self.__initial_size.height(), self.__initial_size.width(), self.__label)
                     color = self.__color_picker.color()
                     self.__regions[region_of_interest.id()] = (new_polygon, color)
 
@@ -595,7 +594,7 @@ class ImageDisplay(QScrollArea):
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
+    def __init__(self, image:Image, label:str, qimage_format:QImage.Format=QImage.Format_Grayscale8,
             location_rect:bool=True, parent=None):
         super().__init__(parent)
 
@@ -607,7 +606,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(location_rect, self)
+        self.__image_label = ImageLabel(label, location_rect, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -866,13 +865,14 @@ class ImageDisplayWindow(QMainWindow):
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
     area_selected = pyqtSignal(AreaSelectedEvent)
 
-    def __init__(self, image:Image, label, qimage_format:QImage.Format,
+    def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, parent=None):
         super().__init__(parent)
         # TODO do we need to hold the data itself?
         self.__image = image
-        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
-        self.__init_ui(label)
+        self.__image_label = label
+        self._image_display = ImageDisplay(self.__image, self.__image_label, qimage_format, location_rect, self)
+        self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()
         self._margin_height = self._image_display.margin_height()
@@ -890,8 +890,8 @@ class ImageDisplayWindow(QMainWindow):
         self._screen_geometry = screen_geometry
         ImageDisplayWindow.__LOG.debug("screen geometry: {0}", self._screen_geometry)
 
-    def __init_ui(self, label):
-        self.setWindowTitle(label)
+    def __init_ui(self):
+        self.setWindowTitle(self.__image_label)
 
         self.setCentralWidget(self._image_display)
         self._image_display.setAlignment(Qt.AlignHCenter)
@@ -920,11 +920,14 @@ class ImageDisplayWindow(QMainWindow):
         self._margin_width = None
         self._frame_width = None
         self._scroll_bar_width = None
-
+        self.__image_label = None
         self._image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?
         self._screen_geometry = None
+
+    def image_label(self) -> str:
+        return self.__image_label
 
     @pyqtSlot()
     def handle_stats_closed(self):

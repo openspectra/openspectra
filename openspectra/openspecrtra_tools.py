@@ -15,7 +15,7 @@ from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logge
 class RegionOfInterest:
 
     def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
-            image_height:int, image_width:int):
+            image_height:int, image_width:int, image_name:str):
         self.__id = str(time.time_ns())
         self.__name = self.__id
         self.__area = area
@@ -23,6 +23,7 @@ class RegionOfInterest:
         self.__y_scale = y_scale
         self.__image_height = image_height
         self.__image_width = image_width
+        self.__image_name = image_name
 
         # split the points back into x and y values
         self.__x_points = self.__area[:, 0]
@@ -56,6 +57,9 @@ class RegionOfInterest:
 
     def image_width(self) -> int:
         return self.__image_width
+
+    def image_name(self) -> str:
+        return self.__image_name
 
     def name(self) -> str:
         return self.__name
