@@ -5,18 +5,58 @@
 import logging
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent
-from PyQt5.QtGui import QGuiApplication, QScreen, QImage
+from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
 from PyQt5.QtWidgets import QTreeWidgetItem
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow
+    ZoomImageDisplayWindow, ImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
-from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools
+from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
+    RegionOfInterest
 from openspectra.utils import LogHelper, Logger
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow
+
+
+class RegionSet:
+
+    def __init__(self, region:RegionOfInterest, main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
+        self.__region = region
+        self.__main_window = main_window
+        self.__zoom_window = zoom_window
+
+    def region(self) -> RegionOfInterest:
+        return self.__region
+
+    def main_window(self) -> ImageDisplayWindow:
+        return self.__main_window
+
+    def zoom_window(self) -> ImageDisplayWindow:
+        return self.__zoom_window
+
+
+class RegionOfInterestManager(QObject):
+
+    def __init__(self):
+        super().__init__()
+        # TODO figure out how to position the window??
+        # Region of interest window
+        self.__region_window = RegionOfInterestDisplayWindow()
+        self.__regions = dict()
+
+    def add_region(self, region:RegionOfInterest, color:QColor,
+            main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
+
+        self.__region_window.region_toggled.connect(main_window.handle_region_toggle)
+        self.__region_window.region_toggled.connect(zoom_window.handle_region_toggle)
+        region_set = RegionSet(region, main_window, zoom_window)
+        self.__regions[region.id()] = region_set
+        self.__region_window.add_item(region, color)
+
+        if not self.__region_window.isVisible():
+            self.__region_window.show()
 
 
 class WindowManager(QObject):
@@ -41,6 +81,8 @@ class WindowManager(QObject):
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
 
+        self.__region_manager = RegionOfInterestManager()
+
     def __del__(self):
         # TODO This works but for some reason throws an exception on shutdown
         # TODO this broke again after upgrade, don't really need it
@@ -49,6 +91,8 @@ class WindowManager(QObject):
         # except Exception:
         #     pass
 
+        del self.__file_sets
+        del self.__regions
         self.__file_sets = None
         self.__band_list = None
         self.__screen_geometry = None
@@ -72,6 +116,10 @@ class WindowManager(QObject):
     # TODO - not used????
     def file(self, index=0) -> OpenSpectraFile:
         return self.__file_sets[index]
+
+    def add_region(self, region:RegionOfInterest, color:QColor,
+            main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
+        self.__region_manager.add_region(region, color, main_window, zoom_window)
 
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
@@ -193,9 +241,6 @@ class WindowSet(QObject):
         self.__init_image_window()
         self.__init_plot_windows()
 
-        # TODO this might need to be shared among all WindowSets
-        self.__roi_window = RegionOfInterestDisplayWindow()
-
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
@@ -258,8 +303,6 @@ class WindowSet(QObject):
         self.__zoom_image_window.show()
 
         self.__init_histogram(x, y)
-
-        self.__roi_window.move(x + 150, y)
 
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
@@ -361,15 +404,14 @@ class WindowSet(QObject):
         self.__band_stats_window.clear()
 
         region = event.area()
-        self.__roi_window.add_item(region, event.color())
-        if not self.__roi_window.isVisible():
-            self.__roi_window.show()
+        self.__file_manager.window_manager().add_region(region, event.color(),
+            self.__main_image_window, self.__zoom_image_window)
 
         lines = region.adjusted_y_points()
         samples = region.adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
-        # TODO bug here when image window has been resized, need adjusted coords
+        # TODO still??? bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples)
         self.__band_stats_window.plot(stats_plot.mean())
         self.__band_stats_window.add_plot(stats_plot.min())

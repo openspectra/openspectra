@@ -15,6 +15,7 @@ from numpy import ma
 
 from openspectra.image import Image
 from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.ui.toolsdisplay import RegionToggleEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -188,6 +189,26 @@ class ZoomWidget(QWidget):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
 
+class RegionDisplayItem:
+
+    def __init__(self, polygon:QPolygon, color:QColor, is_on:bool):
+        self.__polygon = polygon
+        self.__color = color
+        self.__is_on = is_on
+
+    def polygon(self) -> QPolygon:
+        return self.__polygon
+
+    def color(self) -> QColor:
+        return self.__color
+
+    def is_on(self) -> bool:
+        return self.__is_on
+
+    def set_is_on(self, is_on:bool):
+        self.__is_on = is_on
+
+
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -285,6 +306,11 @@ class ImageLabel(QLabel):
     def clear_selected_area(self):
         self.__polygon_bounds = None
         self.__polygon = None
+        self.update()
+
+    def toggle_region(self, region:RegionOfInterest, is_on:bool):
+        if region.id() in self.__regions:
+            self.__regions[region.id()].set_is_on(is_on)
         self.update()
 
     def setPixmap(self, pixel_map:QPixmap):
@@ -421,9 +447,10 @@ class ImageLabel(QLabel):
         painter = QPainter(self)
 
         # paint the selected regions
-        for region_pair in self.__regions.values():
-            painter.setPen(region_pair[1])
-            painter.drawPoints(region_pair[0])
+        for region_item in self.__regions.values():
+            if region_item.is_on():
+                painter.setPen(region_item.color())
+                painter.drawPoints(region_item.polygon())
 
         # TODO current selector is always red?  next color?
         painter.setPen(Qt.red)
@@ -519,13 +546,13 @@ class ImageLabel(QLabel):
                 # make sure we haven't masked all the elements
                 if points.count() > 0:
                     # capture the region of interest and save to the map
-                    region_of_interest = RegionOfInterest(points,
+                    region = RegionOfInterest(points,
                         1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
                         self.__initial_size.height(), self.__initial_size.width(), self.__label)
                     color = self.__color_picker.color()
-                    self.__regions[region_of_interest.id()] = (new_polygon, color)
+                    self.__regions[region.id()] = RegionDisplayItem(new_polygon, color, True)
 
-                    self.area_selected.emit(AreaSelectedEvent(region_of_interest, color))
+                    self.area_selected.emit(AreaSelectedEvent(region, color))
                 else:
                     ImageLabel.__LOG.debug("No points found in region, size: {0}", self.__polygon_bounds.size())
                     self.clear_selected_area()
@@ -833,6 +860,9 @@ class ImageDisplay(QScrollArea):
     def margin_height(self) -> int:
         return self.__margin_height
 
+    def toggle_region(self, region:RegionOfInterest, is_on:bool):
+        self.__image_label.toggle_region(region, is_on)
+
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
         # This adjust my size and the display widget and causes the scroll bars to update properly
@@ -932,6 +962,10 @@ class ImageDisplayWindow(QMainWindow):
     @pyqtSlot()
     def handle_stats_closed(self):
         self._image_display.clear_selected_area()
+
+    @pyqtSlot(RegionToggleEvent)
+    def handle_region_toggle(self, event:RegionToggleEvent):
+        self._image_display.toggle_region(event.region(), event.is_on())
 
     def refresh_image(self):
         self._image_display.refresh_image()

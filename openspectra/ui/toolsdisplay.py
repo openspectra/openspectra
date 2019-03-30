@@ -33,7 +33,7 @@ class RegionToggleEvent(RegionEvent):
         self.__is_on = is_on
 
     def is_on(self) -> bool:
-        return self.is_on()
+        return self.__is_on
 
 
 class StatsButton(QPushButton):
@@ -107,12 +107,14 @@ class RegionOfInterestControl(QWidget):
         self.__table.setItem(self.__rows, 4, image_name_item)
 
         if self.__rows == 0:
-            self.__table.resizeColumnsToContents()
-            length = self.__table.horizontalHeader().length()
-            RegionOfInterestControl.__LOG.debug("Header length: {0}", length)
-            self.setMinimumWidth(length + self.__margins * 2 +
-                                 QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
             self.__table.horizontalHeader().setStretchLastSection(True)
+
+        self.__table.resizeColumnsToContents()
+        length = self.__table.horizontalHeader().length()
+        RegionOfInterestControl.__LOG.debug("Header length: {0}", length)
+        self.setMinimumWidth(length + self.__margins * 2 +
+            QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
+
 
         self.__regions.append(region)
         self.__rows += 1
@@ -122,7 +124,7 @@ class RegionOfInterestControl(QWidget):
     def __handle_cell_clicked(self, row:int, column:int):
         RegionOfInterestControl.__LOG.debug("Cell clicked row: {0}, column: {1}", row, column)
         if column == 0:
-            region = self.__regions[row].id()
+            region = self.__regions[row]
             is_on = self.__table.item(row, column).checkState() == Qt.Checked
             RegionOfInterestControl.__LOG.debug("Checkbox is on: {0}, region: {1}",
                 is_on, region)
@@ -151,6 +153,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowTitle("Region of Interest")
         self.__roi_control = RegionOfInterestControl()
         self.setCentralWidget(self.__roi_control)
         self.__roi_control.stats_clicked.connect(self.stats_clicked)
