@@ -31,7 +31,12 @@ class ColorPicker:
     def color(self) -> QColor:
         color = self.__colors[self.__index]
         self.__index += 1
+        if self.__index >= len(self.__colors):
+            self.reset()
         return color
+
+    def reset(self):
+        self.__index = 0
 
 
 class AdjustedMouseEvent(QObject):
@@ -311,6 +316,17 @@ class ImageLabel(QLabel):
     def toggle_region(self, region:RegionOfInterest, is_on:bool):
         if region.id() in self.__regions:
             self.__regions[region.id()].set_is_on(is_on)
+        self.update()
+
+    def remove_region(self, region:RegionOfInterest):
+        if region.id() in self.__regions:
+            del self.__regions[region.id()]
+            self.update()
+
+    def remove_all_regions(self):
+        self.__regions.clear()
+        self.clear_selected_area()
+        self.__color_picker.reset()
         self.update()
 
     def setPixmap(self, pixel_map:QPixmap):
@@ -787,8 +803,11 @@ class ImageDisplay(QScrollArea):
         # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
-    def clear_selected_area(self):
-        self.__image_label.clear_selected_area()
+    def remove_region(self, region:RegionOfInterest):
+        self.__image_label.remove_region(region)
+
+    def remove_all_regions(self):
+        self.__image_label.remove_all_regions()
 
     def scale_image(self, factor:float):
         """Changes the scale relative to the original image size maintaining aspect ratio.
@@ -959,13 +978,15 @@ class ImageDisplayWindow(QMainWindow):
     def image_label(self) -> str:
         return self.__image_label
 
-    @pyqtSlot()
-    def handle_stats_closed(self):
-        self._image_display.clear_selected_area()
-
     @pyqtSlot(RegionToggleEvent)
     def handle_region_toggle(self, event:RegionToggleEvent):
         self._image_display.toggle_region(event.region(), event.is_on())
+
+    def remove_region(self, region:RegionOfInterest):
+        self._image_display.remove_region(region)
+
+    def remove_all_regions(self):
+        self._image_display.remove_all_regions()
 
     def refresh_image(self):
         self._image_display.refresh_image()

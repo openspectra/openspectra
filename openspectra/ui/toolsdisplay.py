@@ -2,7 +2,7 @@
 #  Last modified 3/17/19 2:30 PM
 #  Copyright (c) 2019. All rights reserved.
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtGui import QColor, QBrush, QCloseEvent
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QTableWidget, QTableWidgetItem, QApplication, QStyle, QPushButton
 
@@ -49,6 +49,7 @@ class StatsButton(QPushButton):
 
     def __handle_stats_click(self):
         StatsButton.__LOG.debug("Stats button clicked for region: {0}", self.__region.id())
+        self.stats_clicked.emit(RegionStatsEvent(self.__region))
 
 
 class RegionOfInterestControl(QWidget):
@@ -115,11 +116,18 @@ class RegionOfInterestControl(QWidget):
         self.setMinimumWidth(length + self.__margins * 2 +
             QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
 
-
         self.__regions.append(region)
         self.__rows += 1
         self.__table.cellClicked.connect(self.__handle_cell_clicked)
         self.__table.cellChanged.connect(self.__handle_cell_changed)
+
+    def remove_all(self):
+        for row in range(self.__rows - 1, -1, -1):
+            stats_button = self.__table.cellWidget(row, 3)
+            stats_button.stats_clicked.disconnect(self.stats_clicked)
+        self.__table.clearContents()
+        self.__regions.clear()
+        self.__rows = 0
 
     def __handle_cell_clicked(self, row:int, column:int):
         RegionOfInterestControl.__LOG.debug("Cell clicked row: {0}, column: {1}", row, column)
@@ -150,17 +158,27 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
+    closed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Region of Interest")
-        self.__roi_control = RegionOfInterestControl()
-        self.setCentralWidget(self.__roi_control)
-        self.__roi_control.stats_clicked.connect(self.stats_clicked)
-        self.__roi_control.region_toggled.connect(self.region_toggled)
+        self.__region_control = RegionOfInterestControl()
+        self.setCentralWidget(self.__region_control)
+        self.__region_control.stats_clicked.connect(self.stats_clicked)
+        self.__region_control.region_toggled.connect(self.region_toggled)
 
     def add_item(self, region:RegionOfInterest, color:QColor):
-        self.__roi_control.add_item(region, color)
+        self.__region_control.add_item(region, color)
+
+    def remove_all(self):
+        self.__region_control.remove_all()
+
+    def closeEvent(self, event:QCloseEvent):
+        self.closed.emit()
+        # accepting hides the window
+        event.accept()
+        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
 
     # TODO for testing only, remove if not used otherwise
     # def resizeEvent(self, event:QResizeEvent):

@@ -9,54 +9,53 @@ from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
 from PyQt5.QtWidgets import QTreeWidgetItem
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band
-from openspectra.ui.bandlist import BandList, RGBSelectedBands
-from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
-from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow, ImageDisplayWindow
-from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
     RegionOfInterest
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
+from openspectra.ui.bandlist import BandList, RGBSelectedBands
+from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
+    ZoomImageDisplayWindow
+from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent
 from openspectra.utils import LogHelper, Logger
-from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow
-
-
-class RegionSet:
-
-    def __init__(self, region:RegionOfInterest, main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
-        self.__region = region
-        self.__main_window = main_window
-        self.__zoom_window = zoom_window
-
-    def region(self) -> RegionOfInterest:
-        return self.__region
-
-    def main_window(self) -> ImageDisplayWindow:
-        return self.__main_window
-
-    def zoom_window(self) -> ImageDisplayWindow:
-        return self.__zoom_window
 
 
 class RegionOfInterestManager(QObject):
+
+    __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
+
+    stats_clicked = pyqtSignal(RegionStatsEvent)
+    region_toggled = pyqtSignal(RegionToggleEvent)
+    window_closed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         # TODO figure out how to position the window??
         # Region of interest window
         self.__region_window = RegionOfInterestDisplayWindow()
+        self.__region_window.region_toggled.connect(self.region_toggled)
+        self.__region_window.stats_clicked.connect(self.stats_clicked)
+        self.__region_window.closed.connect(self.__handle_window_closed)
+
         self.__regions = dict()
 
-    def add_region(self, region:RegionOfInterest, color:QColor,
-            main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
+    def __del__(self):
+        del self.__regions
+        self.__region_window.close()
+        self.__region_window = None
 
-        self.__region_window.region_toggled.connect(main_window.handle_region_toggle)
-        self.__region_window.region_toggled.connect(zoom_window.handle_region_toggle)
-        region_set = RegionSet(region, main_window, zoom_window)
-        self.__regions[region.id()] = region_set
+    def add_region(self, region:RegionOfInterest, color:QColor):
+        self.__regions[region.id()] = region
         self.__region_window.add_item(region, color)
 
         if not self.__region_window.isVisible():
             self.__region_window.show()
+
+    @pyqtSlot()
+    def __handle_window_closed(self):
+        self.__region_window.remove_all()
+        self.__regions.clear()
+        self.window_closed.emit()
 
 
 class WindowManager(QObject):
@@ -117,9 +116,8 @@ class WindowManager(QObject):
     def file(self, index=0) -> OpenSpectraFile:
         return self.__file_sets[index]
 
-    def add_region(self, region:RegionOfInterest, color:QColor,
-            main_window:ImageDisplayWindow, zoom_window:ImageDisplayWindow):
-        self.__region_manager.add_region(region, color, main_window, zoom_window)
+    def region_manager(self) -> RegionOfInterestManager:
+        return self.__region_manager
 
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
@@ -203,6 +201,8 @@ class FileManager(QObject):
         title = self.__file_name + ": " + image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
+        self.__window_manager.region_manager().stats_clicked.connect(window_set.region_stats_handler)
+        self.__window_manager.region_manager().region_toggled.connect(window_set.region_toogle_handler)
 
         # TODO need a layout manager
         y = 25
@@ -275,8 +275,8 @@ class WindowSet(QObject):
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
         self.__band_stats_window = LinePlotDisplayWindow(self.__main_image_window)
-        self.__band_stats_window.closed.connect(self.__main_image_window.handle_stats_closed)
-        self.__band_stats_window.closed.connect(self.__zoom_image_window.handle_stats_closed)
+        self.__file_manager.window_manager().region_manager().\
+            window_closed.connect(self.__handle_region_window_close)
 
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
@@ -293,16 +293,6 @@ class WindowSet(QObject):
         self.__histogram_tools = None
         self.__title = None
         self.__image = None
-
-    def init_position(self, x:int, y:int):
-        # TODO need some sort of layout manager?
-        self.__main_image_window.move(x, y)
-        self.__main_image_window.show()
-
-        self.__zoom_image_window.move(x + 50, y + 50)
-        self.__zoom_image_window.show()
-
-        self.__init_histogram(x, y)
 
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
@@ -326,9 +316,6 @@ class WindowSet(QObject):
         # TODO need some sort of layout manager?
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
         self.__histogram_window.show()
-
-    def get_image_window_geometry(self):
-        return self.__main_image_window.geometry()
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
@@ -365,10 +352,14 @@ class WindowSet(QObject):
         self.__spec_plot_window.close()
         self.__spec_plot_window = None
 
-        self.__roi_window.close()
-        self.__roi_window = None
-
         self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
+
+    @pyqtSlot()
+    def __handle_region_window_close(self):
+        self.__band_stats_window.clear()
+        self.__band_stats_window.close()
+        self.__main_image_window.remove_all_regions()
+        self.__zoom_image_window.remove_all_regions()
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):
@@ -401,12 +392,32 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
+        region = event.area()
+        self.__file_manager.window_manager().region_manager().add_region(region, event.color())
+
+    def init_position(self, x:int, y:int):
+        # TODO need some sort of layout manager?
+        self.__main_image_window.move(x, y)
+        self.__main_image_window.show()
+
+        self.__zoom_image_window.move(x + 50, y + 50)
+        self.__zoom_image_window.show()
+
+        self.__init_histogram(x, y)
+
+    def get_image_window_geometry(self):
+        return self.__main_image_window.geometry()
+
+    @pyqtSlot(RegionToggleEvent)
+    def region_toogle_handler(self, event:RegionToggleEvent):
+        self.__main_image_window.handle_region_toggle(event)
+        self.__zoom_image_window.handle_region_toggle(event)
+
+    @pyqtSlot(RegionStatsEvent)
+    def region_stats_handler(self, event:RegionStatsEvent):
         self.__band_stats_window.clear()
 
-        region = event.area()
-        self.__file_manager.window_manager().add_region(region, event.color(),
-            self.__main_image_window, self.__zoom_image_window)
-
+        region = event.region()
         lines = region.adjusted_y_points()
         samples = region.adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
