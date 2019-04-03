@@ -38,12 +38,19 @@ class RegionCloseEvent(RegionEvent):
         super().__init__(region)
 
 
+class RegionNameChangeEvent(RegionEvent):
+
+    def __init__(self, region:RegionOfInterest):
+        super().__init__(region)
+
+
 class RegionOfInterestControl(QWidget):
 
     __LOG:Logger = LogHelper.logger("RegionOfInterestControl")
 
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
+    region_name_changed = pyqtSignal(RegionNameChangeEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
 
     def __init__(self, parent=None):
@@ -81,9 +88,15 @@ class RegionOfInterestControl(QWidget):
         stats_action.triggered.connect(self.__handle_band_stats)
         self.__menu.addAction(stats_action)
 
-        delete_action = QAction("Close", self)
-        delete_action.triggered.connect(self.__handle_region_close)
-        self.__menu.addAction(delete_action)
+        self.__menu.addSeparator()
+
+        save_action = QAction("Save", self)
+        save_action.triggered.connect(self.__handle_region_save)
+        self.__menu.addAction(save_action)
+
+        close_action = QAction("Close", self)
+        close_action.triggered.connect(self.__handle_region_close)
+        self.__menu.addAction(close_action)
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
@@ -150,11 +163,19 @@ class RegionOfInterestControl(QWidget):
             RegionOfInterestControl.__LOG.debug("Cell changed, new value: {0}", item.text())
             region:RegionOfInterest = self.__regions[row]
             region.set_name(item.text())
+            self.region_name_changed.emit(RegionNameChangeEvent(region))
 
     def __handle_region_toggle(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Toogle region: {0}", region.name())
         self.region_toggled.emit(RegionToggleEvent(region))
+        self.__selected_row = None
+
+    def __handle_region_save(self):
+        region = self.__regions[self.__selected_row]
+        RegionOfInterestControl.__LOG.debug("Save region: {0}", region.name())
+        # TODO implement
+
         self.__selected_row = None
 
     def __handle_region_close(self):
@@ -183,6 +204,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
+    region_name_changed = pyqtSignal(RegionNameChangeEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
     closed = pyqtSignal()
 
@@ -193,6 +215,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
         self.setCentralWidget(self.__region_control)
         self.__region_control.stats_clicked.connect(self.stats_clicked)
         self.__region_control.region_toggled.connect(self.region_toggled)
+        self.__region_control.region_name_changed.connect(self.region_name_changed)
         self.__region_control.region_closed.connect(self.region_closed)
 
     def add_item(self, region:RegionOfInterest, color:QColor):

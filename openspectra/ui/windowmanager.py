@@ -17,7 +17,7 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent
+    RegionCloseEvent, RegionNameChangeEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -27,6 +27,7 @@ class RegionOfInterestManager(QObject):
 
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
+    region_name_changed = pyqtSignal(RegionNameChangeEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
     window_closed = pyqtSignal()
 
@@ -36,6 +37,7 @@ class RegionOfInterestManager(QObject):
         # Region of interest window
         self.__region_window = RegionOfInterestDisplayWindow()
         self.__region_window.region_toggled.connect(self.region_toggled)
+        self.__region_window.region_name_changed.connect(self.region_name_changed)
         self.__region_window.stats_clicked.connect(self.stats_clicked)
         self.__region_window.region_closed.connect(self.region_closed)
         self.__region_window.closed.connect(self.__handle_window_closed)
@@ -207,6 +209,7 @@ class FileManager(QObject):
         self.__window_manager.region_manager().stats_clicked.connect(window_set.region_stats_handler)
         self.__window_manager.region_manager().region_toggled.connect(window_set.region_toogle_handler)
         self.__window_manager.region_manager().region_closed.connect(window_set.region_closed_handler)
+        self.__window_manager.region_manager().region_name_changed.connect(window_set.region_name_changed_handler)
 
         # TODO need a layout manager
         y = 25
@@ -278,7 +281,7 @@ class WindowSet(QObject):
         # their children not really among QMainWindows
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
-        self.__band_stats_window = LinePlotDisplayWindow(self.__main_image_window)
+        self.__band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
         self.__file_manager.window_manager().region_manager().\
             window_closed.connect(self.__handle_region_window_close)
 
@@ -426,8 +429,10 @@ class WindowSet(QObject):
         samples = region.adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
+        # TODO !!!! need to support multiple band stats windows!!!
+
         # TODO still??? bug here when image window has been resized, need adjusted coords
-        stats_plot = self.__band_tools.statistics_plot(lines, samples, region.name() + " Band Stats")
+        stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region name: {0}".format(region.name()))
         self.__band_stats_window.plot(stats_plot.mean())
         self.__band_stats_window.add_plot(stats_plot.min())
         self.__band_stats_window.add_plot(stats_plot.max())
@@ -445,3 +450,12 @@ class WindowSet(QObject):
     def region_closed_handler(self, event:RegionCloseEvent):
         self.__main_image_window.remove_region(event.region())
         self.__zoom_image_window.remove_region(event.region())
+
+    @pyqtSlot(RegionNameChangeEvent)
+    def region_name_changed_handler(self, event:RegionNameChangeEvent):
+        name = event.region().name()
+        WindowSet.__LOG.debug("new band stats title {0}: ", name)
+
+        # TODO !!!!!!
+        # TODO need to wire plot to Region so correct one is changed
+        self.__band_stats_window.set_plot_title("Region name: {0}".format(name))
