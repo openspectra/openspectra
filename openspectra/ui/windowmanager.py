@@ -16,7 +16,8 @@ from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
-from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent
+from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
+    RegionCloseEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -26,6 +27,7 @@ class RegionOfInterestManager(QObject):
 
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
+    region_closed =  pyqtSignal(RegionCloseEvent)
     window_closed = pyqtSignal()
 
     def __init__(self):
@@ -35,6 +37,7 @@ class RegionOfInterestManager(QObject):
         self.__region_window = RegionOfInterestDisplayWindow()
         self.__region_window.region_toggled.connect(self.region_toggled)
         self.__region_window.stats_clicked.connect(self.stats_clicked)
+        self.__region_window.region_closed.connect(self.region_closed)
         self.__region_window.closed.connect(self.__handle_window_closed)
 
         self.__regions = dict()
@@ -203,6 +206,7 @@ class FileManager(QObject):
         window_set.closed.connect(self.__handle_windowset_closed)
         self.__window_manager.region_manager().stats_clicked.connect(window_set.region_stats_handler)
         self.__window_manager.region_manager().region_toggled.connect(window_set.region_toogle_handler)
+        self.__window_manager.region_manager().region_closed.connect(window_set.region_closed_handler)
 
         # TODO need a layout manager
         y = 25
@@ -423,7 +427,7 @@ class WindowSet(QObject):
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
-        stats_plot = self.__band_tools.statistics_plot(lines, samples)
+        stats_plot = self.__band_tools.statistics_plot(lines, samples, region.name() + " Band Stats")
         self.__band_stats_window.plot(stats_plot.mean())
         self.__band_stats_window.add_plot(stats_plot.min())
         self.__band_stats_window.add_plot(stats_plot.max())
@@ -436,3 +440,8 @@ class WindowSet(QObject):
 
         if not self.__band_stats_window.isVisible():
             self.__band_stats_window.show()
+
+    @pyqtSlot(RegionCloseEvent)
+    def region_closed_handler(self, event:RegionCloseEvent):
+        self.__main_image_window.remove_region(event.region())
+        self.__zoom_image_window.remove_region(event.region())

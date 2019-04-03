@@ -313,9 +313,10 @@ class ImageLabel(QLabel):
         self.__polygon = None
         self.update()
 
-    def toggle_region(self, region:RegionOfInterest, is_on:bool):
+    def toggle_region(self, region:RegionOfInterest):
         if region.id() in self.__regions:
-            self.__regions[region.id()].set_is_on(is_on)
+            region = self.__regions[region.id()]
+            region.set_is_on(not region.is_on())
         self.update()
 
     def remove_region(self, region:RegionOfInterest):
@@ -879,8 +880,8 @@ class ImageDisplay(QScrollArea):
     def margin_height(self) -> int:
         return self.__margin_height
 
-    def toggle_region(self, region:RegionOfInterest, is_on:bool):
-        self.__image_label.toggle_region(region, is_on)
+    def toggle_region(self, region:RegionOfInterest):
+        self.__image_label.toggle_region(region)
 
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
@@ -980,7 +981,7 @@ class ImageDisplayWindow(QMainWindow):
 
     @pyqtSlot(RegionToggleEvent)
     def handle_region_toggle(self, event:RegionToggleEvent):
-        self._image_display.toggle_region(event.region(), event.is_on())
+        self._image_display.toggle_region(event.region())
 
     def remove_region(self, region:RegionOfInterest):
         self._image_display.remove_region(region)

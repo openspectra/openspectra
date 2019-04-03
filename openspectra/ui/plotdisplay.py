@@ -98,7 +98,6 @@ class PlotChangeEvent(QObject):
         return self.__upper_max
 
 
-# TODO seperate out plot generation from any UI classes - an API perhaps?
 class PlotCanvas(FigureCanvas):
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):

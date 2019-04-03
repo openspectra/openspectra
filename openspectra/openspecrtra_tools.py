@@ -141,29 +141,33 @@ class BandStatistics:
 
 class BandStaticsPlotData():
 
-    def __init__(self, __band_stats:BandStatistics, wavelengths:np.ndarray):
+    def __init__(self, __band_stats:BandStatistics, wavelengths:np.ndarray, title:str=None):
         self.__band_stats = __band_stats
         self.__wavelengths = wavelengths
+        if title is not None:
+            self.__title = title
+        else:
+            self.__title = "Band Stats"
 
     def mean(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.mean(),
-            "Wavelength", "Brightness", "Band Stats", "b", legend="mean")
+            "Wavelength", "Brightness", self.__title, "b", legend="mean")
 
     def min(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.min(),
-            "Wavelength", "Brightness", "Band Stats", "r", legend="min")
+            "Wavelength", "Brightness", self.__title, "r", legend="min")
 
     def max(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.max(),
-            "Wavelength", "Brightness", "Band Stats", "r", legend="max")
+            "Wavelength", "Brightness", self.__title, "r", legend="max")
 
     def plus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.plus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g", legend="std+")
+            "Wavelength", "Brightness", self.__title, "g", legend="std+")
 
     def minus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.minus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g", legend="std-")
+            "Wavelength", "Brightness", self.__title, "g", legend="std-")
 
 
 class OpenSpectraBandTools:
@@ -180,9 +184,10 @@ class OpenSpectraBandTools:
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
 
-    def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStaticsPlotData:
+    def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray],
+            title:str=None) -> BandStaticsPlotData:
         band_stats = self.band_statistics(lines, samples)
-        return BandStaticsPlotData(band_stats, self.__file.header().wavelengths())
+        return BandStaticsPlotData(band_stats, self.__file.header().wavelengths(), title)
 
     def spectral_plot(self, line:int, sample:int) -> LinePlotData:
         band = OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(line, sample))
