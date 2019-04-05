@@ -4,7 +4,7 @@
 
 import logging
 
-from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent
+from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
 from PyQt5.QtWidgets import QTreeWidgetItem
 
@@ -247,6 +247,11 @@ class WindowSet(QObject):
 
         self.__init_image_window()
         self.__init_plot_windows()
+        self.__band_stats_windows = dict()
+
+        # Register so we know if the region window is closed
+        self.__file_manager.window_manager().region_manager().\
+            window_closed.connect(self.__handle_region_window_close)
 
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
@@ -281,17 +286,13 @@ class WindowSet(QObject):
         # their children not really among QMainWindows
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
-        self.__band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
-        self.__file_manager.window_manager().region_manager().\
-            window_closed.connect(self.__handle_region_window_close)
-
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
 
     def __del__(self):
         WindowSet.__LOG.debug("WindowSet.__del__ called...")
+        del self.__band_stats_windows
         self.__spec_plot_window = None
-        self.__band_stats_window = None
         self.__histogram_window = None
         self.__zoom_image_window = None
         self.__main_image_window = None
@@ -353,8 +354,9 @@ class WindowSet(QObject):
         self.__histogram_window.close()
         self.__histogram_window = None
 
-        self.__band_stats_window.close()
-        self.__band_stats_window = None
+        for window in self.__band_stats_windows.items():
+            window.close()
+        self.__band_stats_windows.clear()
 
         self.__spec_plot_window.close()
         self.__spec_plot_window = None
@@ -363,8 +365,10 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_region_window_close(self):
-        self.__band_stats_window.clear()
-        self.__band_stats_window.close()
+        for window in self.__band_stats_windows.items():
+            window.close()
+        self.__band_stats_windows.clear()
+
         self.__main_image_window.remove_all_regions()
         self.__zoom_image_window.remove_all_regions()
 
@@ -422,40 +426,43 @@ class WindowSet(QObject):
 
     @pyqtSlot(RegionStatsEvent)
     def region_stats_handler(self, event:RegionStatsEvent):
-        self.__band_stats_window.clear()
-
         region = event.region()
         lines = region.adjusted_y_points()
         samples = region.adjusted_x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
-        # TODO !!!! need to support multiple band stats windows!!!
+        band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
+        # Make sure band stats window gets deleted on close, we won't reuse them here
+        band_stats_window.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.__band_stats_windows[region.id()] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region name: {0}".format(region.name()))
-        self.__band_stats_window.plot(stats_plot.mean())
-        self.__band_stats_window.add_plot(stats_plot.min())
-        self.__band_stats_window.add_plot(stats_plot.max())
-        self.__band_stats_window.add_plot(stats_plot.plus_one_std())
-        self.__band_stats_window.add_plot(stats_plot.minus_one_std())
+        band_stats_window.plot(stats_plot.mean())
+        band_stats_window.add_plot(stats_plot.min())
+        band_stats_window.add_plot(stats_plot.max())
+        band_stats_window.add_plot(stats_plot.plus_one_std())
+        band_stats_window.add_plot(stats_plot.minus_one_std())
 
         # TODO need some sort of layout manager?
         rect = self.__histogram_window.geometry()
-        self.__band_stats_window.setGeometry(rect.x() + 75, rect.y() + 75, 500, 400)
-
-        if not self.__band_stats_window.isVisible():
-            self.__band_stats_window.show()
+        band_stats_window.setGeometry(rect.x() + 75, rect.y() + 75, 500, 400)
+        band_stats_window.show()
 
     @pyqtSlot(RegionCloseEvent)
     def region_closed_handler(self, event:RegionCloseEvent):
-        self.__main_image_window.remove_region(event.region())
-        self.__zoom_image_window.remove_region(event.region())
+        region = event.region()
+        self.__main_image_window.remove_region(region)
+        self.__zoom_image_window.remove_region(region)
+        if region.id() in self.__band_stats_windows:
+            self.__band_stats_windows[region.id()].close()
+            del self.__band_stats_windows[region.id()]
 
     @pyqtSlot(RegionNameChangeEvent)
     def region_name_changed_handler(self, event:RegionNameChangeEvent):
-        name = event.region().name()
-        WindowSet.__LOG.debug("new band stats title {0}: ", name)
+        region = event.region()
+        WindowSet.__LOG.debug("new band stats title {0}: ", region.name())
 
-        # TODO !!!!!!
-        # TODO need to wire plot to Region so correct one is changed
-        self.__band_stats_window.set_plot_title("Region name: {0}".format(name))
+        if region.id() in self.__band_stats_windows:
+            self.__band_stats_windows[region.id()].\
+                set_plot_title("Region name: {0}".format(region.name()))
