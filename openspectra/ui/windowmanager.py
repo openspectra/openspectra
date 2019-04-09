@@ -437,7 +437,7 @@ class WindowSet(QObject):
         self.__band_stats_windows[region.id()] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
-        stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region name: {0}".format(region.name()))
+        stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.name()))
         band_stats_window.plot(stats_plot.mean())
         band_stats_window.add_plot(stats_plot.min())
         band_stats_window.add_plot(stats_plot.max())
@@ -465,4 +465,4 @@ class WindowSet(QObject):
 
         if region.id() in self.__band_stats_windows:
             self.__band_stats_windows[region.id()].\
-                set_plot_title("Region name: {0}".format(region.name()))
+                set_plot_title("Region: {0}".format(region.name()))
