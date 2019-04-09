@@ -1,7 +1,7 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-
+import time
 from typing import Union
 
 import numpy as np
@@ -12,7 +12,64 @@ from openspectra.openspectra_file import OpenSpectraFile
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
+class RegionOfInterest:
+
+    def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
+            image_height:int, image_width:int, image_name:str):
+        self.__id = str(time.time_ns())
+        self.__name = self.__id
+        self.__area = area
+        self.__x_scale = x_scale
+        self.__y_scale = y_scale
+        self.__image_height = image_height
+        self.__image_width = image_width
+        self.__image_name = image_name
+
+        # split the points back into x and y values
+        self.__x_points = self.__area[:, 0]
+        self.__y_points = self.__area[:, 1]
+
+        # take only the points that were inside the polygon
+        self.__x_points = self.__x_points[~self.__x_points.mask]
+        self.__y_points = self.__y_points[~self.__y_points.mask]
+
+        # calculate the points in the region if the image is scaled
+        self.__adjusted_x_points = np.floor(self.__x_points * x_scale).astype(np.int16)
+        self.__adjusted_y_points = np.floor(self.__y_points * y_scale).astype(np.int16)
+
+    def id(self) -> str:
+        return self.__id
+
+    def x_points(self) -> np.ndarray:
+        return self.__x_points
+
+    def y_points(self) -> np.ndarray:
+        return self.__y_points
+
+    def adjusted_x_points(self) -> np.ndarray:
+        return self.__adjusted_x_points
+
+    def adjusted_y_points(self) -> np.ndarray:
+        return self.__adjusted_y_points
+
+    def image_height(self) -> int:
+        return self.__image_height
+
+    def image_width(self) -> int:
+        return self.__image_width
+
+    def image_name(self) -> str:
+        return self.__image_name
+
+    def name(self) -> str:
+        return self.__name
+
+    def set_name(self, name:str):
+        self.__name = name
+
+
 class PlotData:
+
     def __init__(self, x_data:np.ndarray, y_data:np.ndarray,
             x_label:str=None, y_label:str=None, title:str=None, color:str= "b",
             line_style:str= "-", legend:str=None):
@@ -84,29 +141,33 @@ class BandStatistics:
 
 class BandStaticsPlotData():
 
-    def __init__(self, __band_stats:BandStatistics, wavelengths:np.ndarray):
+    def __init__(self, __band_stats:BandStatistics, wavelengths:np.ndarray, title:str=None):
         self.__band_stats = __band_stats
         self.__wavelengths = wavelengths
+        if title is not None:
+            self.__title = title
+        else:
+            self.__title = "Band Stats"
 
     def mean(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.mean(),
-            "Wavelength", "Brightness", "Band Stats", "b", legend="mean")
+            "Wavelength", "Brightness", self.__title, "b", legend="mean")
 
     def min(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.min(),
-            "Wavelength", "Brightness", "Band Stats", "r", legend="min")
+            "Wavelength", "Brightness", self.__title, "r", legend="min")
 
     def max(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.max(),
-            "Wavelength", "Brightness", "Band Stats", "r", legend="max")
+            "Wavelength", "Brightness", self.__title, "r", legend="max")
 
     def plus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.plus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g", legend="std+")
+            "Wavelength", "Brightness", self.__title, "g", legend="std+")
 
     def minus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.minus_one_std(),
-            "Wavelength", "Brightness", "Band Stats", "g", legend="std-")
+            "Wavelength", "Brightness", self.__title, "g", legend="std-")
 
 
 class OpenSpectraBandTools:
@@ -123,9 +184,10 @@ class OpenSpectraBandTools:
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
 
-    def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStaticsPlotData:
+    def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray],
+            title:str=None) -> BandStaticsPlotData:
         band_stats = self.band_statistics(lines, samples)
-        return BandStaticsPlotData(band_stats, self.__file.header().wavelengths())
+        return BandStaticsPlotData(band_stats, self.__file.header().wavelengths(), title)
 
     def spectral_plot(self, line:int, sample:int) -> LinePlotData:
         band = OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(line, sample))

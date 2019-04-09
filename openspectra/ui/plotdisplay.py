@@ -98,8 +98,9 @@ class PlotChangeEvent(QObject):
         return self.__upper_max
 
 
-# TODO seperate out plot generation from any UI classes - an API perhaps?
 class PlotCanvas(FigureCanvas):
+
+    __LOG:Logger = LogHelper.logger("PlotCanvas")
 
     def __init__(self, parent=None, width=5, height=4, dpi=75):
         self._current_plot = None
@@ -125,6 +126,11 @@ class PlotCanvas(FigureCanvas):
         self._axes.set_xlabel(data.x_label)
         self._axes.set_ylabel(data.y_label)
         self._axes.set_title(data.title)
+        self.draw()
+
+    def set_plot_title(self, title:str):
+        PlotCanvas.__LOG.debug("new title: {0} ", title)
+        self._axes.set_title(title)
         self.draw()
 
 
@@ -343,8 +349,11 @@ class LinePlotDisplayWindow(QMainWindow):
 
     closed = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, title:str=None):
         super().__init__(parent)
+        if title is not None:
+            self.setWindowTitle(title)
+
         self.__plot_canvas = LinePlotCanvas(self, width=5, height=4)
         self.setCentralWidget(self.__plot_canvas)
 
@@ -368,6 +377,9 @@ class LinePlotDisplayWindow(QMainWindow):
 
     def clear(self):
         self.__plot_canvas.clear()
+
+    def set_plot_title(self, title:str):
+        self.__plot_canvas.set_plot_title(title)
 
     def resizeEvent(self, event:QResizeEvent):
         self.__plot_canvas.resize(event.size())
@@ -543,6 +555,7 @@ class AdjustableHistogramControl(QWidget):
     # TODO test only!!
     # def resizeEvent(self, event:QResizeEvent):
     #     AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
+
 
 class HistogramDisplayControl(QWidget):
 

@@ -6,17 +6,37 @@ import itertools
 from enum import Enum
 from math import floor
 
-import numpy as np
-from numpy import ma
-
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
-    QPolygon, QCursor
+    QPolygon, QCursor, QColor
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
+from numpy import ma
 
 from openspectra.image import Image
+from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.ui.toolsdisplay import RegionToggleEvent
 from openspectra.utils import LogHelper, Logger
+
+
+class ColorPicker:
+
+    def __init__(self):
+        self.__colors = [Qt.red, Qt.green, Qt.blue, Qt.cyan, Qt.yellow,
+            Qt.magenta, Qt.gray, Qt.darkRed, Qt.darkGreen, Qt.darkBlue,
+            Qt.darkCyan, Qt.darkMagenta, Qt.darkYellow, Qt.darkGray,
+            Qt.lightGray]
+        self.__index = 0
+
+    def color(self) -> QColor:
+        color = self.__colors[self.__index]
+        self.__index += 1
+        if self.__index >= len(self.__colors):
+            self.reset()
+        return color
+
+    def reset(self):
+        self.__index = 0
 
 
 class AdjustedMouseEvent(QObject):
@@ -41,19 +61,18 @@ class AdjustedMouseEvent(QObject):
         return self.__pixel_pos
 
 
-class AdjustedAreaSelectedEvent(QObject):
+class AreaSelectedEvent(QObject):
 
-    def __init__(self, x_points:np.ndarray,  x_scale:float,
-            y_points:np.ndarray, y_scale:float):
+    def __init__(self, area:RegionOfInterest, color:QColor):
         super().__init__(None)
-        self.__x_points = np.floor(x_points * x_scale).astype(np.int16)
-        self.__y_points = np.floor(y_points * y_scale).astype(np.int16)
+        self.__area = area
+        self.__color = color
 
-    def x_points(self) -> np.ndarray:
-        return self.__x_points
+    def area(self) -> RegionOfInterest:
+        return self.__area
 
-    def y_points(self) -> np.ndarray:
-        return self.__y_points
+    def color(self) -> QColor:
+        return  self.__color
 
 
 class ImageResizeEvent(QObject):
@@ -175,6 +194,26 @@ class ZoomWidget(QWidget):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
 
+class RegionDisplayItem:
+
+    def __init__(self, polygon:QPolygon, color:QColor, is_on:bool):
+        self.__polygon = polygon
+        self.__color = color
+        self.__is_on = is_on
+
+    def polygon(self) -> QPolygon:
+        return self.__polygon
+
+    def color(self) -> QColor:
+        return self.__color
+
+    def is_on(self) -> bool:
+        return self.__is_on
+
+    def set_is_on(self, is_on:bool):
+        self.__is_on = is_on
+
+
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -186,16 +225,17 @@ class ImageLabel(QLabel):
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     double_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, location_rect:bool=True, parent=None):
+    def __init__(self, label:str, location_rect:bool=True, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
+        self.__label = label
 
         self.__last_mouse_loc:QPoint = None
         self.__initial_size:QSize = None
@@ -215,6 +255,8 @@ class ImageLabel(QLabel):
 
         self.__dragging = False
 
+        self.__regions = dict()
+        self.__color_picker = ColorPicker()
         self.__polygon:QPolygon = None
         self.__polygon_bounds:QRect = None
         self.__drawing = False
@@ -223,6 +265,9 @@ class ImageLabel(QLabel):
 
     def __del__(self):
         ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
+        del self.__regions
+        self.__regions = None
+        self.__color_picker = None
         self.__polygon_bounds = None
         self.__polygon = None
 
@@ -266,6 +311,23 @@ class ImageLabel(QLabel):
     def clear_selected_area(self):
         self.__polygon_bounds = None
         self.__polygon = None
+        self.update()
+
+    def toggle_region(self, region:RegionOfInterest):
+        if region.id() in self.__regions:
+            region = self.__regions[region.id()]
+            region.set_is_on(not region.is_on())
+        self.update()
+
+    def remove_region(self, region:RegionOfInterest):
+        if region.id() in self.__regions:
+            del self.__regions[region.id()]
+            self.update()
+
+    def remove_all_regions(self):
+        self.__regions.clear()
+        self.clear_selected_area()
+        self.__color_picker.reset()
         self.update()
 
     def setPixmap(self, pixel_map:QPixmap):
@@ -395,20 +457,27 @@ class ImageLabel(QLabel):
     #         self.__clickEvent = None
     #     return False
 
-    def paintEvent(self, qPaintEvent:QPaintEvent):
+    def paintEvent(self, paint_event:QPaintEvent):
         # first render the image
-        super().paintEvent(qPaintEvent)
-        # TODO not sure why but these seem to need to be created here each time
+        super().paintEvent(paint_event)
+        # not sure why but it seems we need to create the painter each time
         painter = QPainter(self)
-        painter.setPen(Qt.red)
 
+        # paint the selected regions
+        for region_item in self.__regions.values():
+            if region_item.is_on():
+                painter.setPen(region_item.color())
+                painter.drawPoints(region_item.polygon())
+
+        # TODO current selector is always red?  next color?
+        painter.setPen(Qt.red)
         if self.__rect is not None:
             painter.drawRect(self.__rect)
 
         if self.__polygon is not None:
             painter.drawPoints(self.__polygon)
 
-            # TODO not sure this is how we want to go but interesting
+            # TODO probabaly don't need, only for debgging?
             self.__polygon_bounds = self.__polygon.boundingRect()
             painter.drawRect(self.__polygon_bounds)
 
@@ -443,7 +512,7 @@ class ImageLabel(QLabel):
         return new_point
 
     def __unscale_size(self, size:QSize) -> QSize:
-        new_size: QSize = QSize(size)
+        new_size:QSize = QSize(size)
         if self.__width_scale_factor != 1.0:
             new_size.setWidth(floor(new_size.width() / self.__width_scale_factor))
 
@@ -458,28 +527,52 @@ class ImageLabel(QLabel):
                self.__polygon_bounds.size().width() > 1:
 
                 x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
-                ImageLabel.__LOG.debug("Selected coords: {0}, {1}, {2}, {3}, size: {4}",
+                ImageLabel.__LOG.debug("Selected coords, x1: {0}, y1: {1}, x2: {2}, y2: {3}, size: {4}",
                     x1, y1, x2, y2, self.__polygon_bounds.size())
 
-                # create an array of pixel locations contained by the bounding rectangle
+                # can get negative x1 & y1 if user drags off image to the left or top
+                if x1 < 0 : x1 = 0
+                if y1 < 0 : y1 = 0
+
+                # testing showed lower and right edges seemed to clip at the
+                # correct last pixels but make sure that doesn't change
+                image_size = self.pixmap().size()
+                ImageLabel.__LOG.debug("Image w: {0}, h: {1}", image_size.width(), image_size.height())
+                if x2 > image_size.width() - 1 : x2 = image_size.width() - 1
+                if y2 > image_size.height() - 1 : y2 = image_size.height() - 1
+
+                # create an array of pixel locations contained by the
+                # adjusted bounding rectangle coordinates
                 x_range = ma.arange(x1, x2 + 1)
                 y_range = ma.arange(y1, y2 + 1)
                 points = ma.array(list(itertools.product(x_range, y_range)))
 
                 # check to see which points also fall inside of the polygon
+                new_polygon = QPolygon()
                 for i in range(len(points)):
-                    if not self.__polygon.containsPoint(QPoint(points[i][0], points[i][1]), Qt.WindingFill):
+                    point = QPoint(points[i][0], points[i][1])
+                    if not self.__polygon.containsPoint(point, Qt.WindingFill):
                         points[i] = ma.masked
+                        # ImageLabel.__LOG.debug("Point out: {0}", point)
+                    else:
+                        new_polygon << point
+                        # ImageLabel.__LOG.debug("Point in: {0}", point)
 
-                # split the points back into x and y values
-                x = points[:, 0]
-                y = points[:, 1]
+                ImageLabel.__LOG.debug("Points size: {0}, count: {1}", points.size, points.count())
 
-                # take only the points that were inside the polygon
-                x = x[~x.mask]
-                y = y[~y.mask]
-                self.area_selected.emit(AdjustedAreaSelectedEvent(
-                    x, 1 / self.__width_scale_factor, y, 1 / self.__height_scale_factor))
+                # make sure we haven't masked all the elements
+                if points.count() > 0:
+                    # capture the region of interest and save to the map
+                    region = RegionOfInterest(points,
+                        1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
+                        self.__initial_size.height(), self.__initial_size.width(), self.__label)
+                    color = self.__color_picker.color()
+                    self.__regions[region.id()] = RegionDisplayItem(new_polygon, color, True)
+
+                    self.area_selected.emit(AreaSelectedEvent(region, color))
+                else:
+                    ImageLabel.__LOG.debug("No points found in region, size: {0}", self.__polygon_bounds.size())
+                    self.clear_selected_area()
             else:
                 ImageLabel.__LOG.debug("Zero dimension polygon rejected, size: {0}", self.__polygon_bounds.size())
                 self.clear_selected_area()
@@ -536,7 +629,7 @@ class ImageDisplay(QScrollArea):
 
     __LOG:Logger = LogHelper.logger("ImageDisplay")
 
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
     mouse_move = pyqtSignal(AdjustedMouseEvent)
@@ -545,7 +638,7 @@ class ImageDisplay(QScrollArea):
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
+    def __init__(self, image:Image, label:str, qimage_format:QImage.Format=QImage.Format_Grayscale8,
             location_rect:bool=True, parent=None):
         super().__init__(parent)
 
@@ -557,7 +650,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(location_rect, self)
+        self.__image_label = ImageLabel(label, location_rect, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -711,8 +804,11 @@ class ImageDisplay(QScrollArea):
         # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
-    def clear_selected_area(self):
-        self.__image_label.clear_selected_area()
+    def remove_region(self, region:RegionOfInterest):
+        self.__image_label.remove_region(region)
+
+    def remove_all_regions(self):
+        self.__image_label.remove_all_regions()
 
     def scale_image(self, factor:float):
         """Changes the scale relative to the original image size maintaining aspect ratio.
@@ -784,6 +880,9 @@ class ImageDisplay(QScrollArea):
     def margin_height(self) -> int:
         return self.__margin_height
 
+    def toggle_region(self, region:RegionOfInterest):
+        self.__image_label.toggle_region(region)
+
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
         # This adjust my size and the display widget and causes the scroll bars to update properly
@@ -814,15 +913,16 @@ class ImageDisplayWindow(QMainWindow):
 
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
-    area_selected = pyqtSignal(AdjustedAreaSelectedEvent)
+    area_selected = pyqtSignal(AreaSelectedEvent)
 
-    def __init__(self, image:Image, label, qimage_format:QImage.Format,
+    def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, parent=None):
         super().__init__(parent)
         # TODO do we need to hold the data itself?
         self.__image = image
-        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
-        self.__init_ui(label)
+        self.__image_label = label
+        self._image_display = ImageDisplay(self.__image, self.__image_label, qimage_format, location_rect, self)
+        self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()
         self._margin_height = self._image_display.margin_height()
@@ -840,8 +940,8 @@ class ImageDisplayWindow(QMainWindow):
         self._screen_geometry = screen_geometry
         ImageDisplayWindow.__LOG.debug("screen geometry: {0}", self._screen_geometry)
 
-    def __init_ui(self, label):
-        self.setWindowTitle(label)
+    def __init_ui(self):
+        self.setWindowTitle(self.__image_label)
 
         self.setCentralWidget(self._image_display)
         self._image_display.setAlignment(Qt.AlignHCenter)
@@ -870,15 +970,24 @@ class ImageDisplayWindow(QMainWindow):
         self._margin_width = None
         self._frame_width = None
         self._scroll_bar_width = None
-
+        self.__image_label = None
         self._image_display = None
         self.__image = None
         #TODO self.____mouseWidget = None Or does the window system handle this?
         self._screen_geometry = None
 
-    @pyqtSlot()
-    def handle_stats_closed(self):
-        self._image_display.clear_selected_area()
+    def image_label(self) -> str:
+        return self.__image_label
+
+    @pyqtSlot(RegionToggleEvent)
+    def handle_region_toggle(self, event:RegionToggleEvent):
+        self._image_display.toggle_region(event.region())
+
+    def remove_region(self, region:RegionOfInterest):
+        self._image_display.remove_region(region)
+
+    def remove_all_regions(self):
+        self._image_display.remove_all_regions()
 
     def refresh_image(self):
         self._image_display.refresh_image()
