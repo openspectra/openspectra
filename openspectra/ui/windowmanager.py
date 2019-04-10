@@ -21,48 +21,6 @@ from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionSta
 from openspectra.utils import LogHelper, Logger
 
 
-class RegionOfInterestManager(QObject):
-
-    __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
-
-    stats_clicked = pyqtSignal(RegionStatsEvent)
-    region_toggled = pyqtSignal(RegionToggleEvent)
-    region_name_changed = pyqtSignal(RegionNameChangeEvent)
-    region_closed =  pyqtSignal(RegionCloseEvent)
-    window_closed = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
-        # TODO figure out how to position the window??
-        # Region of interest window
-        self.__region_window = RegionOfInterestDisplayWindow()
-        self.__region_window.region_toggled.connect(self.region_toggled)
-        self.__region_window.region_name_changed.connect(self.region_name_changed)
-        self.__region_window.stats_clicked.connect(self.stats_clicked)
-        self.__region_window.region_closed.connect(self.region_closed)
-        self.__region_window.closed.connect(self.__handle_window_closed)
-
-        self.__regions = dict()
-
-    def __del__(self):
-        del self.__regions
-        self.__region_window.close()
-        self.__region_window = None
-
-    def add_region(self, region:RegionOfInterest, color:QColor):
-        self.__regions[region.id()] = region
-        self.__region_window.add_item(region, color)
-
-        if not self.__region_window.isVisible():
-            self.__region_window.show()
-
-    @pyqtSlot()
-    def __handle_window_closed(self):
-        self.__region_window.remove_all()
-        self.__regions.clear()
-        self.window_closed.emit()
-
-
 class WindowManager(QObject):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
@@ -84,8 +42,6 @@ class WindowManager(QObject):
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
-
-        self.__region_manager = RegionOfInterestManager()
 
     def __del__(self):
         # TODO This works but for some reason throws an exception on shutdown
@@ -120,9 +76,6 @@ class WindowManager(QObject):
     # TODO - not used????
     def file(self, index=0) -> OpenSpectraFile:
         return self.__file_sets[index]
-
-    def region_manager(self) -> RegionOfInterestManager:
-        return self.__region_manager
 
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
@@ -206,10 +159,6 @@ class FileManager(QObject):
         title = self.__file_name + ": " + image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
-        self.__window_manager.region_manager().stats_clicked.connect(window_set.region_stats_handler)
-        self.__window_manager.region_manager().region_toggled.connect(window_set.region_toogle_handler)
-        self.__window_manager.region_manager().region_closed.connect(window_set.region_closed_handler)
-        self.__window_manager.region_manager().region_name_changed.connect(window_set.region_name_changed_handler)
 
         # TODO need a layout manager
         y = 25
@@ -247,11 +196,7 @@ class WindowSet(QObject):
 
         self.__init_image_window()
         self.__init_plot_windows()
-        self.__band_stats_windows = dict()
-
-        # Register so we know if the region window is closed
-        self.__file_manager.window_manager().region_manager().\
-            window_closed.connect(self.__handle_region_window_close)
+        self.__init_roi()
 
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
@@ -289,18 +234,16 @@ class WindowSet(QObject):
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
 
-    def __del__(self):
-        WindowSet.__LOG.debug("WindowSet.__del__ called...")
-        del self.__band_stats_windows
-        self.__spec_plot_window = None
-        self.__histogram_window = None
-        self.__zoom_image_window = None
-        self.__main_image_window = None
-        self.__file_manager = None
-        self.__band_tools = None
-        self.__histogram_tools = None
-        self.__title = None
-        self.__image = None
+    def __init_roi(self):
+        # RegionOfInterestManager is a singleton so all WindowSets
+        # will get a reference to the same instance
+        self.__roi_manager = RegionOfInterestManager.Get_Instance()
+
+        # Register so we know if the region window is closed
+        self.__roi_manager.window_closed.connect(self.__handle_region_window_close)
+
+        # a dictionary to keep track of the banc stats windows
+        self.__band_stats_windows = dict()
 
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
@@ -324,6 +267,20 @@ class WindowSet(QObject):
         # TODO need some sort of layout manager?
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
         self.__histogram_window.show()
+
+    def __del__(self):
+        WindowSet.__LOG.debug("WindowSet.__del__ called...")
+        del self.__band_stats_windows
+        self.__roi_manager = None
+        self.__spec_plot_window = None
+        self.__histogram_window = None
+        self.__zoom_image_window = None
+        self.__main_image_window = None
+        self.__file_manager = None
+        self.__band_tools = None
+        self.__histogram_tools = None
+        self.__title = None
+        self.__image = None
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
@@ -404,7 +361,7 @@ class WindowSet(QObject):
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
         region = event.area()
-        self.__file_manager.window_manager().region_manager().add_region(region, event.color())
+        self.__roi_manager.add_region(region, event.color(), self)
 
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
@@ -420,12 +377,12 @@ class WindowSet(QObject):
         return self.__main_image_window.geometry()
 
     @pyqtSlot(RegionToggleEvent)
-    def region_toogle_handler(self, event:RegionToggleEvent):
+    def handle_region_toogled(self, event:RegionToggleEvent):
         self.__main_image_window.handle_region_toggle(event)
         self.__zoom_image_window.handle_region_toggle(event)
 
     @pyqtSlot(RegionStatsEvent)
-    def region_stats_handler(self, event:RegionStatsEvent):
+    def handle_region_stats(self, event:RegionStatsEvent):
         region = event.region()
         lines = region.adjusted_y_points()
         samples = region.adjusted_x_points()
@@ -450,7 +407,7 @@ class WindowSet(QObject):
         band_stats_window.show()
 
     @pyqtSlot(RegionCloseEvent)
-    def region_closed_handler(self, event:RegionCloseEvent):
+    def handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
         self.__main_image_window.remove_region(region)
         self.__zoom_image_window.remove_region(region)
@@ -459,10 +416,102 @@ class WindowSet(QObject):
             del self.__band_stats_windows[region.id()]
 
     @pyqtSlot(RegionNameChangeEvent)
-    def region_name_changed_handler(self, event:RegionNameChangeEvent):
+    def handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
         WindowSet.__LOG.debug("new band stats title {0}: ", region.name())
 
         if region.id() in self.__band_stats_windows:
-            self.__band_stats_windows[region.id()].\
+            self.__band_stats_windows[region.id()]. \
                 set_plot_title("Region: {0}".format(region.name()))
+
+
+class RegionOfInterestManager(QObject):
+
+    __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
+
+    window_closed = pyqtSignal()
+
+    # Since QObject doesn't want to play well with the metaclass approach
+    # to creating a singleton we'll take a slightly less elegant approach
+    __instance = None
+
+    @staticmethod
+    def Get_Instance():
+        if RegionOfInterestManager.__instance is None:
+            RegionOfInterestManager()
+
+        return RegionOfInterestManager.__instance
+
+    def __init__(self):
+        # Prevent all but the first call to our constructor
+        if RegionOfInterestManager.__instance is not None:
+            raise Exception("RegionOfInterestManager is a singleton, use RegionOfInterestManager.Get_Instance() instead")
+        else:
+            super().__init__()
+            # TODO figure out how to position the window??
+            # Region of interest window
+            self.__region_window = RegionOfInterestDisplayWindow()
+            self.__region_window.region_toggled.connect(self.__handle_region_toggled)
+            self.__region_window.region_name_changed.connect(self.__handle_region_name_changed)
+            self.__region_window.stats_clicked.connect(self.__handle_stats_clicked)
+            self.__region_window.region_closed.connect(self.__handle_region_closed)
+            self.__region_window.closed.connect(self.__handle_window_closed)
+
+            self.__region_window_set = dict()
+
+            # the single instance
+            RegionOfInterestManager.__instance = self
+
+    def __del__(self):
+        del self.__region_window_set
+        self.__region_window.close()
+        self.__region_window = None
+
+    def add_region(self, region:RegionOfInterest, color:QColor, window_set:WindowSet):
+        self.__region_window_set[region.id()] = window_set
+        self.__region_window.add_item(region, color)
+
+        if not self.__region_window.isVisible():
+            self.__region_window.show()
+
+    @pyqtSlot(RegionToggleEvent)
+    def __handle_region_toggled(self, event:RegionToggleEvent):
+        region = event.region()
+        if region.id() in self.__region_window_set:
+            self.__region_window_set[region.id()].handle_region_toogled(event)
+        else:
+            RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling toggle event",
+                region.id(), region.name())
+
+    @pyqtSlot(RegionNameChangeEvent)
+    def __handle_region_name_changed(self, event:RegionNameChangeEvent):
+        region = event.region()
+        if region.id() in self.__region_window_set:
+            self.__region_window_set[region.id()].handle_region_name_changed(event)
+        else:
+            RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling name event",
+                region.id(), region.name())
+
+    @pyqtSlot(RegionCloseEvent)
+    def __handle_region_closed(self, event:RegionCloseEvent):
+        region = event.region()
+        if region.id() in self.__region_window_set:
+            self.__region_window_set[region.id()].handle_region_closed(event)
+        else:
+            RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling close event",
+                region.id(), region.name())
+
+    @pyqtSlot(RegionStatsEvent)
+    def __handle_stats_clicked(self, event:RegionStatsEvent):
+        region = event.region()
+        if region.id() in self.__region_window_set:
+            self.__region_window_set[region.id()].handle_region_stats(event)
+        else:
+            RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling stats event",
+                region.id(), region.name())
+
+    @pyqtSlot()
+    def __handle_window_closed(self):
+        self.__region_window.remove_all()
+        self.__region_window_set.clear()
+        self.window_closed.emit()

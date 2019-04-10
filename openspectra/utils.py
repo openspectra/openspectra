@@ -11,6 +11,16 @@ import numpy as np
 from yaml import load
 
 
+class Singleton(type):
+    """A metaclass that can used to turn your class in a Singleton"""
+    __instances = dict()
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            cls.__instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls.__instances[cls]
+
+
 class LogMessage(object):
     def __init__(self, fmt, args):
         self.fmt = fmt
