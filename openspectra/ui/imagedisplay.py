@@ -16,10 +16,10 @@ from numpy import ma
 from openspectra.image import Image
 from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.ui.toolsdisplay import RegionToggleEvent
-from openspectra.utils import LogHelper, Logger
+from openspectra.utils import LogHelper, Logger, Singleton
 
 
-class ColorPicker:
+class ColorPicker(metaclass=Singleton):
 
     def __init__(self):
         self.__colors = [Qt.red, Qt.green, Qt.blue, Qt.cyan, Qt.yellow,

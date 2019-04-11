@@ -105,7 +105,7 @@ class RegionOfInterestControl(QWidget):
         self.__table.cellChanged.disconnect(self.__handle_cell_changed)
         self.__table.setRowCount(self.__rows + 1)
 
-        name_item = QTableWidgetItem(region.name())
+        name_item = QTableWidgetItem(region.display_name())
 
         color_item = QTableWidgetItem("...")
         font = QFont()
@@ -131,11 +131,7 @@ class RegionOfInterestControl(QWidget):
         if self.__rows == 0:
             self.__table.horizontalHeader().setStretchLastSection(True)
 
-        self.__table.resizeColumnsToContents()
-        length = self.__table.horizontalHeader().length()
-        RegionOfInterestControl.__LOG.debug("Header length: {0}", length)
-        self.setMinimumWidth(length + self.__margins * 2 +
-            QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
+        self.__adjust_width()
 
         self.__regions.append(region)
         self.__rows += 1
@@ -147,13 +143,20 @@ class RegionOfInterestControl(QWidget):
         self.__regions.clear()
         self.__rows = 0
 
+    def __adjust_width(self):
+        self.__table.resizeColumnsToContents()
+        length = self.__table.horizontalHeader().length()
+        RegionOfInterestControl.__LOG.debug("Header length: {0}", length)
+        self.setMinimumWidth(length + self.__margins * 2 +
+                             QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
+
     def __handle_cell_clicked(self, row:int, column:int):
         position = self.mapToGlobal(QPoint(self.__table.columnViewportPosition(column), self.__table.rowViewportPosition(row)))
         RegionOfInterestControl.__LOG.debug("Cell clicked row: {0}, column: {1}, y pos: {2}",
             row, column, position)
         if column == 0 and -1 < row < len(self.__regions):
             self.__selected_row = row
-            RegionOfInterestControl.__LOG.debug("Found region: {0}", self.__regions[row].name())
+            RegionOfInterestControl.__LOG.debug("Found region: {0}", self.__regions[row].display_name())
             self.__menu.popup(position)
 
     def __handle_cell_changed(self, row:int, column:int):
@@ -162,25 +165,26 @@ class RegionOfInterestControl(QWidget):
             item = self.__table.item(row, column)
             RegionOfInterestControl.__LOG.debug("Cell changed, new value: {0}", item.text())
             region:RegionOfInterest = self.__regions[row]
-            region.set_name(item.text())
+            region.set_display_name(item.text())
             self.region_name_changed.emit(RegionNameChangeEvent(region))
+            self.__adjust_width()
 
     def __handle_region_toggle(self):
         region = self.__regions[self.__selected_row]
-        RegionOfInterestControl.__LOG.debug("Toogle region: {0}", region.name())
+        RegionOfInterestControl.__LOG.debug("Toogle region: {0}", region.display_name())
         self.region_toggled.emit(RegionToggleEvent(region))
         self.__selected_row = None
 
     def __handle_region_save(self):
         region = self.__regions[self.__selected_row]
-        RegionOfInterestControl.__LOG.debug("Save region: {0}", region.name())
+        RegionOfInterestControl.__LOG.debug("Save region: {0}", region.display_name())
         # TODO implement
 
         self.__selected_row = None
 
     def __handle_region_close(self):
         region = self.__regions[self.__selected_row]
-        RegionOfInterestControl.__LOG.debug("Close region: {0}", region.name())
+        RegionOfInterestControl.__LOG.debug("Close region: {0}", region.display_name())
         self.__table.removeRow(self.__selected_row)
         del self.__regions[self.__selected_row]
         self.region_closed.emit(RegionCloseEvent(region))
@@ -189,7 +193,7 @@ class RegionOfInterestControl(QWidget):
 
     def __handle_band_stats(self):
         region = self.__regions[self.__selected_row]
-        RegionOfInterestControl.__LOG.debug("Band stats region: {0}", region.name())
+        RegionOfInterestControl.__LOG.debug("Band stats region: {0}", region.display_name())
         self.stats_clicked.emit(RegionStatsEvent(region))
         self.__selected_row = None
 

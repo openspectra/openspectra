@@ -15,9 +15,12 @@ from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logge
 class RegionOfInterest:
 
     def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
-            image_height:int, image_width:int, image_name:str):
-        self.__id = str(time.time_ns())
-        self.__name = self.__id
+            image_height:int, image_width:int, image_name:str, display_name=None):
+
+        # generate an id that will be unique for the life of the object only
+        self.__id = str(self)
+        self.__display_name = display_name
+
         self.__area = area
         self.__x_scale = x_scale
         self.__y_scale = y_scale
@@ -61,11 +64,11 @@ class RegionOfInterest:
     def image_name(self) -> str:
         return self.__image_name
 
-    def name(self) -> str:
-        return self.__name
+    def display_name(self) -> str:
+        return self.__display_name
 
-    def set_name(self, name:str):
-        self.__name = name
+    def set_display_name(self, name:str):
+        self.__display_name = name
 
 
 class PlotData:
