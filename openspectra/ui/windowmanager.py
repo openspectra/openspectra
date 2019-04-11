@@ -394,7 +394,7 @@ class WindowSet(QObject):
         self.__band_stats_windows[region.id()] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
-        stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.name()))
+        stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.display_name()))
         band_stats_window.plot(stats_plot.mean())
         band_stats_window.add_plot(stats_plot.min())
         band_stats_window.add_plot(stats_plot.max())
@@ -418,11 +418,11 @@ class WindowSet(QObject):
     @pyqtSlot(RegionNameChangeEvent)
     def handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
-        WindowSet.__LOG.debug("new band stats title {0}: ", region.name())
+        WindowSet.__LOG.debug("new band stats title {0}: ", region.display_name())
 
         if region.id() in self.__band_stats_windows:
             self.__band_stats_windows[region.id()]. \
-                set_plot_title("Region: {0}".format(region.name()))
+                set_plot_title("Region: {0}".format(region.display_name()))
 
 
 class RegionOfInterestManager(QObject):
@@ -458,6 +458,7 @@ class RegionOfInterestManager(QObject):
             self.__region_window.closed.connect(self.__handle_window_closed)
 
             self.__region_window_set = dict()
+            self.__counter = 1
 
             # the single instance
             RegionOfInterestManager.__instance = self
@@ -468,6 +469,10 @@ class RegionOfInterestManager(QObject):
         self.__region_window = None
 
     def add_region(self, region:RegionOfInterest, color:QColor, window_set:WindowSet):
+        if region.display_name() is None:
+            region.set_display_name("Region {0}".format(self.__counter))
+            self.__counter += 1
+
         self.__region_window_set[region.id()] = window_set
         self.__region_window.add_item(region, color)
 
@@ -481,7 +486,7 @@ class RegionOfInterestManager(QObject):
             self.__region_window_set[region.id()].handle_region_toogled(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling toggle event",
-                region.id(), region.name())
+                region.id(), region.display_name())
 
     @pyqtSlot(RegionNameChangeEvent)
     def __handle_region_name_changed(self, event:RegionNameChangeEvent):
@@ -490,7 +495,7 @@ class RegionOfInterestManager(QObject):
             self.__region_window_set[region.id()].handle_region_name_changed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling name event",
-                region.id(), region.name())
+                region.id(), region.display_name())
 
     @pyqtSlot(RegionCloseEvent)
     def __handle_region_closed(self, event:RegionCloseEvent):
@@ -499,7 +504,7 @@ class RegionOfInterestManager(QObject):
             self.__region_window_set[region.id()].handle_region_closed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling close event",
-                region.id(), region.name())
+                region.id(), region.display_name())
 
     @pyqtSlot(RegionStatsEvent)
     def __handle_stats_clicked(self, event:RegionStatsEvent):
@@ -508,7 +513,7 @@ class RegionOfInterestManager(QObject):
             self.__region_window_set[region.id()].handle_region_stats(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling stats event",
-                region.id(), region.name())
+                region.id(), region.display_name())
 
     @pyqtSlot()
     def __handle_window_closed(self):
