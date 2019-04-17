@@ -2,17 +2,29 @@
 
 ...is a development project for OpenSpectra
 
-You'll need Python 3.7 installed and can use,
+You'll need Python 3.7 installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.
+
+If you're using a virtual environment set up your project directory first then see the [Clone](https://gitlab.com/openspectradev/openspectradev/wikis/git/Git-Tips#clone) section of git tips for how to get the code added to your project.  If not using a virtual environment you can jump straight to the clone instructions.
+
+Once you have the code in your project you'll see a "requirements.txt" file in the top level project directory.  From that directory using the command line execute the follow "pip" command to download the project's dependencies.
 
 ````
 pip install -r requirements.txt
 ````
 
-from inside the OpenSpectra project directory.  Using virutalenvwrapper is highly reccomended.
+Once the libraries have all downloaded you're ready to run the application.  Simply run,
 
-Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org/
+````
+python main.py
+````
 
-Note: On Mac you'll want to update and use the provided run.sh script.  It contains a workaround for a permissing problem when running from within a virtual environment.
+from the top level project directory.
+
+On Mac if your are using a virtual environment you'll need to update and use the provided "run.sh" script.  It contains a workaround for a permissing problem when running from within a virtual environment.  You'll need to update the value of PYTHON_ROOT in run.sh to point to your installation of Python 3.7.  And in this case to start the application use,
+
+````
+./run.sh main.py
+````
 
 ### Samples
 
