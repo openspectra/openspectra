@@ -281,7 +281,7 @@ class GreyscaleImage(Image, BandImageAdjuster):
         self.__band = None
 
     def adjusted_data(self) -> np.ndarray:
-        """Do not call this method, it's an unfortunate consequnecs of needing
+        """Do not call this method, it's an unfortunate consequence of needing
         it to be public on BandImageAdjuster for use by RGBImageAdjuster"""
         raise NotImplementedError("Do not call GreyscaleImage.adjusted_data(), use GreyscaleImage.image_data() instead")
 
