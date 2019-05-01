@@ -6,7 +6,7 @@ import itertools
 import numpy as np
 
 
-def zoomed_in_region_test():
+def zoomed_in_region_demo():
     """Simulate scaling a region selected on a zoomed in image and scaling it
     to where it would fall in the same image at 1 to 1"""
 
@@ -30,7 +30,7 @@ def zoomed_in_region_test():
     print("unique scaled points shape: {0}\nscaled points: {1}".format(scaled_points.shape, scaled_points))
 
 
-def zoomed_out_region_test():
+def zoomed_out_region_demo():
     """Simulate scaling a region selected on a zoomed out image and scaling it
         to where it would fall in the same image at 1 to 1"""
 
@@ -55,6 +55,26 @@ def zoomed_out_region_test():
     print("scaled points: {0}".format(scaled_points))
 
 
+def coords_demo():
+    x_points = np.array([0, 1, 2, 3])
+    x_ref_pixel:float = 1.00
+    x_pixel_size:float = 20.00
+    x0_coord:float = 50000.000
+
+    print((x_points - (x_ref_pixel - 1)))
+
+    x_coords = (x_points - (x_ref_pixel - 1)) * x_pixel_size + x0_coord
+    print(x_coords)
+
+    y_points = np.array([0, 1, 2, 3])
+    y_ref_pixel: float = 1.00
+    y_pixel_size: float = 20.00
+    y0_coord: float = 50000.000
+
+    print(y0_coord - (y_points - (y_ref_pixel - 1)) * y_pixel_size)
+
+
 if __name__ == "__main__":
-    zoomed_in_region_test()
-    zoomed_out_region_test()
+    zoomed_in_region_demo()
+    zoomed_out_region_demo()
+    coords_demo()

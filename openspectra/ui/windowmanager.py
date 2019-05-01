@@ -3,21 +3,22 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import logging
+from typing import Dict
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
-from PyQt5.QtWidgets import QTreeWidgetItem
+from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
-    RegionOfInterest
+    RegionOfInterest, OpenSpectraRegionTools
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -156,7 +157,7 @@ class FileManager(QObject):
         return self.__window_manager
 
     def __create_window_set(self, image:Image):
-        title = self.__file_name + ": " + image.label()
+        title = self.__file_name + " - " + image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
 
@@ -237,7 +238,7 @@ class WindowSet(QObject):
     def __init_roi(self):
         # RegionOfInterestManager is a singleton so all WindowSets
         # will get a reference to the same instance
-        self.__roi_manager = RegionOfInterestManager.Get_Instance()
+        self.__roi_manager = RegionOfInterestManager.get_instance()
 
         # Register so we know if the region window is closed
         self.__roi_manager.window_closed.connect(self.__handle_region_window_close)
@@ -376,6 +377,12 @@ class WindowSet(QObject):
     def get_image_window_geometry(self):
         return self.__main_image_window.geometry()
 
+    def band_tools(self) -> OpenSpectraBandTools:
+        return self.__band_tools
+
+    def file_manager(self) -> FileManager:
+        return self.__file_manager
+
     @pyqtSlot(RegionToggleEvent)
     def handle_region_toogled(self, event:RegionToggleEvent):
         self.__main_image_window.handle_region_toggle(event)
@@ -436,7 +443,7 @@ class RegionOfInterestManager(QObject):
     __instance = None
 
     @staticmethod
-    def Get_Instance():
+    def get_instance():
         if RegionOfInterestManager.__instance is None:
             RegionOfInterestManager()
 
@@ -454,10 +461,11 @@ class RegionOfInterestManager(QObject):
             self.__region_window.region_toggled.connect(self.__handle_region_toggled)
             self.__region_window.region_name_changed.connect(self.__handle_region_name_changed)
             self.__region_window.stats_clicked.connect(self.__handle_stats_clicked)
+            self.__region_window.region_saved.connect(self.__handle_region_saved)
             self.__region_window.region_closed.connect(self.__handle_region_closed)
             self.__region_window.closed.connect(self.__handle_window_closed)
 
-            self.__region_window_set = dict()
+            self.__region_window_set:Dict[str, WindowSet] = dict()
             self.__counter = 1
 
             # the single instance
@@ -473,11 +481,44 @@ class RegionOfInterestManager(QObject):
             region.set_display_name("Region {0}".format(self.__counter))
             self.__counter += 1
 
+        # Set the regions map info if it's available
+        map_info = window_set.file_manager().header().map_info()
+        if map_info is not None:
+            region.set_map_info(map_info)
         self.__region_window_set[region.id()] = window_set
         self.__region_window.add_item(region, color)
 
         if not self.__region_window.isVisible():
             self.__region_window.show()
+
+    @pyqtSlot(RegionSaveEvent)
+    def __handle_region_saved(self, event:RegionSaveEvent):
+        region = event.region()
+        RegionOfInterestManager.__LOG.debug("Region saved for region: {0}".format(region.display_name()))
+
+        #TODO prompt for save bands or not?
+
+        if region.id() in self.__region_window_set:
+            region_tools = OpenSpectraRegionTools(region, self.__region_window_set[region.id()].band_tools())
+
+            # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
+            # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
+            # TODO explain why it only seems to impact the save dialog.
+
+            # TODO make save location configurable some how
+            # TODO |QFileDialog.ShowDirsOnly only good with native dialog
+            dialog_result = QFileDialog.getSaveFileName(caption = "Save region", directory="/Users/jconti/dev/data/JoeSamples",
+                filter="ROI files (*.roi)", options=QFileDialog.DontUseNativeDialog)
+            file_name: str = dialog_result[0]
+
+            if file_name:
+                RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}".format(file_name, dialog_result))
+                region_tools.save_region(file_name, True)
+            else:
+                RegionOfInterestManager.__LOG.debug("Region save canceled")
+        else:
+            # Report region not found??  Shouldn't happen...
+            pass
 
     @pyqtSlot(RegionToggleEvent)
     def __handle_region_toggled(self, event:RegionToggleEvent):

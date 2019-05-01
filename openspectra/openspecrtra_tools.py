@@ -2,58 +2,124 @@
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
 import time
-from typing import Union
+from typing import Union, List, Tuple
 
 import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band
-from openspectra.openspectra_file import OpenSpectraFile
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
 class RegionOfInterest:
 
-    def __init__(self, area:np.ma.MaskedArray, x_scale:float, y_scale:float,
-            image_height:int, image_width:int, image_name:str, display_name=None):
+    def __init__(self, area:np.ndarray, x_zoom_factor:float, y_zoom_factor:float,
+            image_height:int, image_width:int, image_name:str, display_name=None,
+            map_info:OpenSpectraHeader.MapInfo=None):
+        """area is basically a list of [x, y] pairs, that is the area should have a shape
+        of (num pixels, 2)"""
+
+        shape = area.shape
+        if len(shape) != 2:
+            raise ValueError("Parameter 'area' dimensions are not valid, expect a 2 dimensional array")
+
+        if shape[1] != 2:
+            raise ValueError(
+                "Parameter 'area' dimensions are not valid, expect the second dimension of the array to be 2")
+
+        # index to use when we're being iterated over
+        self.__index = -1
 
         # generate an id that will be unique for the life of the object only
+        # TODO replace with __dict__
         self.__id = str(self)
         self.__display_name = display_name
 
-        self.__area = area
-        self.__x_scale = x_scale
-        self.__y_scale = y_scale
+        # TODO do I need to keep these around?
+        # self.__x_scale = x_zoom_factor
+        # self.__y_scale = y_zoom_factor
+
+        # TODO do I need to keep area?
+        # self.__area = area
+
+        # TODO need a way we can tie this region back to the original image?
+        # TODO verify area is less than or equal to image size???
         self.__image_height = image_height
         self.__image_width = image_width
         self.__image_name = image_name
 
-        # split the points back into x and y values
-        self.__x_points = self.__area[:, 0]
-        self.__y_points = self.__area[:, 1]
+        # TODO would need this to get me back to the original image
+        self.__band_name = None
 
-        # take only the points that were inside the polygon
-        self.__x_points = self.__x_points[~self.__x_points.mask]
-        self.__y_points = self.__y_points[~self.__y_points.mask]
+        # split the points back into x and y values and convert to 1 to 1 space and 0 based
+        self.__x_points = np.floor(area[:, 0] / x_zoom_factor).astype(np.int16)
+        self.__y_points = np.floor(area[:, 1] / y_zoom_factor).astype(np.int16)
 
-        # calculate the points in the region if the image is scaled
-        self.__adjusted_x_points = np.floor(self.__x_points * x_scale).astype(np.int16)
-        self.__adjusted_y_points = np.floor(self.__y_points * y_scale).astype(np.int16)
+        if self.__x_points.size != self.__y_points.size:
+            raise ValueError("Number of x points doesn't match number of y points")
 
+        # limit to use when we're being iterated over
+        self.__iter_limit = self.__x_points.size - 1
+
+        # TODO need to implement rotation calc
+        self.__x_coords = None
+        self.__y_coords = None
+        self.__map_info:OpenSpectraHeader.MapInfo = map_info
+        self.__calculate_coords()
+
+    def __iter__(self):
+        # make sure index is at -1
+        self.__index = -1
+        return self
+
+    def __next__(self):
+        if self.__index >= self.__iter_limit:
+            raise StopIteration
+        else:
+            self.__index += 1
+            return self
+
+    def __calculate_coords(self):
+        if self.__map_info is not None:
+            self.__x_coords = (self.__x_points - (self.__map_info.x_reference_pixel() - 1)) * self.__map_info.x_pixel_size() + self.__map_info.x_zero_coordinate()
+            self.__y_coords = self.__map_info.y_zero_coordinate() - (self.__y_points - (self.__map_info.y_reference_pixel() - 1)) * self.__map_info.y_pixel_size()
+
+    # TODO get rid of this implement __dict__?
     def id(self) -> str:
         return self.__id
+
+    # TODO remove?
+    # def area(self) -> np.ndarray:
+    #     return self.__area
+
+    def x_point(self) -> int:
+        """get the x point while iterating"""
+        return self.__x_points[self.__index]
+
+    def y_point(self) -> int:
+        """get the y point while iterating"""
+        return self.__y_points[self.__index]
+
+    def x_coordinate(self) -> float:
+        """get the x coordinate while iterating"""
+        if self.__x_coords is not None:
+            return self.__x_coords[self.__index]
+        else:
+            return None
+
+    def y_coordinate(self) -> float:
+        """get the y coordinate while iterating"""
+        if self.__y_coords is not None:
+            return self.__y_coords[self.__index]
+        else:
+            return None
 
     def x_points(self) -> np.ndarray:
         return self.__x_points
 
     def y_points(self) -> np.ndarray:
         return self.__y_points
-
-    def adjusted_x_points(self) -> np.ndarray:
-        return self.__adjusted_x_points
-
-    def adjusted_y_points(self) -> np.ndarray:
-        return self.__adjusted_y_points
 
     def image_height(self) -> int:
         return self.__image_height
@@ -69,6 +135,13 @@ class RegionOfInterest:
 
     def set_display_name(self, name:str):
         self.__display_name = name
+
+    def map_info(self) -> OpenSpectraHeader.MapInfo:
+        return self.__map_info
+
+    def set_map_info(self, map_info:OpenSpectraHeader.MapInfo):
+        self.__map_info = map_info
+        self.__calculate_coords()
 
 
 class PlotData:
@@ -106,11 +179,25 @@ class HistogramPlotData(PlotData):
         self.upper_limit = upper_limit
 
 
-class BandStatistics:
+class Bands:
+
+    def __init__(self, bands:np.ndarray, labels:List[Tuple[str, str]]):
+        self.__bands = bands
+        self.__labels = labels
+
+        # TODO verify indexing matching up
+
+    def bands(self)-> np.ndarray:
+        return self.__bands
+
+    def labels(self) -> List[Tuple[str, str]]:
+        return self.__labels
+
+
+class BandStatistics(Bands):
 
     def __init__(self, bands:np.ndarray):
-        self.__bands = bands
-        # TODO lazy initialize theese???
+        super().__init__(bands)
         self.__mean = bands.mean(0)
         # TODO is this correct?
         self.__min = bands.min(0)
@@ -119,9 +206,6 @@ class BandStatistics:
         self.__std = bands.std(0)
         self.__mean_plus = self.__mean + self.__std
         self.__mean_minus = self.__mean - self.__std
-
-    def bands(self)-> np.ndarray:
-        return self.__bands
 
     def mean(self) -> np.ndarray:
         return self.__mean
@@ -184,6 +268,11 @@ class OpenSpectraBandTools:
     def __del__(self):
         self.__file = None
 
+    def bands(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> Bands:
+        # return Bands(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
+        # TODO cleaned or not?
+        return Bands(self.__file.bands(lines, samples))
+
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
 
@@ -217,6 +306,65 @@ class OpenSpectraBandTools:
             clean_bands = ma.masked_outside(clean_bands, 0.0, 1.0)
 
         return clean_bands
+
+
+class OpenSpectraRegionTools:
+    """A class for working with Regions of Interest"""
+
+    __LOG:Logger = LogHelper.logger("OpenSpectraRegionTools")
+
+    def __init__(self, region:RegionOfInterest, band_tools:OpenSpectraBandTools):
+        self.__region = region
+        self.__band_tools = band_tools
+        self.__map_info:OpenSpectraHeader.MapInfo = self.__region.map_info()
+
+        self.__projection = self.__map_info.projection_name()
+        if self.__map_info.projection_zone() is not None:
+            self.__projection += (" " + str(self.__map_info.projection_zone()))
+        if self.__map_info.projection_area() is not None:
+            self.__projection += (" " + self.__map_info.projection_area())
+        self.__projection += (" " + self.__map_info.datum())
+
+        if self.__map_info is not None:
+            self.__output_format = "{0},{1},{2},{3}"
+            self.__data_header = "sample,line,x_coordinate,y_coordinate"
+        else:
+            self.__output_format = "{0},{1}"
+            self.__data_header = "sample,line"
+
+    def save_region(self, file_name:str, include_bands:bool=False):
+        OpenSpectraRegionTools.__LOG.debug("Save region to: {0}", file_name)
+        # OpenSpectraRegionTools.__LOG.debug("Area: {0}", self.__region.area().tolist())
+
+        with open(file_name, "w") as out:
+            out.write("name:{0}\n".format(self.__region.display_name()))
+            out.write("description:{0}\n".format(self.__region.image_name()))
+            out.write("image width:{0}\n".format(self.__region.image_width()))
+            out.write("image height:{0}\n".format(self.__region.image_height()))
+            out.write("projection:{0}\n".format(self.__projection))
+            out.write("data:\n")
+            # TODO add band names to header optionally
+            # TODO x_coordinate & y_coordinate only if we have map info
+
+            out.write(self.__get_data_header(include_bands))
+
+            output_format = self.__get_output_format(include_bands)
+            for r in self.__region:
+                out.write(output_format.format(r.x_point() + 1, r.y_point() + 1, r.x_coordinate(), r.y_coordinate()))
+
+    def __get_data_header(self, include_bands:bool) -> str:
+        header:str = self.__data_header
+        if include_bands:
+            pass
+
+        return header + "\n"
+
+    def __get_output_format(self, include_bands:bool) -> str:
+        output_format = self.__output_format
+        if include_bands:
+            pass
+
+        return output_format + "\n"
 
 
 class OpenSpectraImageTools:

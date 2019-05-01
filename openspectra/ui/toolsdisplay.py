@@ -44,6 +44,16 @@ class RegionNameChangeEvent(RegionEvent):
         super().__init__(region)
 
 
+class RegionSaveEvent(RegionEvent):
+
+    def __init__(self, region:RegionOfInterest, include_bands:bool=False):
+        super().__init__(region)
+        self.__include_bands = include_bands
+
+    def include_bands(self) -> bool:
+        return self.__include_bands
+
+
 class RegionOfInterestControl(QWidget):
 
     __LOG:Logger = LogHelper.logger("RegionOfInterestControl")
@@ -51,6 +61,7 @@ class RegionOfInterestControl(QWidget):
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
     region_name_changed = pyqtSignal(RegionNameChangeEvent)
+    region_saved = pyqtSignal(RegionSaveEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
 
     def __init__(self, parent=None):
@@ -178,8 +189,7 @@ class RegionOfInterestControl(QWidget):
     def __handle_region_save(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Save region: {0}", region.display_name())
-        # TODO implement
-
+        self.region_saved.emit(RegionSaveEvent(region))
         self.__selected_row = None
 
     def __handle_region_close(self):
@@ -209,6 +219,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
     region_name_changed = pyqtSignal(RegionNameChangeEvent)
+    region_saved = pyqtSignal(RegionSaveEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
     closed = pyqtSignal()
 
@@ -220,6 +231,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
         self.__region_control.stats_clicked.connect(self.stats_clicked)
         self.__region_control.region_toggled.connect(self.region_toggled)
         self.__region_control.region_name_changed.connect(self.region_name_changed)
+        self.__region_control.region_saved.connect(self.region_saved)
         self.__region_control.region_closed.connect(self.region_closed)
 
     def add_item(self, region:RegionOfInterest, color:QColor):

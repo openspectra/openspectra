@@ -562,9 +562,12 @@ class ImageLabel(QLabel):
 
                 # make sure we haven't masked all the elements
                 if points.count() > 0:
+                    # extract the non-masked points and reshape the result back to a list of pairs
+                    points = points[~points.mask].reshape(floor(points.count() / 2), 2)
+
                     # capture the region of interest and save to the map
                     region = RegionOfInterest(points,
-                        1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
+                        self.__width_scale_factor, self.__height_scale_factor,
                         self.__initial_size.height(), self.__initial_size.width(), self.__label)
                     color = self.__color_picker.color()
                     self.__regions[region.id()] = RegionDisplayItem(new_polygon, color, True)

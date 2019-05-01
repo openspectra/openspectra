@@ -66,10 +66,10 @@ class OpenSpectraHeader:
 
             # grab the minimal data
             self.__projection_name:str = map_info[0]
-            self.__x_reference:float = float(map_info[1])
-            self.__y_reference:float = float(map_info[2])
-            self.__x_coordinate:float = float(map_info[3])
-            self.__y_coordinate:float = float(map_info[4])
+            self.__x_reference_pixel:float = float(map_info[1])
+            self.__y_reference_pixel:float = float(map_info[2])
+            self.__x_zero_coordinate:float = float(map_info[3])
+            self.__y_zero_coordinate:float = float(map_info[4])
             self.__x_pixel_size:float = float(map_info[5])
             self.__y_pixel_size:float = float(map_info[6])
 
@@ -112,17 +112,17 @@ class OpenSpectraHeader:
         def projection_name(self) -> str:
             return self.__projection_name
 
-        def x_reference(self) -> float:
-            return self.__x_reference
+        def x_reference_pixel(self) -> float:
+            return self.__x_reference_pixel
 
-        def y_reference(self) -> float:
-            return self.__y_reference
+        def y_reference_pixel(self) -> float:
+            return self.__y_reference_pixel
 
-        def x_coordinate(self) -> float:
-            return self.__x_coordinate
+        def x_zero_coordinate(self) -> float:
+            return self.__x_zero_coordinate
 
-        def y_coordinate(self) -> float:
-            return self.__y_coordinate
+        def y_zero_coordinate(self) -> float:
+            return self.__y_zero_coordinate
 
         def x_pixel_size(self) -> float:
             return self.__x_pixel_size
