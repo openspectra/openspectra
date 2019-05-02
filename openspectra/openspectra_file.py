@@ -676,13 +676,20 @@ class OpenSpectraFile:
         return self.__file_delegate.image(band)
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
-        """Return all of the band values for a given pixel.
-        It's important to understand that selecting images with an int index
+        """Return all of the band values for a given pixel.  The number of lines and samples passed needs
+        to be the same.  The array returned will have a shape of (number of lines & samples, number of bands)
+        It's important to understand that selecting bands with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
         See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
         for more details"""
         self.__validate_band_args(line, sample)
-        return self.__file_delegate.bands(line, sample)
+        bands = self.__file_delegate.bands(line, sample)
+
+        # If the arguments were single ints the array of bands will be one
+        # dimensional so reshape it so it's consistent with multi-point results
+        if len(bands.shape) == 1:
+            bands = bands.reshape(1, bands.size)
+        return bands
 
     def name(self) -> str:
         return self.__memory_model.name()

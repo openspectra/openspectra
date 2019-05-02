@@ -214,3 +214,34 @@ class OpenSpectraFileTest(unittest.TestCase):
         self.assertFalse(image6 is image1)
 
 
+    def test_bands(self):
+        """Verify the bands returned."""
+        test_file = "test/unit_tests/resources/cup95_eff_fixed"
+        # test_file = "../resources/cup95_eff_fixed"
+        os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
+        os_header = os_file.header()
+
+        # TODO single pair returns different shape = (num bands, ) array
+        #  from more than 1 pair whid return shape = (num points, num bands)
+        band1 = os_file.bands(0, 0)
+        print(band1.shape, len(band1.shape))
+
+        # band1_mod = band1.reshape(1, band1.size)
+        # print(band1_mod.shape, len(band1_mod.shape), band1_mod)
+
+        self.assertEqual(band1.shape[0], 1)
+        self.assertEqual(band1.shape[1], os_header.band_count())
+
+        band2 = os_file.bands(1, 1)
+        self.assertEqual(band2.shape[0], 1)
+        self.assertEqual(band2.shape[1], os_header.band_count())
+
+        band3 = os_file.bands((0, 1, 2), (0, 1, 2))
+        print(band3.shape)
+        self.assertEqual(band3.shape[0], 3)
+        self.assertEqual(band3.shape[1], os_header.band_count())
+
+        self.assertFalse(np.array_equal(band1, band2))
+        # Verify the set of bands returns is oriented as expected
+        self.assertTrue(np.array_equal(band3[0, :], band1[0, :]))
+        self.assertTrue(np.array_equal(band3[1, :], band2[0, :]))

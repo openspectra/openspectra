@@ -244,7 +244,7 @@ class WindowSet(QObject):
         self.__roi_manager.window_closed.connect(self.__handle_region_window_close)
 
         # a dictionary to keep track of the banc stats windows
-        self.__band_stats_windows = dict()
+        self.__band_stats_windows:Dict[str, LinePlotDisplayWindow] = dict()
 
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
@@ -312,7 +312,7 @@ class WindowSet(QObject):
         self.__histogram_window.close()
         self.__histogram_window = None
 
-        for window in self.__band_stats_windows.items():
+        for window in self.__band_stats_windows.values():
             window.close()
         self.__band_stats_windows.clear()
 
@@ -323,7 +323,7 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_region_window_close(self):
-        for window in self.__band_stats_windows.items():
+        for window in self.__band_stats_windows.values():
             window.close()
         self.__band_stats_windows.clear()
 
@@ -391,8 +391,8 @@ class WindowSet(QObject):
     @pyqtSlot(RegionStatsEvent)
     def handle_region_stats(self, event:RegionStatsEvent):
         region = event.region()
-        lines = region.adjusted_y_points()
-        samples = region.adjusted_x_points()
+        lines = region.y_points()
+        samples = region.x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")

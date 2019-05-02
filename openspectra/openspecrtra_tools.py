@@ -185,19 +185,25 @@ class Bands:
         self.__bands = bands
         self.__labels = labels
 
-        # TODO verify indexing matching up
+        # TODO verify indexing matching up?
 
-    def bands(self)-> np.ndarray:
-        return self.__bands
+    def bands(self, index:int=None)-> np.ndarray:
+        if index is not None:
+            return self.__bands[index, :]
+        else:
+            return self.__bands
 
     def labels(self) -> List[Tuple[str, str]]:
         return self.__labels
 
+    def bands_shape(self) -> Tuple[int, int]:
+        return self.__bands.shape
+
 
 class BandStatistics(Bands):
 
-    def __init__(self, bands:np.ndarray):
-        super().__init__(bands)
+    def __init__(self, bands:np.ndarray, labels:List[Tuple[str, str]]=None):
+        super().__init__(bands, labels)
         self.__mean = bands.mean(0)
         # TODO is this correct?
         self.__min = bands.min(0)
@@ -269,9 +275,9 @@ class OpenSpectraBandTools:
         self.__file = None
 
     def bands(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> Bands:
-        # return Bands(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
+        # return Bands(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)), self.__file.header().band_labels())
         # TODO cleaned or not?
-        return Bands(self.__file.bands(lines, samples))
+        return Bands(self.__file.bands(lines, samples), self.__file.header().band_labels())
 
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
         return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
@@ -286,7 +292,9 @@ class OpenSpectraBandTools:
 
         wavelengths = self.__file.header().wavelengths()
         # OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
-        return LinePlotData(wavelengths, band, "Wavelength", "Brightness",
+
+        # TODO something better than having to know to do band[0, :] here?? Use Bands??
+        return LinePlotData(wavelengths, band[0, :], "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
 
     # TODO work around for now for 1 float file, remove noise from data for floats
@@ -325,16 +333,25 @@ class OpenSpectraRegionTools:
             self.__projection += (" " + self.__map_info.projection_area())
         self.__projection += (" " + self.__map_info.datum())
 
+        self.__has_map_info = False
         if self.__map_info is not None:
             self.__output_format = "{0},{1},{2},{3}"
             self.__data_header = "sample,line,x_coordinate,y_coordinate"
+            self.__has_map_info = True
         else:
             self.__output_format = "{0},{1}"
             self.__data_header = "sample,line"
 
-    def save_region(self, file_name:str, include_bands:bool=False):
+    def save_region(self, file_name:str, include_bands:bool=True):
         OpenSpectraRegionTools.__LOG.debug("Save region to: {0}", file_name)
         # OpenSpectraRegionTools.__LOG.debug("Area: {0}", self.__region.area().tolist())
+
+        bands:Bands = None
+        if include_bands:
+            bands = self.__band_tools.bands(self.__region.x_points(), self.__region.y_points())
+
+            if bands.bands_shape()[0] != self.__region.x_points().size:
+                raise ValueError("Number of bands didn't match number of points")
 
         with open(file_name, "w") as out:
             out.write("name:{0}\n".format(self.__region.display_name()))
@@ -343,28 +360,26 @@ class OpenSpectraRegionTools:
             out.write("image height:{0}\n".format(self.__region.image_height()))
             out.write("projection:{0}\n".format(self.__projection))
             out.write("data:\n")
-            # TODO add band names to header optionally
-            # TODO x_coordinate & y_coordinate only if we have map info
 
-            out.write(self.__get_data_header(include_bands))
-
-            output_format = self.__get_output_format(include_bands)
+            out.write(self.__get_data_header(bands))
+            band_index:int = 0
             for r in self.__region:
-                out.write(output_format.format(r.x_point() + 1, r.y_point() + 1, r.x_coordinate(), r.y_coordinate()))
+                if self.__has_map_info:
+                    out.write(self.__output_format.format(r.x_point() + 1, r.y_point() + 1, r.x_coordinate(), r.y_coordinate()))
+                else:
+                    out.write(self.__output_format.format(r.x_point() + 1, r.y_point() + 1))
 
-    def __get_data_header(self, include_bands:bool) -> str:
+                if bands is not None:
+                    out.write("," + ",".join([str(item) for item in bands.bands(band_index)]) + "\n")
+                    band_index += 1
+
+    def __get_data_header(self, bands:Bands=None) -> str:
         header:str = self.__data_header
-        if include_bands:
-            pass
+        if bands is not None:
+            header += ","
+            header += ",".join(["-".join(item) for item in bands.labels()])
 
         return header + "\n"
-
-    def __get_output_format(self, include_bands:bool) -> str:
-        output_format = self.__output_format
-        if include_bands:
-            pass
-
-        return output_format + "\n"
 
 
 class OpenSpectraImageTools:
