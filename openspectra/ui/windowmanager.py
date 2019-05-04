@@ -398,7 +398,7 @@ class WindowSet(QObject):
         band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
         # Make sure band stats window gets deleted on close, we won't reuse them here
         band_stats_window.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.__band_stats_windows[region.id()] = band_stats_window
+        self.__band_stats_windows[region] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.display_name()))
@@ -418,17 +418,17 @@ class WindowSet(QObject):
         region = event.region()
         self.__main_image_window.remove_region(region)
         self.__zoom_image_window.remove_region(region)
-        if region.id() in self.__band_stats_windows:
-            self.__band_stats_windows[region.id()].close()
-            del self.__band_stats_windows[region.id()]
+        if region in self.__band_stats_windows:
+            self.__band_stats_windows[region].close()
+            del self.__band_stats_windows[region]
 
     @pyqtSlot(RegionNameChangeEvent)
     def handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
         WindowSet.__LOG.debug("new band stats title {0}: ", region.display_name())
 
-        if region.id() in self.__band_stats_windows:
-            self.__band_stats_windows[region.id()]. \
+        if region in self.__band_stats_windows:
+            self.__band_stats_windows[region]. \
                 set_plot_title("Region: {0}".format(region.display_name()))
 
 
@@ -485,7 +485,7 @@ class RegionOfInterestManager(QObject):
         map_info = window_set.file_manager().header().map_info()
         if map_info is not None:
             region.set_map_info(map_info)
-        self.__region_window_set[region.id()] = window_set
+        self.__region_window_set[region] = window_set
         self.__region_window.add_item(region, color)
 
         if not self.__region_window.isVisible():
@@ -498,8 +498,8 @@ class RegionOfInterestManager(QObject):
 
         #TODO prompt for save bands or not?
 
-        if region.id() in self.__region_window_set:
-            region_tools = OpenSpectraRegionTools(region, self.__region_window_set[region.id()].band_tools())
+        if region in self.__region_window_set:
+            region_tools = OpenSpectraRegionTools(region, self.__region_window_set[region].band_tools())
 
             # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
             # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
@@ -513,7 +513,8 @@ class RegionOfInterestManager(QObject):
 
             if file_name:
                 RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}".format(file_name, dialog_result))
-                region_tools.save_region(file_name, True)
+                # TODO determine save bands or not
+                region_tools.save_region(file_name, include_bands=True)
             else:
                 RegionOfInterestManager.__LOG.debug("Region save canceled")
         else:
@@ -523,38 +524,38 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot(RegionToggleEvent)
     def __handle_region_toggled(self, event:RegionToggleEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_toogled(event)
+        if region in self.__region_window_set:
+            self.__region_window_set[region].handle_region_toogled(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling toggle event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot(RegionNameChangeEvent)
     def __handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_name_changed(event)
+        if region in self.__region_window_set:
+            self.__region_window_set[region].handle_region_name_changed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling name event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot(RegionCloseEvent)
     def __handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_closed(event)
+        if region in self.__region_window_set:
+            self.__region_window_set[region].handle_region_closed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling close event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot(RegionStatsEvent)
     def __handle_stats_clicked(self, event:RegionStatsEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_stats(event)
+        if region in self.__region_window_set:
+            self.__region_window_set[region].handle_region_stats(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling stats event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot()
     def __handle_window_closed(self):

@@ -2,6 +2,7 @@
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
 import time
+from io import TextIOBase
 from typing import Union, List, Tuple
 
 import numpy as np
@@ -31,9 +32,6 @@ class RegionOfInterest:
         # index to use when we're being iterated over
         self.__index = -1
 
-        # generate an id that will be unique for the life of the object only
-        # TODO replace with __dict__
-        self.__id = str(self)
         self.__display_name = display_name
 
         # TODO do I need to keep these around?
@@ -84,10 +82,6 @@ class RegionOfInterest:
         if self.__map_info is not None:
             self.__x_coords = (self.__x_points - (self.__map_info.x_reference_pixel() - 1)) * self.__map_info.x_pixel_size() + self.__map_info.x_zero_coordinate()
             self.__y_coords = self.__map_info.y_zero_coordinate() - (self.__y_points - (self.__map_info.y_reference_pixel() - 1)) * self.__map_info.y_pixel_size()
-
-    # TODO get rid of this implement __dict__?
-    def id(self) -> str:
-        return self.__id
 
     # TODO remove?
     # def area(self) -> np.ndarray:
@@ -263,6 +257,7 @@ class BandStaticsPlotData():
             "Wavelength", "Brightness", self.__title, "g", legend="std-")
 
 
+# TODO needs much attention!!!
 class OpenSpectraBandTools:
     """A class for working on OpenSpectra files"""
 
@@ -342,7 +337,7 @@ class OpenSpectraRegionTools:
             self.__output_format = "{0},{1}"
             self.__data_header = "sample,line"
 
-    def save_region(self, file_name:str, include_bands:bool=True):
+    def save_region(self, file_name:str=None, text_stream:TextIOBase=None, include_bands:bool=True):
         OpenSpectraRegionTools.__LOG.debug("Save region to: {0}", file_name)
         # OpenSpectraRegionTools.__LOG.debug("Area: {0}", self.__region.area().tolist())
 
@@ -353,25 +348,34 @@ class OpenSpectraRegionTools:
             if bands.bands_shape()[0] != self.__region.x_points().size:
                 raise ValueError("Number of bands didn't match number of points")
 
-        with open(file_name, "w") as out:
-            out.write("name:{0}\n".format(self.__region.display_name()))
-            out.write("description:{0}\n".format(self.__region.image_name()))
-            out.write("image width:{0}\n".format(self.__region.image_width()))
-            out.write("image height:{0}\n".format(self.__region.image_height()))
-            out.write("projection:{0}\n".format(self.__projection))
-            out.write("data:\n")
+        if file_name is not None:
+            with open(file_name, "w") as out:
+                self.__write_output(out, bands)
+        elif text_stream is not None:
+            self.__write_output(text_stream, bands)
+        else:
+            raise ValueError("Must pass either a file name or text stream")
 
-            out.write(self.__get_data_header(bands))
-            band_index:int = 0
-            for r in self.__region:
-                if self.__has_map_info:
-                    out.write(self.__output_format.format(r.x_point() + 1, r.y_point() + 1, r.x_coordinate(), r.y_coordinate()))
-                else:
-                    out.write(self.__output_format.format(r.x_point() + 1, r.y_point() + 1))
+    def __write_output(self, out:TextIOBase, bands:Bands):
+        out.write("name:{0}\n".format(self.__region.display_name()))
+        out.write("description:{0}\n".format(self.__region.image_name()))
+        out.write("image width:{0}\n".format(self.__region.image_width()))
+        out.write("image height:{0}\n".format(self.__region.image_height()))
+        out.write("projection:{0}\n".format(self.__projection))
+        out.write("data:\n")
 
-                if bands is not None:
-                    out.write("," + ",".join([str(item) for item in bands.bands(band_index)]) + "\n")
-                    band_index += 1
+        out.write(self.__get_data_header(bands))
+        band_index:int = 0
+        for r in self.__region:
+            if self.__has_map_info:
+                out.write(
+                    self.__output_format.format(r.x_point() + 1, r.y_point() + 1, r.x_coordinate(), r.y_coordinate()))
+            else:
+                out.write(self.__output_format.format(r.x_point() + 1, r.y_point() + 1))
+
+            if bands is not None:
+                out.write("," + ",".join([str(item) for item in bands.bands(band_index)]) + "\n")
+                band_index += 1
 
     def __get_data_header(self, bands:Bands=None) -> str:
         header:str = self.__data_header

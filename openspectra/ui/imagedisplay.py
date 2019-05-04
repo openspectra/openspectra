@@ -314,14 +314,14 @@ class ImageLabel(QLabel):
         self.update()
 
     def toggle_region(self, region:RegionOfInterest):
-        if region.id() in self.__regions:
-            region = self.__regions[region.id()]
+        if region in self.__regions:
+            region = self.__regions[region]
             region.set_is_on(not region.is_on())
         self.update()
 
     def remove_region(self, region:RegionOfInterest):
-        if region.id() in self.__regions:
-            del self.__regions[region.id()]
+        if region in self.__regions:
+            del self.__regions[region]
             self.update()
 
     def remove_all_regions(self):
@@ -570,7 +570,7 @@ class ImageLabel(QLabel):
                         self.__width_scale_factor, self.__height_scale_factor,
                         self.__initial_size.height(), self.__initial_size.width(), self.__label)
                     color = self.__color_picker.color()
-                    self.__regions[region.id()] = RegionDisplayItem(new_polygon, color, True)
+                    self.__regions[region] = RegionDisplayItem(new_polygon, color, True)
 
                     self.area_selected.emit(AreaSelectedEvent(region, color))
                 else:
