@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDock
     QHBoxLayout, QApplication, QStyle
 from numpy import ma
 
-from openspectra.image import Image
+from openspectra.image import Image, BandDescriptor
 from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.ui.toolsdisplay import RegionToggleEvent
 from openspectra.utils import LogHelper, Logger, Singleton
@@ -232,10 +232,10 @@ class ImageLabel(QLabel):
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, label:str, location_rect:bool=True, parent=None):
+    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
-        self.__label = label
+        self.__descriptor = image_descriptor
 
         self.__last_mouse_loc:QPoint = None
         self.__initial_size:QSize = None
@@ -568,7 +568,7 @@ class ImageLabel(QLabel):
                     # capture the region of interest and save to the map
                     region = RegionOfInterest(points,
                         self.__width_scale_factor, self.__height_scale_factor,
-                        self.__initial_size.height(), self.__initial_size.width(), self.__label)
+                        self.__initial_size.height(), self.__initial_size.width(), self.__descriptor)
                     color = self.__color_picker.color()
                     self.__regions[region] = RegionDisplayItem(new_polygon, color, True)
 
@@ -641,7 +641,7 @@ class ImageDisplay(QScrollArea):
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image:Image, label:str, qimage_format:QImage.Format=QImage.Format_Grayscale8,
+    def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
             location_rect:bool=True, parent=None):
         super().__init__(parent)
 
@@ -653,7 +653,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(label, location_rect, self)
+        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -924,7 +924,7 @@ class ImageDisplayWindow(QMainWindow):
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__image_label = label
-        self._image_display = ImageDisplay(self.__image, self.__image_label, qimage_format, location_rect, self)
+        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
         self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()

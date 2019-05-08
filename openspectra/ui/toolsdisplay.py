@@ -131,13 +131,13 @@ class RegionOfInterestControl(QWidget):
         size_item.setTextAlignment(Qt.AlignVCenter)
         size_item.setFlags(Qt.ItemIsEnabled)
 
-        image_name_item = QTableWidgetItem(region.image_name())
-        image_name_item.setFlags(Qt.ItemIsEnabled)
+        description_item = QTableWidgetItem(region.description())
+        description_item.setFlags(Qt.ItemIsEnabled)
 
         self.__table.setItem(self.__rows, 0, color_item)
         self.__table.setItem(self.__rows, 1, name_item)
         self.__table.setItem(self.__rows, 2, size_item)
-        self.__table.setItem(self.__rows, 3, image_name_item)
+        self.__table.setItem(self.__rows, 3, description_item)
 
         if self.__rows == 0:
             self.__table.horizontalHeader().setStretchLastSection(True)

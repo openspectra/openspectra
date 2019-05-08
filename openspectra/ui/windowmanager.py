@@ -9,7 +9,7 @@ from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
 from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog
 
-from openspectra.image import Image, GreyscaleImage, RGBImage, Band
+from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
     RegionOfInterest, OpenSpectraRegionTools
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
@@ -86,12 +86,15 @@ class WindowManager(QObject):
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
+        band_descriptor:BandDescriptor = item.data(0, Qt.UserRole)
+        WindowManager.__LOG.debug("Band selected for: {0}, {1}, {2}".format(
+            band_descriptor.file_name(), band_descriptor.band_name(), band_descriptor.wavelength_label()))
         parent_item = item.parent()
         file_name = parent_item.text(0)
         if file_name in self.__file_sets:
             file_set = self.__file_sets[file_name]
             file_set.add_grey_window_set(
-                parent_item.indexOfChild(item), item.text(0))
+                parent_item.indexOfChild(item), band_descriptor)
         else:
             # TODO report or log?
             pass
@@ -138,13 +141,16 @@ class FileManager(QObject):
         self.__window_manager = None
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
+        FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
+            bands.red_descriptor().label(), bands.green_descriptor().label(),
+            bands.blue_descriptor().label()))
         image = self.__image_tools.rgb_image(
             bands.red_index(), bands.green_index(), bands.blue_index(),
-            bands.red_label(), bands.green_label(), bands.blue_label())
+            bands.red_descriptor(), bands.green_descriptor(), bands.blue_descriptor())
         self.__create_window_set(image)
 
-    def add_grey_window_set(self, index:int, label:str):
-        image = self.__image_tools.greyscale_image(index, label)
+    def add_grey_window_set(self, index:int, band_descriptor:BandDescriptor):
+        image = self.__image_tools.greyscale_image(index, band_descriptor)
         self.__create_window_set(image)
 
     def header(self) -> OpenSpectraHeader:
@@ -157,7 +163,7 @@ class FileManager(QObject):
         return self.__window_manager
 
     def __create_window_set(self, image:Image):
-        title = self.__file_name + " - " + image.label()
+        title = image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
 

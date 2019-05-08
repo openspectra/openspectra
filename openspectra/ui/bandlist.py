@@ -1,10 +1,11 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex, Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
     QHBoxLayout, QPushButton
+
+from openspectra.image import BandDescriptor
 from openspectra.openspectra_file import OpenSpectraFile
 
 
@@ -18,9 +19,6 @@ class RGBSelectedBands(QObject):
         self.__red = red
         self.__green = green
         self.__blue = blue
-        self.__red_label = "R: " + self.__red.data().strip()
-        self.__green_label = "G: " + self.__green.data().strip()
-        self.__blue_label = "B: " + self.__blue.data().strip()
 
     def file_name(self) -> str:
         return self.__red.parent().data()
@@ -37,14 +35,14 @@ class RGBSelectedBands(QObject):
     def blue_index(self) -> int:
         return self.__blue.row()
 
-    def red_label(self):
-        return self.__red_label
+    def red_descriptor(self) -> BandDescriptor:
+        return self.__red.data(Qt.UserRole)
 
-    def green_label(self):
-        return self.__green_label
+    def green_descriptor(self) -> BandDescriptor:
+        return self.__green.data(Qt.UserRole)
 
-    def blue_label(self):
-        return self.__blue_label
+    def blue_descriptor(self) -> BandDescriptor:
+        return self.__blue.data(Qt.UserRole)
 
 
 class TypeSelector(QWidget):
@@ -159,11 +157,14 @@ class BandList(QWidget):
         band_labels = header.band_labels()
 
         # TODO need to manage multiple parent items, 1 per file
+        file_name = open_spectra_file.name()
         parent_item = QTreeWidgetItem()
-        parent_item.setText(0, open_spectra_file.name())
-        for index, val in enumerate(band_labels):
+        parent_item.setText(0, file_name)
+        for index, band_label in enumerate(band_labels):
             child = QTreeWidgetItem(parent_item)
-            child.setText(0, str(val[0] + " - " + val[1]))
+            child.setText(0, str(band_label[0] + " - " + band_label[1]))
+            child.setData(0, Qt.UserRole,
+                BandDescriptor(file_name, band_label[0], band_label[1]))
 
         self.__treeWidget.addTopLevelItem(parent_item)
         parent_item.setExpanded(True)

@@ -3,12 +3,12 @@
 #  Copyright (c) 2019. All rights reserved.
 import time
 from io import TextIOBase
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Dict
 
 import numpy as np
 from numpy import ma
 
-from openspectra.image import Image, GreyscaleImage, RGBImage, Band
+from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
@@ -16,8 +16,8 @@ from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logge
 class RegionOfInterest:
 
     def __init__(self, area:np.ndarray, x_zoom_factor:float, y_zoom_factor:float,
-            image_height:int, image_width:int, image_name:str, display_name=None,
-            map_info:OpenSpectraHeader.MapInfo=None):
+            image_height:int, image_width:int, descriptor:Union[BandDescriptor, Dict[Band, BandDescriptor]],
+            display_name=None, map_info:OpenSpectraHeader.MapInfo=None):
         """area is basically a list of [x, y] pairs, that is the area should have a shape
         of (num pixels, 2)"""
 
@@ -45,10 +45,15 @@ class RegionOfInterest:
         # TODO verify area is less than or equal to image size???
         self.__image_height = image_height
         self.__image_width = image_width
-        self.__image_name = image_name
 
-        # TODO would need this to get me back to the original image
-        self.__band_name = None
+        self.__descriptor:BandDescriptor = descriptor
+
+        if type(self.__descriptor) is dict:
+            self.__description = descriptor[Band.RED].label() + ", "
+            self.__description += descriptor[Band.GREEN].band_label() + ", "
+            self.__description += descriptor[Band.BLUE].band_label()
+        else:
+            self.__description = self.__descriptor.label()
 
         # split the points back into x and y values and convert to 1 to 1 space and 0 based
         self.__x_points = np.floor(area[:, 0] / x_zoom_factor).astype(np.int16)
@@ -121,8 +126,11 @@ class RegionOfInterest:
     def image_width(self) -> int:
         return self.__image_width
 
-    def image_name(self) -> str:
-        return self.__image_name
+    def descriptor(self) -> Union[BandDescriptor, Dict[Band, BandDescriptor]]:
+        return self.__descriptor
+
+    def description(self) -> str:
+        return self.__description
 
     def display_name(self) -> str:
         return self.__display_name
@@ -357,11 +365,28 @@ class OpenSpectraRegionTools:
             raise ValueError("Must pass either a file name or text stream")
 
     def __write_output(self, out:TextIOBase, bands:Bands):
+        descriptor = self.__region.descriptor()
+        if type(descriptor) is dict:
+            file_name = descriptor[Band.RED].file_name()
+            band_name = ",".join([descriptor[Band.RED].band_name(),
+                                  descriptor[Band.GREEN].band_name(),
+                                  descriptor[Band.BLUE].band_name()])
+            wavelength = ",".join([descriptor[Band.RED].wavelength_label(),
+                                   descriptor[Band.GREEN].wavelength_label(),
+                                   descriptor[Band.BLUE].wavelength_label()])
+        else:
+            file_name = descriptor.file_name()
+            band_name = descriptor.band_name()
+            wavelength = descriptor.wavelength_label()
+
         out.write("name:{0}\n".format(self.__region.display_name()))
-        out.write("description:{0}\n".format(self.__region.image_name()))
+        out.write("file name:{0}\n".format(file_name))
+        out.write("band name:{0}\n".format(band_name))
+        out.write("wavelength:{0}\n".format(wavelength))
         out.write("image width:{0}\n".format(self.__region.image_width()))
         out.write("image height:{0}\n".format(self.__region.image_height()))
         out.write("projection:{0}\n".format(self.__projection))
+        out.write("description:{0}\n".format(self.__region.description()))
         out.write("data:\n")
 
         out.write(self.__get_data_header(bands))
@@ -395,14 +420,14 @@ class OpenSpectraImageTools:
     def __del__(self):
         self.__file = None
 
-    def greyscale_image(self, band:int, label:str=None) -> GreyscaleImage:
-        return GreyscaleImage(self.__file.raw_image(band), label)
+    def greyscale_image(self, band:int, band_descriptor:BandDescriptor) -> GreyscaleImage:
+        return GreyscaleImage(self.__file.raw_image(band), band_descriptor)
 
     def rgb_image(self, red:int, green:int, blue:int,
-            red_label:str=None, green_label:str=None, blue_label:str=None) -> RGBImage:
+            red_descriptor:BandDescriptor, green_descriptor:BandDescriptor, blue_descriptor:BandDescriptor) -> RGBImage:
         # Access each band seperately so we get views of the data for efficiency
         return RGBImage(self.__file.raw_image(red), self.__file.raw_image(green),
-            self.__file.raw_image(blue), red_label, green_label, blue_label)
+            self.__file.raw_image(blue), red_descriptor, green_descriptor, blue_descriptor)
 
 
 class OpenSpectraHistogramTools:

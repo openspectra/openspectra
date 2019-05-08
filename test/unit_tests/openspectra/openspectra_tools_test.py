@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 
+from openspectra.image import BandDescriptor
 from openspectra.openspecrtra_tools import RegionOfInterest, OpenSpectraBandTools, OpenSpectraRegionTools
 from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory
 
@@ -26,13 +27,15 @@ class RegionOfInterestTest(unittest.TestCase):
             "4", "North", "WGS-84", "units=Meters", "rotation=29.00000000"])
 
     def test_iterate_no_map(self):
-        roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000, "test", "test")
+        roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000,
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "test")
         for r in roi:
             print("x: {0}, y: {1}, x_coord: {2}, y_coord: {3}".format(
                 r.x_point(), r.y_point(), r.x_coordinate(), r.y_coordinate()))
 
     def test_iterate_map(self):
-        roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000, "test", "test", self.__map_info)
+        roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000,
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "test", self.__map_info)
         for r in roi:
             print("x: {0}, y: {1}, x_coord: {2}, y_coord: {3}".format(
                 r.x_point(), r.y_point(), r.x_coordinate(), r.y_coordinate()))
@@ -59,7 +62,7 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         band_tools = OpenSpectraBandTools(os_file)
 
         roi = RegionOfInterest(self.__points, 1.0, 1.0, os_header.lines(), os_header.samples(),
-            "image_name", "region_name", self.__map_info)
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "region_name", self.__map_info)
 
         region_tools = OpenSpectraRegionTools(roi, band_tools)
         output = io.StringIO()
@@ -67,12 +70,15 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
 
         lines = output.getvalue().split("\n")
         self.assertEqual(lines[0], "name:region_name")
-        self.assertEqual(lines[1], "description:image_name")
-        self.assertEqual(lines[2], "image width:400")
-        self.assertEqual(lines[3], "image height:350")
-        self.assertEqual(lines[4], "projection:UTM 4 North WGS-84")
-        self.assertEqual(lines[5], "data:")
-        self.assertEqual(lines[6], "sample,line,x_coordinate,y_coordinate,Band 172-1.990800,Band 173-2.000900,"
+        self.assertEqual(lines[1], "file name:file_name")
+        self.assertEqual(lines[2], "band name:band_label")
+        self.assertEqual(lines[3], "wavelength:wavelength_label")
+        self.assertEqual(lines[4], "image width:400")
+        self.assertEqual(lines[5], "image height:350")
+        self.assertEqual(lines[6], "projection:UTM 4 North WGS-84")
+        self.assertEqual(lines[7], "description:file_name - band_label - wavelength_label")
+        self.assertEqual(lines[8], "data:")
+        self.assertEqual(lines[9], "sample,line,x_coordinate,y_coordinate,Band 172-1.990800,Band 173-2.000900,"
                                    "Band 174-2.010900,Band 175-2.020900,Band 176-2.030900,Band 177-2.040900,"
                                    "Band 178-2.050900,Band 179-2.060900,Band 180-2.071000,Band 181-2.081000,"
                                    "Band 182-2.091000,Band 183-2.101000,Band 184-2.111000,Band 185-2.121000,"
@@ -89,7 +95,7 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         x_expected = y_expected = 1
         x_coord_expected = 50000.0
         y_coord_expected = 4000000.0
-        for index in range(7, len(lines) - 1):
+        for index in range(10, len(lines) - 1):
             line = lines[index].split(",")
             x_val = int(line[0])
             self.assertEqual(x_val, x_expected)
