@@ -3,6 +3,7 @@
 #  Copyright (c) 2019. All rights reserved.
 import time
 from io import TextIOBase
+from math import cos, sin
 from typing import Union, List, Tuple, Dict
 
 import numpy as np
@@ -31,12 +32,7 @@ class RegionOfInterest:
 
         # index to use when we're being iterated over
         self.__index = -1
-
         self.__display_name = display_name
-
-        # TODO do I need to keep these around?
-        # self.__x_scale = x_zoom_factor
-        # self.__y_scale = y_zoom_factor
 
         # TODO do I need to keep area?
         # self.__area = area
@@ -65,7 +61,6 @@ class RegionOfInterest:
         # limit to use when we're being iterated over
         self.__iter_limit = self.__x_points.size - 1
 
-        # TODO need to implement rotation calc
         self.__x_coords = None
         self.__y_coords = None
         self.__map_info:OpenSpectraHeader.MapInfo = map_info
@@ -83,10 +78,22 @@ class RegionOfInterest:
             self.__index += 1
             return self
 
+    # TODO verify correctness
     def __calculate_coords(self):
         if self.__map_info is not None:
-            self.__x_coords = (self.__x_points - (self.__map_info.x_reference_pixel() - 1)) * self.__map_info.x_pixel_size() + self.__map_info.x_zero_coordinate()
-            self.__y_coords = self.__map_info.y_zero_coordinate() - (self.__y_points - (self.__map_info.y_reference_pixel() - 1)) * self.__map_info.y_pixel_size()
+            x_coords = (self.__x_points - (self.__map_info.x_reference_pixel() - 1)) * self.__map_info.x_pixel_size()
+            y_coords = (self.__y_points - (self.__map_info.y_reference_pixel() - 1)) * self.__map_info.y_pixel_size()
+
+            rotation = self.__map_info.rotation()
+            if rotation is not None:
+                self.__x_coords = x_coords * cos(rotation) - y_coords * sin(rotation)
+                self.__y_coords = x_coords * sin(rotation) + y_coords * cos(rotation)
+            else:
+                self.__x_coords = x_coords
+                self.__y_coords = y_coords
+
+            self.__x_coords = self.__x_coords + self.__map_info.x_zero_coordinate()
+            self.__y_coords = self.__map_info.y_zero_coordinate() - self.__y_coords
 
     # TODO remove?
     # def area(self) -> np.ndarray:
@@ -389,6 +396,7 @@ class OpenSpectraRegionTools:
         out.write("description:{0}\n".format(self.__region.description()))
         out.write("data:\n")
 
+        # TODO output formatting?  Specific number of decimal places to print?
         out.write(self.__get_data_header(bands))
         band_index:int = 0
         for r in self.__region:

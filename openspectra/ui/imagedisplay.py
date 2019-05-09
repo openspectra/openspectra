@@ -565,6 +565,9 @@ class ImageLabel(QLabel):
                     # extract the non-masked points and reshape the result back to a list of pairs
                     points = points[~points.mask].reshape(floor(points.count() / 2), 2)
 
+                    ImageLabel.__LOG.debug("Final points shape: {0}, size: {1}, count: {2}",
+                        points.shape, points.size, points.count())
+
                     # capture the region of interest and save to the map
                     region = RegionOfInterest(points,
                         self.__width_scale_factor, self.__height_scale_factor,

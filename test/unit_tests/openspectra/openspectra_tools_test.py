@@ -22,10 +22,8 @@ class RegionOfInterestTest(unittest.TestCase):
         x_range = np.arange(x1, x2 + 1)
         y_range = np.arange(y1, y2 + 1)
         self.__points = np.array(list(itertools.product(x_range, y_range)))
-        self.__map_info = OpenSpectraHeader.MapInfo(["UTM", "1.000", "1.000",
-            "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
-            "4", "North", "WGS-84", "units=Meters", "rotation=29.00000000"])
 
+    # TODO verify output
     def test_iterate_no_map(self):
         roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000,
             BandDescriptor("file_name", "band_label", "wavelength_label"), "test")
@@ -33,9 +31,26 @@ class RegionOfInterestTest(unittest.TestCase):
             print("x: {0}, y: {1}, x_coord: {2}, y_coord: {3}".format(
                 r.x_point(), r.y_point(), r.x_coordinate(), r.y_coordinate()))
 
+    # TODO verify output
     def test_iterate_map(self):
+        map_info = OpenSpectraHeader.MapInfo(["UTM", "1.000", "1.000",
+                    "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
+                    "4", "North", "WGS-84", "units=Meters"])
+
         roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000,
-            BandDescriptor("file_name", "band_label", "wavelength_label"), "test", self.__map_info)
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "test", map_info)
+        for r in roi:
+            print("x: {0}, y: {1}, x_coord: {2}, y_coord: {3}".format(
+                r.x_point(), r.y_point(), r.x_coordinate(), r.y_coordinate()))
+
+    # TODO verify output
+    def test_iterate_with_rotation(self):
+        map_info = OpenSpectraHeader.MapInfo(["UTM", "1.000", "1.000",
+                    "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
+                    "4", "North", "WGS-84", "units=Meters", "rotation=45.00000000"])
+
+        roi = RegionOfInterest(self.__points, 1.0, 1.0, 1000, 1000,
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "test", map_info)
         for r in roi:
             print("x: {0}, y: {1}, x_coord: {2}, y_coord: {3}".format(
                 r.x_point(), r.y_point(), r.x_coordinate(), r.y_coordinate()))
@@ -50,11 +65,20 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         x_range = np.arange(x1, x2 + 1)
         y_range = np.arange(y1, y2 + 1)
         self.__points = np.array(list(itertools.product(x_range, y_range)))
-        self.__map_info = OpenSpectraHeader.MapInfo(["UTM", "1.000", "1.000",
-            "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
-            "4", "North", "WGS-84", "units=Meters", "rotation=29.00000000"])
 
-    def test_save(self):
+    # TODO implement
+    def test_rotation(self):
+        map_info_list = ["UTM", "1.000", "1.000",
+            "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
+            "4", "North", "WGS-84", "units=Meters", "rotation=29.00000000"]
+        map_info = OpenSpectraHeader.MapInfo(map_info_list)
+
+    def test_save_single_band(self):
+        map_info_list = ["UTM", "1.000", "1.000",
+            "50000.000", "4000000.000", "2.0000000000e+001", "2.0000000000e+001",
+            "4", "North", "WGS-84", "units=Meters"]
+        map_info = OpenSpectraHeader.MapInfo(map_info_list)
+
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
         # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
@@ -62,7 +86,7 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         band_tools = OpenSpectraBandTools(os_file)
 
         roi = RegionOfInterest(self.__points, 1.0, 1.0, os_header.lines(), os_header.samples(),
-            BandDescriptor("file_name", "band_label", "wavelength_label"), "region_name", self.__map_info)
+            BandDescriptor("file_name", "band_label", "wavelength_label"), "region_name", map_info)
 
         region_tools = OpenSpectraRegionTools(roi, band_tools)
         output = io.StringIO()
@@ -120,3 +144,7 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
                 y_coord_expected -= 20.0
 
         output.close()
+
+    # TODO finish
+    def test_save_rgb(self):
+        pass
