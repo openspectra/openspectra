@@ -1,7 +1,8 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-import time
+from __future__ import annotations
+
 from io import TextIOBase
 from math import cos, sin
 from typing import Union, List, Tuple, Dict
@@ -52,14 +53,27 @@ class RegionOfInterest:
             self.__description = self.__descriptor.label()
 
         # split the points back into x and y values and convert to 1 to 1 space and 0 based
-        self.__x_points = np.floor(area[:, 0] / x_zoom_factor).astype(np.int16)
-        self.__y_points = np.floor(area[:, 1] / y_zoom_factor).astype(np.int16)
+        if x_zoom_factor != 1.0:
+            self.__x_points = np.floor(area[:, 0] / x_zoom_factor).astype(np.int16)
+        else:
+            self.__x_points = area[:, 0]
+
+        if y_zoom_factor != 1.0:
+            self.__y_points = np.floor(area[:, 1] / y_zoom_factor).astype(np.int16)
+        else:
+            self.__y_points = area[:, 1]
 
         if self.__x_points.size != self.__y_points.size:
             raise ValueError("Number of x points doesn't match number of y points")
-
         # limit to use when we're being iterated over
         self.__iter_limit = self.__x_points.size - 1
+
+        # if we scaled down a zoomed in image we need to filter out duplicate points
+        if x_zoom_factor > 1.0 or y_zoom_factor > 1.0:
+            scaled_points = np.column_stack((self.__x_points, self.__y_points))
+            scaled_points = np.unique(scaled_points, axis=0)
+            self.__x_points = scaled_points[:, 0]
+            self.__y_points = scaled_points[:, 1]
 
         self.__x_coords = None
         self.__y_coords = None
@@ -86,6 +100,8 @@ class RegionOfInterest:
 
             rotation = self.__map_info.rotation()
             if rotation is not None:
+                # TODO figure out if rotation specified is clockwise or counterclockwise
+                # This implementation is for counterclockwise rotation
                 self.__x_coords = x_coords * cos(rotation) - y_coords * sin(rotation)
                 self.__y_coords = x_coords * sin(rotation) + y_coords * cos(rotation)
             else:
@@ -94,10 +110,6 @@ class RegionOfInterest:
 
             self.__x_coords = self.__x_coords + self.__map_info.x_zero_coordinate()
             self.__y_coords = self.__map_info.y_zero_coordinate() - self.__y_coords
-
-    # TODO remove?
-    # def area(self) -> np.ndarray:
-    #     return self.__area
 
     def x_point(self) -> int:
         """get the x point while iterating"""
@@ -151,6 +163,18 @@ class RegionOfInterest:
     def set_map_info(self, map_info:OpenSpectraHeader.MapInfo):
         self.__map_info = map_info
         self.__calculate_coords()
+
+    def scale_for(self, x_zoom_factor:float, y_zoom_factor:float, include_map_info:bool=False) -> RegionOfInterest:
+        """Return a copy of the RegionOfInterest with the x and y point scaled for display
+        on an image with x_zoom and y_zoom.  Map info can be ignored for efficiency"""
+        map_info:OpenSpectraHeader.MapInfo = None
+        if include_map_info:
+            map_info = self.map_info()
+
+        area = np.column_stack((self.x_points(), self.y_points()))
+        return RegionOfInterest(area, 1 / x_zoom_factor, 1 / y_zoom_factor,
+            self.__image_height, self.__image_width, self.__descriptor,
+            self.__display_name, map_info)
 
 
 class PlotData:

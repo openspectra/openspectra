@@ -313,6 +313,18 @@ class ImageLabel(QLabel):
         self.__polygon = None
         self.update()
 
+    def add_selected_area(self, event:AreaSelectedEvent):
+        ImageLabel.__LOG.debug("Got new selected area: {0}, {1}".format(
+            event.area(), event.color()))
+
+        new_polygon = QPolygon()
+        region = event.area().scale_for(self.__width_scale_factor, self.__height_scale_factor)
+        for r in region:
+            new_polygon << QPoint(r.x_point(), r.y_point())
+
+        self.__regions[region] = RegionDisplayItem(new_polygon, event.color(), True)
+        self.update()
+
     def toggle_region(self, region:RegionOfInterest):
         if region in self.__regions:
             region = self.__regions[region]
@@ -889,6 +901,9 @@ class ImageDisplay(QScrollArea):
     def toggle_region(self, region:RegionOfInterest):
         self.__image_label.toggle_region(region)
 
+    def add_selected_area(self, area:AreaSelectedEvent):
+        self.__image_label.add_selected_area(area)
+
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
         # This adjust my size and the display widget and causes the scroll bars to update properly
@@ -988,6 +1003,11 @@ class ImageDisplayWindow(QMainWindow):
     @pyqtSlot(RegionToggleEvent)
     def handle_region_toggle(self, event:RegionToggleEvent):
         self._image_display.toggle_region(event.region())
+
+    @pyqtSlot(AreaSelectedEvent)
+    def handle_region_selected(self, event:AreaSelectedEvent):
+        """Handle area select events from another associated window"""
+        self._image_display.add_selected_area(event)
 
     def remove_region(self, region:RegionOfInterest):
         self._image_display.remove_region(region)

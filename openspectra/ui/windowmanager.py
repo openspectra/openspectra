@@ -226,10 +226,12 @@ class WindowSet(QObject):
         self.__main_image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__main_image_window.closed.connect(self.__handle_image_closed)
         self.__main_image_window.area_selected.connect(self.__handle_area_selected)
+        self.__main_image_window.area_selected.connect(self.__zoom_image_window.handle_region_selected)
 
         self.__zoom_image_window.pixel_selected.connect(self.__handle_pixel_click)
         self.__zoom_image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
+        self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
 
     def __init_plot_windows(self):
         # setting the image_window as the parent causes the children to
