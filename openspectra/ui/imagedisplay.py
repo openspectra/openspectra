@@ -28,12 +28,14 @@ class ColorPicker(metaclass=Singleton):
             Qt.lightGray]
         self.__index = 0
 
-    def color(self) -> QColor:
-        color = self.__colors[self.__index]
+    def current_color(self) -> QColor:
+        return self.__colors[self.__index]
+
+    def next_color(self) -> QColor:
         self.__index += 1
         if self.__index >= len(self.__colors):
             self.reset()
-        return color
+        return self.__colors[self.__index]
 
     def reset(self):
         self.__index = 0
@@ -257,9 +259,9 @@ class ImageLabel(QLabel):
         if location_rect:
             # Initial size doesn't really matter,
             # it will get adjusted based on the zoom window size
-            self.__rect = QRect(0, 0, 50, 50)
+            self.__locator_rect = QRect(0, 0, 50, 50)
         else:
-            self.__rect = None
+            self.__locator_rect = None
 
         self.__dragging = False
 
@@ -279,7 +281,7 @@ class ImageLabel(QLabel):
         self.__polygon_bounds = None
         self.__polygon = None
 
-        self.__rect = None
+        self.__locator_rect = None
 
         self.__default_cursor = None
         self.__drag_cursor = None
@@ -288,11 +290,11 @@ class ImageLabel(QLabel):
         self.__last_mouse_loc = None
 
     def has_locator(self) -> bool:
-        return self.__rect is not None
+        return self.__locator_rect is not None
 
     def locator_position(self) -> QPoint:
-        assert self.__rect is not None
-        return self.__unscale_point(self.__rect.center())
+        assert self.__locator_rect is not None
+        return self.__unscale_point(self.__locator_rect.center())
 
     def set_locator_position(self, postion:QPoint):
         # calls to this method should always be in 1 to 1 coordinates
@@ -300,12 +302,12 @@ class ImageLabel(QLabel):
             #TODO put contraints on it?
             new_position: QPoint = self.__scale_point(postion)
             ImageLabel.__LOG.debug("setting locator position: {0}, scaled pos: {1}", postion, new_position)
-            self.__rect.moveCenter(new_position)
+            self.__locator_rect.moveCenter(new_position)
             self.update()
 
     def locator_size(self) -> QSize:
-        assert self.__rect is not None
-        return self.__unscale_size(self.__rect.size())
+        assert self.__locator_rect is not None
+        return self.__unscale_size(self.__locator_rect.size())
 
     def set_locator_size(self, size:QSize):
         # calls to this method should always be in 1 to 1 coordinates
@@ -313,7 +315,7 @@ class ImageLabel(QLabel):
             #TODO constraints?
             new_size: QSize = self.__scale_size(size)
             ImageLabel.__LOG.debug("setting locator size: {0}, scaled size: {1}", size, new_size)
-            self.__rect.setSize(new_size)
+            self.__locator_rect.setSize(new_size)
             self.update()
 
     @pyqtSlot(AreaSelectedEvent)
@@ -370,11 +372,11 @@ class ImageLabel(QLabel):
             self.__polygon << event.pos()
             self.update()
         elif self.__current_action == ImageLabel.Action.Dragging and \
-                self.__last_mouse_loc is not None and self.__rect is not None:
+                self.__last_mouse_loc is not None and self.__locator_rect is not None:
             # ImageLabel.__LOG.debug("dragging mouse move event, pos: {0}, size: {1}", event.pos(), self.pixmap().size())
-            center = self.__rect.center()
+            center = self.__locator_rect.center()
             center += event.pos() - self.__last_mouse_loc
-            self.__rect.moveCenter(center)
+            self.__locator_rect.moveCenter(center)
             self.__last_mouse_loc = event.pos()
             self.locator_moved.emit(ViewLocationChangeEvent(self.__unscale_point(center)))
             self.update()
@@ -473,18 +475,16 @@ class ImageLabel(QLabel):
                 painter.setPen(region_item.color())
                 brush.setColor(region_item.color())
                 painter.fillPath(region_item.painter_path(), brush)
-                # painter.drawPoints(region_item.polygon())
-                # painter.drawPolygon(region_item.polygon())
 
-        # TODO current selector is always red?  next color?
+        # draw locator in red if present
         painter.setPen(Qt.red)
-        if self.__rect is not None:
-            painter.drawRect(self.__rect)
+        if self.__locator_rect is not None:
+            painter.drawRect(self.__locator_rect)
 
+        # draw the polgon that is in the process of being created
         if self.__polygon is not None:
-            # painter.drawPoints(self.__polygon)
-            # painter.drawPolygon(self.__polygon)
-            brush.setColor(Qt.red)
+            painter.setPen(self.__color_picker.current_color())
+            brush.setColor(self.__color_picker.current_color())
             path:QPainterPath = QPainterPath()
             path.addPolygon(QPolygonF(self.__polygon))
             path.closeSubpath()
@@ -603,7 +603,7 @@ class ImageLabel(QLabel):
                     region = RegionOfInterest(points,
                         self.__width_scale_factor, self.__height_scale_factor,
                         self.__initial_size.height(), self.__initial_size.width(), self.__descriptor)
-                    color = self.__color_picker.color()
+                    color = self.__color_picker.current_color()
 
                     # Save the final version of the polygon as a QPainterPath it's more
                     # efficient for reuse and has more flexible painting options
@@ -617,6 +617,7 @@ class ImageLabel(QLabel):
                     self.__region_display_items.append(display_item)
 
                     self.area_selected.emit(AreaSelectedEvent(region, display_item))
+                    self.__color_picker.next_color()
                     self.__clear_selected_area()
 
                 else:
@@ -629,13 +630,14 @@ class ImageLabel(QLabel):
     def __pressed(self):
         # ImageLabel.__LOG.debug("press called, last_mouse_loc: {0}", self.__last_mouse_loc)
         if self.__last_mouse_loc is not None:
-            if self.__rect is not None and self.__rect.contains(self.__last_mouse_loc):
+            if self.__locator_rect is not None and self.__locator_rect.contains(self.__last_mouse_loc):
                 self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
                 # ImageLabel.__LOG.debug("press called, drag start")
             else:
                 self.__current_action = ImageLabel.Action.Drawing
                 self.setCursor(self.__draw_cursor)
+                self.__color_picker.current_color()
                 self.__polygon = QPolygon()
                 # ImageLabel.__LOG.debug("press called, draw start")
 
