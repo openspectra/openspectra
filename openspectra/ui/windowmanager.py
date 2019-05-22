@@ -3,10 +3,10 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import logging
-from typing import Dict
+from typing import Dict, Tuple
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
-from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
+from PyQt5.QtGui import QGuiApplication, QScreen, QImage
 from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
@@ -15,7 +15,7 @@ from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectr
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow
+    ZoomImageDisplayWindow, RegionDisplayItem
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
     RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
@@ -369,8 +369,8 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
-        region = event.area()
-        self.__roi_manager.add_region(region, event.color(), self)
+        region = event.region()
+        self.__roi_manager.add_region(region, event.display_item(), self)
 
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
@@ -390,11 +390,6 @@ class WindowSet(QObject):
 
     def file_manager(self) -> FileManager:
         return self.__file_manager
-
-    @pyqtSlot(RegionToggleEvent)
-    def handle_region_toogled(self, event:RegionToggleEvent):
-        self.__main_image_window.handle_region_toggle(event)
-        self.__zoom_image_window.handle_region_toggle(event)
 
     @pyqtSlot(RegionStatsEvent)
     def handle_region_stats(self, event:RegionStatsEvent):
@@ -424,8 +419,6 @@ class WindowSet(QObject):
     @pyqtSlot(RegionCloseEvent)
     def handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
-        self.__main_image_window.remove_region(region)
-        self.__zoom_image_window.remove_region(region)
         if region in self.__band_stats_windows:
             self.__band_stats_windows[region].close()
             del self.__band_stats_windows[region]
@@ -473,18 +466,18 @@ class RegionOfInterestManager(QObject):
             self.__region_window.region_closed.connect(self.__handle_region_closed)
             self.__region_window.closed.connect(self.__handle_window_closed)
 
-            self.__region_window_set:Dict[str, WindowSet] = dict()
+            self.__region_display_items:Dict[RegionOfInterest, Tuple[WindowSet, RegionDisplayItem]] = dict()
             self.__counter = 1
 
             # the single instance
             RegionOfInterestManager.__instance = self
 
     def __del__(self):
-        del self.__region_window_set
+        del self.__region_display_items
         self.__region_window.close()
         self.__region_window = None
 
-    def add_region(self, region:RegionOfInterest, color:QColor, window_set:WindowSet):
+    def add_region(self, region:RegionOfInterest, display_item:RegionDisplayItem, window_set:WindowSet):
         if region.display_name() is None:
             region.set_display_name("Region {0}".format(self.__counter))
             self.__counter += 1
@@ -493,8 +486,8 @@ class RegionOfInterestManager(QObject):
         map_info = window_set.file_manager().header().map_info()
         if map_info is not None:
             region.set_map_info(map_info)
-        self.__region_window_set[region] = window_set
-        self.__region_window.add_item(region, color)
+        self.__region_window.add_item(region, display_item.color())
+        self.__region_display_items[region] = (window_set, display_item)
 
         if not self.__region_window.isVisible():
             self.__region_window.show()
@@ -506,8 +499,8 @@ class RegionOfInterestManager(QObject):
 
         #TODO prompt for save bands or not?
 
-        if region in self.__region_window_set:
-            region_tools = OpenSpectraRegionTools(region, self.__region_window_set[region].band_tools())
+        if region in self.__region_display_items:
+            region_tools = OpenSpectraRegionTools(region, self.__region_display_items[region][0].band_tools())
 
             # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
             # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
@@ -532,8 +525,9 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot(RegionToggleEvent)
     def __handle_region_toggled(self, event:RegionToggleEvent):
         region = event.region()
-        if region in self.__region_window_set:
-            self.__region_window_set[region].handle_region_toogled(event)
+        if region in self.__region_display_items:
+            display_item = self.__region_display_items[region][1]
+            display_item.set_is_on(not display_item.is_on())
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling toggle event",
                 region, region.display_name())
@@ -541,8 +535,8 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot(RegionNameChangeEvent)
     def __handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
-        if region in self.__region_window_set:
-            self.__region_window_set[region].handle_region_name_changed(event)
+        if region in self.__region_display_items:
+            self.__region_display_items[region][0].handle_region_name_changed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling name event",
                 region, region.display_name())
@@ -550,8 +544,10 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot(RegionCloseEvent)
     def __handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
-        if region in self.__region_window_set:
-            self.__region_window_set[region].handle_region_closed(event)
+        if region in self.__region_display_items:
+            item_tuple = self.__region_display_items[region]
+            item_tuple[0].handle_region_closed(event)
+            item_tuple[1].close()
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling close event",
                 region, region.display_name())
@@ -559,8 +555,8 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot(RegionStatsEvent)
     def __handle_stats_clicked(self, event:RegionStatsEvent):
         region = event.region()
-        if region in self.__region_window_set:
-            self.__region_window_set[region].handle_region_stats(event)
+        if region in self.__region_display_items:
+            self.__region_display_items[region][0].handle_region_stats(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling stats event",
                 region, region.display_name())
@@ -568,5 +564,5 @@ class RegionOfInterestManager(QObject):
     @pyqtSlot()
     def __handle_window_closed(self):
         self.__region_window.remove_all()
-        self.__region_window_set.clear()
+        self.__region_display_items.clear()
         self.window_closed.emit()
