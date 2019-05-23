@@ -68,9 +68,13 @@ class RegionDisplayItem(QObject):
     toggled = pyqtSignal(QObject)
     closed = pyqtSignal(QObject)
 
-    def __init__(self, painter_path:QPainterPath, color:QColor, is_on:bool):
+    def __init__(self, painter_path:QPainterPath,
+                    x_zoom_factor:float, y_zoom_factor:float,
+                    color:QColor, is_on:bool):
         super().__init__(None)
         self.__painter_path = painter_path
+        self.__x_zoom_factor = x_zoom_factor
+        self.__y_zoom_factor = y_zoom_factor
         self.__color = color
         self.__is_on = is_on
 
@@ -89,6 +93,12 @@ class RegionDisplayItem(QObject):
 
     def close(self):
         self.closed.emit(self)
+
+    def x_zoom_factor(self) -> float:
+        return self.__x_zoom_factor
+
+    def y_zoom_factor(self) -> float:
+        return self.__y_zoom_factor
 
 
 class AreaSelectedEvent(QObject):
@@ -466,20 +476,7 @@ class ImageLabel(QLabel):
         super().paintEvent(paint_event)
         # not sure why but it seems we need to create the painter each time
         painter = QPainter(self)
-
-        # paint the selected regions
         brush:QBrush = QBrush(Qt.SolidPattern)
-        for region_item in self.__region_display_items:
-            ImageLabel.__LOG.debug("Region: {0}, is on: {1}", region_item.color(), region_item.is_on())
-            if region_item.is_on():
-                painter.setPen(region_item.color())
-                brush.setColor(region_item.color())
-                painter.fillPath(region_item.painter_path(), brush)
-
-        # draw locator in red if present
-        painter.setPen(Qt.red)
-        if self.__locator_rect is not None:
-            painter.drawRect(self.__locator_rect)
 
         # draw the polgon that is in the process of being created
         if self.__polygon is not None:
@@ -494,6 +491,22 @@ class ImageLabel(QLabel):
             if self.__current_action == ImageLabel.Action.Drawing:
                 self.__polygon_bounds = self.__polygon.boundingRect()
                 painter.drawRect(self.__polygon_bounds)
+
+        # draw locator in red if present
+        painter.setPen(Qt.red)
+        if self.__locator_rect is not None:
+            painter.drawRect(self.__locator_rect)
+
+        # paint the selected regions scaling each one appropriately
+        for region_item in self.__region_display_items:
+            ImageLabel.__LOG.debug("Region: {0}, is on: {1}", region_item.color(), region_item.is_on())
+            if region_item.is_on():
+                painter.scale(self.__width_scale_factor/region_item.x_zoom_factor(),
+                    self.__height_scale_factor/region_item.y_zoom_factor())
+                painter.setPen(region_item.color())
+                brush.setColor(region_item.color())
+                painter.fillPath(region_item.painter_path(), brush)
+                painter.resetTransform()
 
     def __scale_point(self, point:QPoint) -> QPoint:
         new_point:QPoint = QPoint(point)
@@ -611,7 +624,8 @@ class ImageLabel(QLabel):
                     painter_path.addPolygon(QPolygonF(self.__polygon))
                     painter_path.closeSubpath()
 
-                    display_item = RegionDisplayItem(painter_path, color, True)
+                    display_item = RegionDisplayItem(painter_path,
+                        self.__width_scale_factor, self.__height_scale_factor, color, True)
                     display_item.closed.connect(self.__handle__region_closed)
                     display_item.toggled.connect(self.__handle_region_toggled)
                     self.__region_display_items.append(display_item)
