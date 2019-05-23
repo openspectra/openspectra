@@ -65,8 +65,6 @@ class RegionOfInterest:
 
         if self.__x_points.size != self.__y_points.size:
             raise ValueError("Number of x points doesn't match number of y points")
-        # limit to use when we're being iterated over
-        self.__iter_limit = self.__x_points.size - 1
 
         # if we scaled down a zoomed in image we need to filter out duplicate points
         if x_zoom_factor > 1.0 or y_zoom_factor > 1.0:
@@ -74,6 +72,9 @@ class RegionOfInterest:
             scaled_points = np.unique(scaled_points, axis=0)
             self.__x_points = scaled_points[:, 0]
             self.__y_points = scaled_points[:, 1]
+
+        # limit to use when we're being iterated over
+        self.__iter_limit = self.__x_points.size - 1
 
         self.__x_coords = None
         self.__y_coords = None
@@ -359,16 +360,17 @@ class OpenSpectraRegionTools:
         self.__region = region
         self.__band_tools = band_tools
         self.__map_info:OpenSpectraHeader.MapInfo = self.__region.map_info()
-
-        self.__projection = self.__map_info.projection_name()
-        if self.__map_info.projection_zone() is not None:
-            self.__projection += (" " + str(self.__map_info.projection_zone()))
-        if self.__map_info.projection_area() is not None:
-            self.__projection += (" " + self.__map_info.projection_area())
-        self.__projection += (" " + self.__map_info.datum())
+        self.__projection = None
 
         self.__has_map_info = False
         if self.__map_info is not None:
+            self.__projection = self.__map_info.projection_name()
+            if self.__map_info.projection_zone() is not None:
+                self.__projection += (" " + str(self.__map_info.projection_zone()))
+            if self.__map_info.projection_area() is not None:
+                self.__projection += (" " + self.__map_info.projection_area())
+            self.__projection += (" " + self.__map_info.datum())
+
             self.__output_format = "{0},{1},{2},{3}"
             self.__data_header = "sample,line,x_coordinate,y_coordinate"
             self.__has_map_info = True
@@ -416,7 +418,8 @@ class OpenSpectraRegionTools:
         out.write("wavelength:{0}\n".format(wavelength))
         out.write("image width:{0}\n".format(self.__region.image_width()))
         out.write("image height:{0}\n".format(self.__region.image_height()))
-        out.write("projection:{0}\n".format(self.__projection))
+        if self.__projection is not None:
+            out.write("projection:{0}\n".format(self.__projection))
         out.write("description:{0}\n".format(self.__region.description()))
         out.write("data:\n")
 
