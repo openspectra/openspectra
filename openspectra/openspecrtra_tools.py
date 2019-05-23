@@ -436,6 +436,8 @@ class OpenSpectraRegionTools:
             if bands is not None:
                 out.write("," + ",".join([str(item) for item in bands.bands(band_index)]) + "\n")
                 band_index += 1
+            else:
+                out.write("\n")
 
     def __get_data_header(self, bands:Bands=None) -> str:
         header:str = self.__data_header

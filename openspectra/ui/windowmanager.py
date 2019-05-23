@@ -3,11 +3,12 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import logging
+import os
 from typing import Dict, Tuple
 
-from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
+from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt, QStandardPaths
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage
-from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog
+from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
@@ -469,6 +470,9 @@ class RegionOfInterestManager(QObject):
             self.__region_display_items:Dict[RegionOfInterest, Tuple[WindowSet, RegionDisplayItem]] = dict()
             self.__counter = 1
 
+            self.__save_dir_default = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+            self.__include_bands_default = Qt.Unchecked
+
             # the single instance
             RegionOfInterestManager.__instance = self
 
@@ -497,30 +501,62 @@ class RegionOfInterestManager(QObject):
         region = event.region()
         RegionOfInterestManager.__LOG.debug("Region saved for region: {0}".format(region.display_name()))
 
-        #TODO prompt for save bands or not?
+        # prompt for save bands or not
+        result, include_bands = self.__save_prompt(region)
 
-        if region in self.__region_display_items:
-            region_tools = OpenSpectraRegionTools(region, self.__region_display_items[region][0].band_tools())
+        if result == QMessageBox.Save:
+            if region in self.__region_display_items:
+                region_tools = OpenSpectraRegionTools(region, self.__region_display_items[region][0].band_tools())
+                self.__include_bands_default = Qt.Checked if include_bands else Qt.Unchecked
 
-            # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
-            # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
-            # TODO explain why it only seems to impact the save dialog.
+                # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
+                # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
+                # TODO explain why it only seems to impact the save dialog.
 
-            # TODO make save location configurable some how
-            # TODO |QFileDialog.ShowDirsOnly only good with native dialog
-            dialog_result = QFileDialog.getSaveFileName(caption = "Save region", directory="/Users/jconti/dev/data/JoeSamples",
-                filter="ROI files (*.roi)", options=QFileDialog.DontUseNativeDialog)
-            file_name: str = dialog_result[0]
+                # TODO make save location configurable some how
+                # TODO |QFileDialog.ShowDirsOnly only good with native dialog
 
-            if file_name:
-                RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}".format(file_name, dialog_result))
-                # TODO determine save bands or not
-                region_tools.save_region(file_name, include_bands=True)
+                default_save_name = os.path.join(self.__save_dir_default, region.display_name())
+                RegionOfInterestManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
+                dialog_result = QFileDialog.getSaveFileName(caption="Save region", directory=default_save_name,
+                    filter="ROI files (*.roi)", options=QFileDialog.DontUseNativeDialog)
+                file_name:str = dialog_result[0]
+
+                if file_name:
+                    if not file_name.endswith(".roi"):
+                        file_name = file_name + ".roi"
+
+                    # save the last save location, default there next time
+                    split_path = os.path.split(file_name)
+                    if split_path[0]:
+                        self.__save_dir_default = split_path[0]
+
+                    RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}, split path: {2}".
+                        format(file_name, dialog_result, split_path))
+
+                    region_tools.save_region(file_name, include_bands=include_bands)
+                else:
+                    RegionOfInterestManager.__LOG.debug("Region save canceled")
             else:
-                RegionOfInterestManager.__LOG.debug("Region save canceled")
-        else:
-            # Report region not found??  Shouldn't happen...
-            pass
+                # Report region not found?  Shouldn't happen...
+                # TODO raise here?
+                RegionOfInterestManager.__LOG.error(
+                    "Attempt to save region failed because the region could not be found, region name: {0}".
+                        format(region.display_name()))
+
+    def __save_prompt(self, region:RegionOfInterest) -> Tuple[int, bool]:
+        dialog = QMessageBox(self.__region_window)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setText("Save region {0}?".format(region.display_name()))
+        check_box = QCheckBox("Include bands?", dialog)
+        check_box.setCheckState(self.__include_bands_default)
+        dialog.setCheckBox(check_box)
+        dialog.addButton(QMessageBox.Cancel)
+        dialog.addButton(QMessageBox.Save)
+        result = dialog.exec()
+        include_bands = dialog.checkBox().checkState() == Qt.Checked
+        RegionOfInterestManager.__LOG.debug("Dialog result: {0}, is checked: {1}", result, include_bands)
+        return (result, include_bands)
 
     @pyqtSlot(RegionToggleEvent)
     def __handle_region_toggled(self, event:RegionToggleEvent):
