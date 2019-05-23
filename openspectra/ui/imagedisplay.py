@@ -361,7 +361,6 @@ class ImageLabel(QLabel):
             ImageLabel.__LOG.debug("setting image size: {0}, scale factor w: {1}, h: {2}",
                 size, self.__width_scale_factor, self.__height_scale_factor)
 
-        # TODO rework this to use painter scaling!!
         # reset locator
         if self.has_locator():
             self.set_locator_size(locator_size)
@@ -445,7 +444,7 @@ class ImageLabel(QLabel):
                 return True
 
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                # TODO this has to account for scaling
+                # TODO this has to account for scaling - no I don't think so now????
                 self.__last_mouse_loc = event.pos()
                 QTimer.singleShot(300, self.__pressed)
                 # event was handled
@@ -499,7 +498,7 @@ class ImageLabel(QLabel):
 
         # paint the selected regions scaling each one appropriately
         for region_item in self.__region_display_items:
-            ImageLabel.__LOG.debug("Region: {0}, is on: {1}", region_item.color(), region_item.is_on())
+            # ImageLabel.__LOG.debug("Region: {0}, is on: {1}", region_item.color(), region_item.is_on())
             if region_item.is_on():
                 painter.scale(self.__width_scale_factor/region_item.x_zoom_factor(),
                     self.__height_scale_factor/region_item.y_zoom_factor())
@@ -648,7 +647,9 @@ class ImageLabel(QLabel):
                 self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
                 # ImageLabel.__LOG.debug("press called, drag start")
-            else:
+            elif self.__width_scale_factor >= 1.0 or self.__height_scale_factor >= 1.0:
+                # need to limit region selection to scale factors greater than 1.0
+                # or else we end up with a region whose pixel coverage is sparse
                 self.__current_action = ImageLabel.Action.Drawing
                 self.setCursor(self.__draw_cursor)
                 self.__color_picker.current_color()
@@ -1116,6 +1117,9 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1/1.5
+        # limit zoom out to going back to 1 to 1
+        if self.__zoom_factor < 1.0:
+            self.__zoom_factor = 1.0
         self.__set_zoom()
 
     @pyqtSlot()
