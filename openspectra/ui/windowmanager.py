@@ -8,7 +8,7 @@ from typing import Dict, Tuple
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt, QStandardPaths
 from PyQt5.QtGui import QGuiApplication, QScreen, QImage
-from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox
+from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox, QMainWindow
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
@@ -332,9 +332,9 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_region_window_close(self):
-        for window in self.__band_stats_windows.values():
-            window.close()
-        self.__band_stats_windows.clear()
+        while len(self.__band_stats_windows) != 0:
+            key, value = self.__band_stats_windows.popitem()
+            value.close()
 
         self.__main_image_window.remove_all_regions()
         self.__zoom_image_window.remove_all_regions()
@@ -373,6 +373,16 @@ class WindowSet(QObject):
         region = event.region()
         self.__roi_manager.add_region(region, event.display_item(), self)
 
+    @pyqtSlot(QMainWindow)
+    def __handle_band_stats_closed(self, target:LinePlotDisplayWindow):
+        delete_key = None
+        for key, value in self.__band_stats_windows.items():
+            if value == target:
+                delete_key = key
+                break
+        if delete_key is not None:
+            del self.__band_stats_windows[delete_key]
+
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
         self.__main_image_window.move(x, y)
@@ -402,6 +412,7 @@ class WindowSet(QObject):
         band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
         # Make sure band stats window gets deleted on close, we won't reuse them here
         band_stats_window.setAttribute(Qt.WA_DeleteOnClose, True)
+        band_stats_window.closed.connect(self.__handle_band_stats_closed)
         self.__band_stats_windows[region] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
