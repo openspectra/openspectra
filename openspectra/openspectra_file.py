@@ -101,6 +101,7 @@ class OpenSpectraHeader:
                     if name == "units":
                         self.__units:str = value
                     elif name == "rotation":
+                        # TODO validate in range?
                         self.__rotation:float = float(value)
                     else:
                         OpenSpectraHeader.MapInfo.__LOG.warning(
@@ -149,11 +150,11 @@ class OpenSpectraHeader:
         self.__path = Path(file_name)
         self.__props = dict()
 
-        self.__band_labels:List[Tuple[str, str]] = None
         self.__samples:int = 0
         self.__lines:int = 0
         self.__band_count:int = 0
         self.__wavelengths:np.array = None
+        self.__band_labels:List[Tuple[str, str]] = None
         self.__header_offset:int = 0
         # TODO use standard float instead?
         self.__reflectance_scale_factor:np.float64 = np.float64(0.0)
@@ -398,7 +399,6 @@ class OpenSpectraHeader:
                         format(bad_band_list))
 
         # TODO byte_order - make sure we recognize and support?
-        # TODO coordinate system string
         # TODO additional validation????
 
 
