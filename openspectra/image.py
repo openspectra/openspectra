@@ -4,7 +4,7 @@
 
 import logging
 from enum import Enum
-from typing import Union
+from typing import Union, Dict
 
 import numpy as np
 
@@ -249,6 +249,32 @@ class RGBImageAdjuster(ImageAdjuster):
                 self.__adjusted_bands[Band.BLUE].is_updated()
 
 
+class BandDescriptor:
+
+    def __init__(self, file_name:str, band_name:str, wavelength_label:str):
+        self.__file_name = file_name
+        self.__band_name = band_name
+        self.__wavelength_label = wavelength_label
+        self.__band_label = self.__band_name + " - " + self.__wavelength_label
+        self.__label = self.__file_name + " - " + \
+            self.__band_name + " - " + self.__wavelength_label
+
+    def file_name(self) -> str:
+        return self.__file_name
+
+    def band_name(self) -> str:
+        return self.__band_name
+
+    def band_label(self) -> str:
+        return self.__band_label
+
+    def wavelength_label(self) -> str:
+        return self.__wavelength_label
+
+    def label(self) -> str:
+        return self.__label
+
+
 # TODO need to think through how much data we're holding here, clean up, views?
 class Image(ImageAdjuster):
 
@@ -267,21 +293,23 @@ class Image(ImageAdjuster):
     def label(self, band:Band) -> str:
         pass
 
+    def descriptor(self) -> BandDescriptor:
+        pass
+
 
 class GreyscaleImage(Image, BandImageAdjuster):
     """An 8-bit 8-bit grayscale image"""
-    def __init__(self, band:np.ndarray, label:str=None):
+    def __init__(self, band:np.ndarray, band_descriptor:BandDescriptor):
         super().__init__(band)
         self.__band = band
-        self.__label = label
+        self.__band_descriptor = band_descriptor
 
     def __del__(self):
         super().__del__()
-        self.__label = None
         self.__band = None
 
     def adjusted_data(self) -> np.ndarray:
-        """Do not call this method, it's an unfortunate consequnecs of needing
+        """Do not call this method, it's an unfortunate consequence of needing
         it to be public on BandImageAdjuster for use by RGBImageAdjuster"""
         raise NotImplementedError("Do not call GreyscaleImage.adjusted_data(), use GreyscaleImage.image_data() instead")
 
@@ -304,7 +332,10 @@ class GreyscaleImage(Image, BandImageAdjuster):
 
     def label(self, band:Band=None) -> str:
         """band is ignored here if passed"""
-        return self.__label
+        return self.__band_descriptor.label()
+
+    def descriptor(self) -> BandDescriptor:
+        return self.__band_descriptor
 
 
 # TODO this is definately not thread safe
@@ -318,17 +349,23 @@ class RGBImage(Image, RGBImageAdjuster):
     __GREEN_SHIFT = 256
 
     def __init__(self, red:np.ndarray, green:np.ndarray, blue:np.ndarray,
-            red_label:str=None, green_label:str=None, blue_label:str=None):
+            red_descriptor:BandDescriptor, green_descriptor:BandDescriptor, blue_descriptor:BandDescriptor):
         if not ((red.size == green.size == blue.size) and
                 (red.shape == green.shape == blue.shape)):
             raise ValueError("All bands must have the same size and shape")
         super().__init__(red, green, blue)
 
-        self.__labels = {Band.RED: red_label, Band.GREEN: green_label, Band.BLUE: blue_label}
+        self.__descriptors = {Band.RED: red_descriptor,
+                         Band.GREEN: green_descriptor,
+                         Band.BLUE: blue_descriptor}
+
+        self.__labels = {Band.RED: red_descriptor.band_label(),
+                         Band.GREEN: green_descriptor.band_label(),
+                         Band.BLUE: blue_descriptor.band_label()}
         self.__label:str = ""
-        if red_label is not None: self.__label += red_label + " "
-        if green_label is not None: self.__label += green_label + " "
-        if blue_label is not None: self.__label += blue_label
+        if red_descriptor is not None: self.__label += red_descriptor.band_label() + " "
+        if green_descriptor is not None: self.__label += green_descriptor.band_label() + " "
+        if blue_descriptor is not None: self.__label += blue_descriptor.band_label()
         if self.__label is not None: self.__label = self.__label.strip()
 
         self.__bands = {Band.RED: red, Band.GREEN: green, Band.BLUE: blue}
@@ -380,6 +417,12 @@ class RGBImage(Image, RGBImageAdjuster):
 
     def bytes_per_line(self) -> int:
         return self.__image_data.shape[1] * 4
+
+    def descriptor(self, band:Band=None) -> Union[BandDescriptor, Dict[Band, BandDescriptor]]:
+        if band is None:
+            return self.__descriptors.copy()
+        else:
+            return self.__descriptors[band]
 
     def label(self, band:Band=None) -> str:
         if band is None:

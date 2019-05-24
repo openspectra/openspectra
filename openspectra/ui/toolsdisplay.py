@@ -34,14 +34,28 @@ class RegionToggleEvent(RegionEvent):
 
 class RegionCloseEvent(RegionEvent):
 
-    def __init__(self, region:RegionOfInterest):
+    def __init__(self, region:RegionOfInterest, row:int):
         super().__init__(region)
+        self.__row = row
+
+    def row(self) -> int:
+        return self.__row
 
 
 class RegionNameChangeEvent(RegionEvent):
 
     def __init__(self, region:RegionOfInterest):
         super().__init__(region)
+
+
+class RegionSaveEvent(RegionEvent):
+
+    def __init__(self, region:RegionOfInterest, include_bands:bool=False):
+        super().__init__(region)
+        self.__include_bands = include_bands
+
+    def include_bands(self) -> bool:
+        return self.__include_bands
 
 
 class RegionOfInterestControl(QWidget):
@@ -51,6 +65,7 @@ class RegionOfInterestControl(QWidget):
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
     region_name_changed = pyqtSignal(RegionNameChangeEvent)
+    region_saved = pyqtSignal(RegionSaveEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
 
     def __init__(self, parent=None):
@@ -120,13 +135,13 @@ class RegionOfInterestControl(QWidget):
         size_item.setTextAlignment(Qt.AlignVCenter)
         size_item.setFlags(Qt.ItemIsEnabled)
 
-        image_name_item = QTableWidgetItem(region.image_name())
-        image_name_item.setFlags(Qt.ItemIsEnabled)
+        description_item = QTableWidgetItem(region.description())
+        description_item.setFlags(Qt.ItemIsEnabled)
 
         self.__table.setItem(self.__rows, 0, color_item)
         self.__table.setItem(self.__rows, 1, name_item)
         self.__table.setItem(self.__rows, 2, size_item)
-        self.__table.setItem(self.__rows, 3, image_name_item)
+        self.__table.setItem(self.__rows, 3, description_item)
 
         if self.__rows == 0:
             self.__table.horizontalHeader().setStretchLastSection(True)
@@ -142,6 +157,15 @@ class RegionOfInterestControl(QWidget):
         self.__table.clearContents()
         self.__regions.clear()
         self.__rows = 0
+
+    def remove(self, event:RegionCloseEvent):
+        row = event.row()
+        region = self.__regions[row]
+        if region is not None:
+            self.__table.removeRow(row)
+            del self.__regions[row]
+            self.__rows -= 1
+            self.__selected_row = None
 
     def __adjust_width(self):
         self.__table.resizeColumnsToContents()
@@ -178,18 +202,13 @@ class RegionOfInterestControl(QWidget):
     def __handle_region_save(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Save region: {0}", region.display_name())
-        # TODO implement
-
+        self.region_saved.emit(RegionSaveEvent(region))
         self.__selected_row = None
 
     def __handle_region_close(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Close region: {0}", region.display_name())
-        self.__table.removeRow(self.__selected_row)
-        del self.__regions[self.__selected_row]
-        self.region_closed.emit(RegionCloseEvent(region))
-        self.__rows -= 1
-        self.__selected_row = None
+        self.region_closed.emit(RegionCloseEvent(region, self.__selected_row))
 
     def __handle_band_stats(self):
         region = self.__regions[self.__selected_row]
@@ -209,6 +228,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
     stats_clicked = pyqtSignal(RegionStatsEvent)
     region_toggled = pyqtSignal(RegionToggleEvent)
     region_name_changed = pyqtSignal(RegionNameChangeEvent)
+    region_saved = pyqtSignal(RegionSaveEvent)
     region_closed =  pyqtSignal(RegionCloseEvent)
     closed = pyqtSignal()
 
@@ -220,6 +240,7 @@ class RegionOfInterestDisplayWindow(QMainWindow):
         self.__region_control.stats_clicked.connect(self.stats_clicked)
         self.__region_control.region_toggled.connect(self.region_toggled)
         self.__region_control.region_name_changed.connect(self.region_name_changed)
+        self.__region_control.region_saved.connect(self.region_saved)
         self.__region_control.region_closed.connect(self.region_closed)
 
     def add_item(self, region:RegionOfInterest, color:QColor):
@@ -227,6 +248,9 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     def remove_all(self):
         self.__region_control.remove_all()
+
+    def remove(self, event:RegionCloseEvent):
+        self.__region_control.remove(event)
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()

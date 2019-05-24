@@ -3,21 +3,23 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import logging
+import os
+from typing import Dict, Tuple
 
-from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt
-from PyQt5.QtGui import QGuiApplication, QScreen, QImage, QColor
-from PyQt5.QtWidgets import QTreeWidgetItem
+from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt, QStandardPaths
+from PyQt5.QtGui import QGuiApplication, QScreen, QImage
+from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox, QMainWindow
 
-from openspectra.image import Image, GreyscaleImage, RGBImage, Band
+from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
-    RegionOfInterest
+    RegionOfInterest, OpenSpectraRegionTools
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow
+    ZoomImageDisplayWindow, RegionDisplayItem
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -85,12 +87,15 @@ class WindowManager(QObject):
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
+        band_descriptor:BandDescriptor = item.data(0, Qt.UserRole)
+        WindowManager.__LOG.debug("Band selected for: {0}, {1}, {2}".format(
+            band_descriptor.file_name(), band_descriptor.band_name(), band_descriptor.wavelength_label()))
         parent_item = item.parent()
         file_name = parent_item.text(0)
         if file_name in self.__file_sets:
             file_set = self.__file_sets[file_name]
             file_set.add_grey_window_set(
-                parent_item.indexOfChild(item), item.text(0))
+                parent_item.indexOfChild(item), band_descriptor)
         else:
             # TODO report or log?
             pass
@@ -137,13 +142,16 @@ class FileManager(QObject):
         self.__window_manager = None
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
+        FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
+            bands.red_descriptor().label(), bands.green_descriptor().label(),
+            bands.blue_descriptor().label()))
         image = self.__image_tools.rgb_image(
             bands.red_index(), bands.green_index(), bands.blue_index(),
-            bands.red_label(), bands.green_label(), bands.blue_label())
+            bands.red_descriptor(), bands.green_descriptor(), bands.blue_descriptor())
         self.__create_window_set(image)
 
-    def add_grey_window_set(self, index:int, label:str):
-        image = self.__image_tools.greyscale_image(index, label)
+    def add_grey_window_set(self, index:int, band_descriptor:BandDescriptor):
+        image = self.__image_tools.greyscale_image(index, band_descriptor)
         self.__create_window_set(image)
 
     def header(self) -> OpenSpectraHeader:
@@ -156,7 +164,7 @@ class FileManager(QObject):
         return self.__window_manager
 
     def __create_window_set(self, image:Image):
-        title = self.__file_name + ": " + image.label()
+        title = image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
 
@@ -219,10 +227,12 @@ class WindowSet(QObject):
         self.__main_image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__main_image_window.closed.connect(self.__handle_image_closed)
         self.__main_image_window.area_selected.connect(self.__handle_area_selected)
+        self.__main_image_window.area_selected.connect(self.__zoom_image_window.handle_region_selected)
 
         self.__zoom_image_window.pixel_selected.connect(self.__handle_pixel_click)
         self.__zoom_image_window.mouse_moved.connect(self.__handle_mouse_move)
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
+        self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
 
     def __init_plot_windows(self):
         # setting the image_window as the parent causes the children to
@@ -237,13 +247,13 @@ class WindowSet(QObject):
     def __init_roi(self):
         # RegionOfInterestManager is a singleton so all WindowSets
         # will get a reference to the same instance
-        self.__roi_manager = RegionOfInterestManager.Get_Instance()
+        self.__roi_manager = RegionOfInterestManager.get_instance()
 
         # Register so we know if the region window is closed
         self.__roi_manager.window_closed.connect(self.__handle_region_window_close)
 
         # a dictionary to keep track of the banc stats windows
-        self.__band_stats_windows = dict()
+        self.__band_stats_windows:Dict[str, LinePlotDisplayWindow] = dict()
 
     def __init_histogram(self, x:int, y:int):
         if isinstance(self.__image, GreyscaleImage):
@@ -311,7 +321,7 @@ class WindowSet(QObject):
         self.__histogram_window.close()
         self.__histogram_window = None
 
-        for window in self.__band_stats_windows.items():
+        for window in self.__band_stats_windows.values():
             window.close()
         self.__band_stats_windows.clear()
 
@@ -322,9 +332,9 @@ class WindowSet(QObject):
 
     @pyqtSlot()
     def __handle_region_window_close(self):
-        for window in self.__band_stats_windows.items():
-            window.close()
-        self.__band_stats_windows.clear()
+        while len(self.__band_stats_windows) != 0:
+            key, value = self.__band_stats_windows.popitem()
+            value.close()
 
         self.__main_image_window.remove_all_regions()
         self.__zoom_image_window.remove_all_regions()
@@ -360,8 +370,18 @@ class WindowSet(QObject):
 
     @pyqtSlot(AreaSelectedEvent)
     def __handle_area_selected(self, event:AreaSelectedEvent):
-        region = event.area()
-        self.__roi_manager.add_region(region, event.color(), self)
+        region = event.region()
+        self.__roi_manager.add_region(region, event.display_item(), self)
+
+    @pyqtSlot(QMainWindow)
+    def __handle_band_stats_closed(self, target:LinePlotDisplayWindow):
+        delete_key = None
+        for key, value in self.__band_stats_windows.items():
+            if value == target:
+                delete_key = key
+                break
+        if delete_key is not None:
+            del self.__band_stats_windows[delete_key]
 
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
@@ -376,22 +396,24 @@ class WindowSet(QObject):
     def get_image_window_geometry(self):
         return self.__main_image_window.geometry()
 
-    @pyqtSlot(RegionToggleEvent)
-    def handle_region_toogled(self, event:RegionToggleEvent):
-        self.__main_image_window.handle_region_toggle(event)
-        self.__zoom_image_window.handle_region_toggle(event)
+    def band_tools(self) -> OpenSpectraBandTools:
+        return self.__band_tools
+
+    def file_manager(self) -> FileManager:
+        return self.__file_manager
 
     @pyqtSlot(RegionStatsEvent)
     def handle_region_stats(self, event:RegionStatsEvent):
         region = event.region()
-        lines = region.adjusted_y_points()
-        samples = region.adjusted_x_points()
+        lines = region.y_points()
+        samples = region.x_points()
         WindowSet.__LOG.debug("lines dim: {0}, samples dim: {1}", lines.ndim, samples.ndim)
 
         band_stats_window = LinePlotDisplayWindow(self.__main_image_window, "Band Stats")
         # Make sure band stats window gets deleted on close, we won't reuse them here
         band_stats_window.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.__band_stats_windows[region.id()] = band_stats_window
+        band_stats_window.closed.connect(self.__handle_band_stats_closed)
+        self.__band_stats_windows[region] = band_stats_window
 
         # TODO still??? bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.display_name()))
@@ -409,25 +431,43 @@ class WindowSet(QObject):
     @pyqtSlot(RegionCloseEvent)
     def handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
-        self.__main_image_window.remove_region(region)
-        self.__zoom_image_window.remove_region(region)
-        if region.id() in self.__band_stats_windows:
-            self.__band_stats_windows[region.id()].close()
-            del self.__band_stats_windows[region.id()]
+        if region in self.__band_stats_windows:
+            self.__band_stats_windows[region].close()
+            del self.__band_stats_windows[region]
 
     @pyqtSlot(RegionNameChangeEvent)
     def handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
         WindowSet.__LOG.debug("new band stats title {0}: ", region.display_name())
 
-        if region.id() in self.__band_stats_windows:
-            self.__band_stats_windows[region.id()]. \
+        if region in self.__band_stats_windows:
+            self.__band_stats_windows[region]. \
                 set_plot_title("Region: {0}".format(region.display_name()))
 
 
 class RegionOfInterestManager(QObject):
 
     __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
+
+    class __RegionSet:
+        """A simple container to hold item we manage"""
+
+        def __init__(self, window_set:WindowSet, display_item:RegionDisplayItem, is_saved:bool=False):
+            self.__window_set = window_set
+            self.__display_item = display_item
+            self.__is_saved = is_saved
+
+        def window_set(self) -> WindowSet:
+            return self.__window_set
+
+        def display_item(self) -> RegionDisplayItem:
+            return self.__display_item
+
+        def is_saved(self) -> bool:
+            return self.__is_saved
+
+        def set_saved(self, is_saved:bool):
+            self.__is_saved = is_saved
 
     window_closed = pyqtSignal()
 
@@ -436,7 +476,7 @@ class RegionOfInterestManager(QObject):
     __instance = None
 
     @staticmethod
-    def Get_Instance():
+    def get_instance():
         if RegionOfInterestManager.__instance is None:
             RegionOfInterestManager()
 
@@ -454,69 +494,167 @@ class RegionOfInterestManager(QObject):
             self.__region_window.region_toggled.connect(self.__handle_region_toggled)
             self.__region_window.region_name_changed.connect(self.__handle_region_name_changed)
             self.__region_window.stats_clicked.connect(self.__handle_stats_clicked)
+            self.__region_window.region_saved.connect(self.__handle_region_saved)
             self.__region_window.region_closed.connect(self.__handle_region_closed)
             self.__region_window.closed.connect(self.__handle_window_closed)
 
-            self.__region_window_set = dict()
+            self.__region_display_items:Dict[RegionOfInterest, RegionOfInterestManager.__RegionSet] = dict()
             self.__counter = 1
+
+            self.__save_dir_default = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+            self.__include_bands_default = Qt.Unchecked
 
             # the single instance
             RegionOfInterestManager.__instance = self
 
     def __del__(self):
-        del self.__region_window_set
+        del self.__region_display_items
         self.__region_window.close()
         self.__region_window = None
 
-    def add_region(self, region:RegionOfInterest, color:QColor, window_set:WindowSet):
+    def add_region(self, region:RegionOfInterest, display_item:RegionDisplayItem, window_set:WindowSet):
         if region.display_name() is None:
             region.set_display_name("Region {0}".format(self.__counter))
             self.__counter += 1
 
-        self.__region_window_set[region.id()] = window_set
-        self.__region_window.add_item(region, color)
+        # Set the regions map info if it's available
+        map_info = window_set.file_manager().header().map_info()
+        if map_info is not None:
+            region.set_map_info(map_info)
+        self.__region_window.add_item(region, display_item.color())
+        self.__region_display_items[region] = RegionOfInterestManager.__RegionSet(window_set, display_item)
 
         if not self.__region_window.isVisible():
             self.__region_window.show()
 
+    @pyqtSlot(RegionSaveEvent)
+    def __handle_region_saved(self, event:RegionSaveEvent):
+        region = event.region()
+        RegionOfInterestManager.__LOG.debug("Region saved for region: {0}".format(region.display_name()))
+
+        # prompt for save bands or not
+        result, include_bands = self.__save_prompt(region)
+
+        if result == QMessageBox.Save:
+            if region in self.__region_display_items:
+                region_item = self.__region_display_items[region]
+                region_tools = OpenSpectraRegionTools(region, region_item.window_set().band_tools())
+                self.__include_bands_default = Qt.Checked if include_bands else Qt.Unchecked
+
+                # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
+                # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
+                # TODO explain why it only seems to impact the save dialog.
+
+                # TODO make save location configurable some how
+                # TODO |QFileDialog.ShowDirsOnly only good with native dialog
+
+                default_save_name = os.path.join(self.__save_dir_default, region.display_name())
+                RegionOfInterestManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
+                dialog_result = QFileDialog.getSaveFileName(caption="Save region", directory=default_save_name,
+                    filter="ROI files (*.roi)", options=QFileDialog.DontUseNativeDialog)
+                file_name:str = dialog_result[0]
+
+                if file_name:
+                    if not file_name.endswith(".roi"):
+                        file_name = file_name + ".roi"
+
+                    # save the last save location, default there next time
+                    split_path = os.path.split(file_name)
+                    if split_path[0]:
+                        self.__save_dir_default = split_path[0]
+
+                    RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}, split path: {2}".
+                        format(file_name, dialog_result, split_path))
+
+                    region_tools.save_region(file_name, include_bands=include_bands)
+                    region_item.set_saved(True)
+                else:
+                    RegionOfInterestManager.__LOG.debug("Region save canceled")
+            else:
+                # Report region not found?  Shouldn't happen...
+                # TODO raise here?
+                RegionOfInterestManager.__LOG.error(
+                    "Attempt to save region failed because the region could not be found, region name: {0}".
+                        format(region.display_name()))
+
+    def __save_prompt(self, region:RegionOfInterest) -> Tuple[int, bool]:
+        dialog = QMessageBox(self.__region_window)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setText("Save region '{0}'?".format(region.display_name()))
+        check_box = QCheckBox("Include bands?", dialog)
+        check_box.setCheckState(self.__include_bands_default)
+        dialog.setCheckBox(check_box)
+        dialog.addButton(QMessageBox.Cancel)
+        dialog.addButton(QMessageBox.Save)
+        result = dialog.exec()
+        include_bands = dialog.checkBox().checkState() == Qt.Checked
+        RegionOfInterestManager.__LOG.debug("Save dialog result: {0}, is checked: {1}", result, include_bands)
+        return result, include_bands
+
     @pyqtSlot(RegionToggleEvent)
     def __handle_region_toggled(self, event:RegionToggleEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_toogled(event)
+        if region in self.__region_display_items:
+            display_item = self.__region_display_items[region].display_item()
+            display_item.set_is_on(not display_item.is_on())
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling toggle event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot(RegionNameChangeEvent)
     def __handle_region_name_changed(self, event:RegionNameChangeEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_name_changed(event)
+        if region in self.__region_display_items:
+            self.__region_display_items[region].window_set().handle_region_name_changed(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling name event",
-                region.id(), region.display_name())
+                region, region.display_name())
+
+    def __close_prompt(self, region:RegionOfInterest) -> int:
+        dialog = QMessageBox(self.__region_window)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setText("Are you sure you want close the unsaved region '{0}'?  It will be lost.".
+            format(region.display_name()))
+        dialog.addButton(QMessageBox.Cancel)
+        dialog.addButton(QMessageBox.Yes)
+        result = dialog.exec()
+        RegionOfInterestManager.__LOG.debug("Close dialog result: {0}", result)
+        return result
 
     @pyqtSlot(RegionCloseEvent)
     def __handle_region_closed(self, event:RegionCloseEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_closed(event)
+        if region in self.__region_display_items:
+            item = self.__region_display_items[region]
+
+            if not item.is_saved():
+                result = self.__close_prompt(region)
+                if result == QMessageBox.Yes:
+                    self.__do_close(item, event)
+                else:
+                    RegionOfInterestManager.__LOG.debug("Region close canceled")
+            else:
+                self.__do_close(item, event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling close event",
-                region.id(), region.display_name())
+                region, region.display_name())
+
+    def __do_close(self, item:__RegionSet, event:RegionCloseEvent):
+        item.window_set().handle_region_closed(event)
+        item.display_item().close()
+        self.__region_window.remove(event)
 
     @pyqtSlot(RegionStatsEvent)
     def __handle_stats_clicked(self, event:RegionStatsEvent):
         region = event.region()
-        if region.id() in self.__region_window_set:
-            self.__region_window_set[region.id()].handle_region_stats(event)
+        if region in self.__region_display_items:
+            self.__region_display_items[region].window_set().handle_region_stats(event)
         else:
             RegionOfInterestManager.__LOG.warning("Region with id: {0}, name: {1} not found handling stats event",
-                region.id(), region.display_name())
+                region, region.display_name())
 
     @pyqtSlot()
     def __handle_window_closed(self):
         self.__region_window.remove_all()
-        self.__region_window_set.clear()
+        self.__region_display_items.clear()
         self.window_closed.emit()

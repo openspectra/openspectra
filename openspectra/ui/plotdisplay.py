@@ -347,7 +347,7 @@ class LinePlotDisplayWindow(QMainWindow):
 
     __LOG:Logger = LogHelper.logger("LinePlotDisplayWindow")
 
-    closed = pyqtSignal()
+    closed = pyqtSignal(QMainWindow)
 
     def __init__(self, parent=None, title:str=None):
         super().__init__(parent)
@@ -385,7 +385,7 @@ class LinePlotDisplayWindow(QMainWindow):
         self.__plot_canvas.resize(event.size())
 
     def closeEvent(self, event:QCloseEvent):
-        self.closed.emit()
+        self.closed.emit(self)
         # accepting hides the window
         event.accept()
 

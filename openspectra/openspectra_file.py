@@ -5,10 +5,9 @@
 import logging
 from pathlib import Path
 import re
-from typing import List, Union
+from typing import List, Union, Tuple
 import numpy as np
 
-from openspectra.image import RGBImage, GreyscaleImage
 from openspectra.utils import LogHelper, Logger
 
 
@@ -26,6 +25,15 @@ class OpenSpectraHeader:
     __REFLECTANCE_SCALE_FACTOR = "reflectance scale factor"
     __SAMPLES = "samples"
     __WAVELENGTHS = "wavelength"
+    __WAVELENGTH_UNITS = "wavelength units"
+    __MAP_INFO = "map info"
+    __SENSOR_TYPE = "sensor type"
+    __BYTE_ORDER = "byte order"
+    __FILE_TYPE = "file type"
+    __DESCRIPTION = "description"
+    __DATA_IGNORE_VALUE = "data ignore value"
+    __DEFAULT_STRETCH = "default stretch"
+    __BAD_BAND_LIST = "bbl"
 
     __DATA_TYPE_DIC = {'1': np.uint8,
                        '2': np.int16,
@@ -39,9 +47,126 @@ class OpenSpectraHeader:
                        '14': np.int64,
                        '15': np.uint64}
 
+    BIL_INTERLEAVE:str = "bil"
+    BSQ_INTERLEAVE:str = "bsq"
+    BIP_INTERLEAVE: str = "bip"
+
+    class MapInfo:
+        """"A simple class for holding map info from a header file"""
+
+        __LOG: Logger = LogHelper.logger("OpenSpectraHeader.MapInfo")
+
+        def __init__(self, map_info:list):
+            # Example [UTM, 1.000, 1.000, 620006.407, 2376995.930, 7.8000000000e+000, 7.8000000000e+000, 4, North, WGS-84,
+            #           units=Meters, rotation=29.00000000]
+            list_size = len(map_info)
+            if list_size < 7:
+                raise OpenSpectraHeaderError(
+                    "Found map info but expected it to have at lease 7 elements, only found {0}".format(len(map_info)))
+
+            # grab the minimal data
+            self.__projection_name:str = map_info[0]
+            self.__x_reference_pixel:float = float(map_info[1])
+            self.__y_reference_pixel:float = float(map_info[2])
+            self.__x_zero_coordinate:float = float(map_info[3])
+            self.__y_zero_coordinate:float = float(map_info[4])
+            self.__x_pixel_size:float = float(map_info[5])
+            self.__y_pixel_size:float = float(map_info[6])
+
+            self.__projection_zone:int = None
+            self.__projection_area:str = None
+            self.__datum:str = None
+            self.__units:str = None
+            self.__rotation:float = None
+
+            index = 7
+            if self.__projection_name == "UTM":
+                if list_size < 9:
+                    raise OpenSpectraHeaderError("Map info projection was UTM but zone and area parameters are missing");
+
+                self.__projection_zone = int(map_info[index])
+                index += 1
+                self.__projection_area = map_info[index].strip()
+                index += 1
+
+            if list_size > index + 1:
+                self.__datum = map_info[index].strip()
+                index += 1
+
+            for index in range(index, list_size):
+                pair = re.split("=", map_info[index])
+                if len(pair) == 2:
+                    name:str = pair[0].strip()
+                    value:str = pair[1].strip()
+                    if name == "units":
+                        self.__units:str = value
+                    elif name == "rotation":
+                        # TODO validate in range?
+                        self.__rotation:float = float(value)
+                    else:
+                        OpenSpectraHeader.MapInfo.__LOG.warning(
+                            "Ignoring unexpected map info item with name: {0}, value: {1}".format(name, value))
+                else:
+                    OpenSpectraHeader.MapInfo.__LOG.warning(
+                        "Could not split map info item: {0}".format(map_info[index]))
+
+        def projection_name(self) -> str:
+            return self.__projection_name
+
+        def x_reference_pixel(self) -> float:
+            return self.__x_reference_pixel
+
+        def y_reference_pixel(self) -> float:
+            return self.__y_reference_pixel
+
+        def x_zero_coordinate(self) -> float:
+            return self.__x_zero_coordinate
+
+        def y_zero_coordinate(self) -> float:
+            return self.__y_zero_coordinate
+
+        def x_pixel_size(self) -> float:
+            return self.__x_pixel_size
+
+        def y_pixel_size(self) -> float:
+            return self.__y_pixel_size
+
+        def projection_zone(self) -> int:
+            return self.__projection_zone
+
+        def projection_area(self) -> str:
+            return self.__projection_area
+
+        def datum(self) -> str:
+            return self.__datum
+
+        def units(self) -> str:
+            return self.__units
+
+        def rotation(self) -> float:
+            return self.__rotation
+
     def __init__(self, file_name):
         self.__path = Path(file_name)
         self.__props = dict()
+
+        self.__samples:int = 0
+        self.__lines:int = 0
+        self.__band_count:int = 0
+        self.__wavelengths:np.array = None
+        self.__band_labels:List[Tuple[str, str]] = None
+        self.__header_offset:int = 0
+        # TODO use standard float instead?
+        self.__reflectance_scale_factor:np.float64 = np.float64(0.0)
+        self.__map_info:OpenSpectraHeader.MapInfo = None
+        self.__description:str = None
+        self.__data_ignore_value: Union[int, float] = None
+        # TODO not the final form???
+        self.__default_stretch:Union[float, Tuple[float, float]] = None
+        self.__bad_band_list:List[bool] = None
+
+    def __del__(self):
+        del  self.__props
 
     def dump(self) -> str:
         return "Props:\n" + str(self.__props)
@@ -55,24 +180,15 @@ class OpenSpectraHeader:
             with self.__path.open() as headerFile:
                 for line in headerFile:
                     line = line.rstrip()
-                    # TODO any validation that needs to be done first??
-
                     if re.search("=", line) is not None:
-                        line_pair: List[str] = re.split("=", line)
-                        if len(line_pair) == 2:
-                            key = line_pair[0].strip()
-                            value = line_pair[1].lstrip()
-                            if re.search("{", value):
-                                self.__read_bracket(key, value, headerFile)
-                            else:
-                                self.__props[key] = value
+                        line_pair:List[str] = re.split("=", line, 1)
+                        key = line_pair[0].strip()
+                        value = line_pair[1].lstrip()
 
+                        if re.search("{", value):
+                            self.__read_bracket(key, value, headerFile)
                         else:
-                            # raise OpenSpectraHeaderError("Invalid format, found more than one '=' on a line")
-                            # TODO need to support lines like,
-                            # map info = {UTM, 1.000, 1.000, 620006.407, 2376995.930, 7.8000000000e+000, 7.8000000000e+000, 4, North, WGS-84, units=Meters, rotation=29.00000000}
-                            OpenSpectraHeader.__LOG.warning("Encountered line with more than one '=', I'm not "
-                                "smart enough to handle that yet! Ignoring it for now.  Line is:\n {0}", line)
+                            self.__props[key] = value
 
             # now verify what we read makes sense and do some conversion to data type we want
             self.__validate()
@@ -80,14 +196,15 @@ class OpenSpectraHeader:
         else:
             raise OpenSpectraHeaderError("File {0} not found".format(self.__path.name))
 
-    def band_label(self, band:int) -> tuple:
-        """Returns a tuple where that contains two strings,
-        the band name and wavelength """
+    def bad_band_list(self) -> List[bool]:
+        return self.__bad_band_list
+
+    def band_label(self, band:int) -> Tuple[str, str]:
+        """Returns a tuple with the band name and wavelength"""
         return self.__band_labels[band]
 
-    def band_labels(self) -> list:
-        """Returns a list of tuples where each tuple is contains two strings,
-        the band name and wavelength """
+    def band_labels(self) -> List[Tuple[str, str]]:
+        """Returns a list of tuples, each tuple is the band name and wavelength """
         return self.__band_labels
 
     def band_name(self, band:int) -> str:
@@ -98,9 +215,18 @@ class OpenSpectraHeader:
         """Returns a list of strings of the band names"""
         return self.__props.get(OpenSpectraHeader.__BAND_NAMES)
 
+    def data_ignore_value(self) -> Union[int, float]:
+        return self.__data_ignore_value
+
     def data_type(self):
         data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
         return self.__DATA_TYPE_DIC.get(data_type)
+
+    def default_stretch(self) -> Union[float, Tuple[float, float]]:
+        return self.__default_stretch
+
+    def description(self) -> str:
+        return self.__description
 
     def samples(self) -> int:
         return self.__samples
@@ -109,19 +235,32 @@ class OpenSpectraHeader:
         return self.__lines
 
     def band_count(self) -> int:
-        return self.__bands
+        return self.__band_count
 
-    def wavelengths(self):
+    def file_type(self) -> str:
+        return self.__props.get(OpenSpectraHeader.__FILE_TYPE)
+
+    def wavelengths(self) -> np.array:
         return self.__wavelengths
 
-    def interleave(self):
+    def wavelength_units(self) -> str:
+        return self.__props.get(OpenSpectraHeader.__WAVELENGTH_UNITS)
+
+    def interleave(self) -> str:
         return self.__props.get(OpenSpectraHeader.__INTERLEAVE)
 
-    def header_offset(self):
+    def header_offset(self) -> int:
         return self.__header_offset
 
-    def reflectance_scale_factor(self):
+    def sensor_type(self) -> str:
+        return self.__props.get(OpenSpectraHeader.__SENSOR_TYPE)
+
+    # TODO return standard float instead?
+    def reflectance_scale_factor(self) -> np.float64:
         return self.__reflectance_scale_factor
+
+    def map_info(self) -> MapInfo:
+        return self.__map_info
 
     def __read_bracket(self, key, value, header_file):
         done = False
@@ -149,13 +288,13 @@ class OpenSpectraHeader:
 
             list_value += section.split(",")
 
-        map(str.strip, list_value)
+        list_value = [str.strip(item) for item in list_value]
         self.__props[key] = list_value
 
     def __validate(self):
         self.__samples = int(self.__props[OpenSpectraHeader.__SAMPLES])
         self.__lines = int(self.__props[OpenSpectraHeader.__LINES])
-        self.__bands = int(self.__props[OpenSpectraHeader.__BANDS])
+        self.__band_count = int(self.__props[OpenSpectraHeader.__BANDS])
 
         if self.__samples is None or self.__samples <= 0:
             raise OpenSpectraHeaderError("Value for 'samples' in header is not valid: {0}"
@@ -165,9 +304,9 @@ class OpenSpectraHeader:
             raise OpenSpectraHeaderError("Value for 'lines' in header is not valid: {0}"
                 .format(self.__lines))
 
-        if self.__bands is None or self.__bands <= 0:
+        if self.__band_count is None or self.__band_count <= 0:
             raise OpenSpectraHeaderError("Value for 'bands' in header is not valid: {0}"
-                .format(self.__bands))
+                .format(self.__band_count))
 
         band_names = self.__props.get(OpenSpectraHeader.__BAND_NAMES)
         wavelengths_str = self.__props.get(OpenSpectraHeader.__WAVELENGTHS)
@@ -175,21 +314,21 @@ class OpenSpectraHeader:
         # possible to have only bands or wavelenghts or both or neither
         if band_names is None:
             band_names = ["Band " + index for index in np.arange(
-                1, self.__bands + 1, 1, np.int16).astype(str)]
+                1, self.__band_count + 1, 1, np.int16).astype(str)]
         else:
-            if len(band_names) != self.__bands:
+            if len(band_names) != self.__band_count:
                 raise OpenSpectraHeaderError(
                     "Number of 'band names' {0} does not match number of bands {1}".
-                        format(len(band_names), self.__bands))
+                        format(len(band_names), self.__band_count))
 
         if wavelengths_str is None:
             wavelengths_str = np.arange(
-                1, self.__bands + 1, 1, np.float64).astype(str)
+                1, self.__band_count + 1, 1, np.float64).astype(str)
         else:
-            if len(wavelengths_str) != self.__bands:
+            if len(wavelengths_str) != self.__band_count:
                 raise OpenSpectraHeaderError(
                     "Number of wavelengths {0} does not match number of bands {1}".
-                        format(len(wavelengths_str), self.__bands))
+                        format(len(wavelengths_str), self.__band_count))
 
         self.__wavelengths = np.array(wavelengths_str, np.float64)
         self.__band_labels = list(zip(band_names, wavelengths_str))
@@ -200,13 +339,70 @@ class OpenSpectraHeader:
             self.__reflectance_scale_factor = np.float64(
                 self.__props[OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR])
 
-        # TODO data_type - make sure we recognize and support?
-        # TODO interleave - make sure we recognize and support?
+        # map info = {UTM, 1.000, 1.000, 620006.407, 2376995.930, 7.8000000000e+000, 7.8000000000e+000,
+        #               4, North, WGS-84, units=Meters, rotation=29.00000000}
+        map_info_list = self.__props.get(OpenSpectraHeader.__MAP_INFO)
+        if map_info_list is not None:
+            self.__map_info:OpenSpectraHeader.MapInfo = OpenSpectraHeader.MapInfo(map_info_list)
+        else:
+            OpenSpectraHeader.__LOG.info("Optional map info section not found")
+
+        data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
+        if data_type not in OpenSpectraHeader.__DATA_TYPE_DIC:
+            raise OpenSpectraHeaderError("Specified 'data type' not recognized, value was: {0}".format(data_type))
+
+        interleave = self.__props.get(OpenSpectraHeader.__INTERLEAVE)
+        if not (interleave == OpenSpectraHeader.BIL_INTERLEAVE or
+            interleave == OpenSpectraHeader.BIP_INTERLEAVE or
+            interleave == OpenSpectraHeader.BSQ_INTERLEAVE):
+            raise OpenSpectraHeaderError("Specified 'interleave' not recognized, value was: {0}".format(interleave))
+
+        description = self.__props.get(OpenSpectraHeader.__DESCRIPTION)
+        if len(description) > 0:
+            self.__description = " ".join(description)
+
+        data_ignore_value = self.__props.get(OpenSpectraHeader.__DATA_IGNORE_VALUE)
+        if data_ignore_value is not None:
+            if re.match("[+-]?[0-9]*", data_ignore_value):
+                self.__data_ignore_value = int(data_ignore_value)
+            elif re.match("[+-]?[0-9]*[\.][0-9]*", data_ignore_value):
+                self.__data_ignore_value = float(data_ignore_value)
+            else:
+                raise OpenSpectraHeaderError("Couldn't parse 'data ignore value' as a float or int, value was: {0}", data_ignore_value)
+
+        # TODO not the final form for this member??
+        default_stretch = self.__props.get(OpenSpectraHeader.__DEFAULT_STRETCH)
+        if default_stretch is not None:
+            if not re.match(".*linear$", default_stretch):
+                raise OpenSpectraHeaderError("Only 'linear' 'default stretch' is supported, got: {0}", default_stretch)
+            else:
+                parts = re.split("\s+", default_stretch)
+                if re.match("[0-9]*[\.][0-9]*%", parts[0]):
+                    self.__default_stretch = float(re.split("%", parts[0])[0])
+                elif len(parts) == 3:
+                    self.__default_stretch = (float(parts[0]), float(parts[1]))
+                else:
+                    raise OpenSpectraHeaderError("'default stretch' value is malformed, value was: {0}", default_stretch)
+
+        bad_band_list:list = self.__props.get(OpenSpectraHeader.__BAD_BAND_LIST)
+        if bad_band_list is not None:
+            if len(bad_band_list) != self.__band_count:
+                raise OpenSpectraHeaderError("Bad band list, 'bbl' length did not match band count")
+
+            try:
+                # remember that "1" means the band is good, "0" means it's bad so
+                # but True in a numpy mask means the value is masked so flip the values
+                self.__bad_band_list = [not bool(int(item)) for item in bad_band_list]
+            except ValueError:
+                raise OpenSpectraHeaderError(
+                    "Encountered a type conversion problem translating bad band list, 'bbl' to booleans list was: {0}".
+                        format(bad_band_list))
+
         # TODO byte_order - make sure we recognize and support?
         # TODO additional validation????
 
 
-class Shape():
+class Shape:
 
     def __init__(self, x, y, z):
         self.__shape = (x, y, z)
@@ -273,7 +469,7 @@ class BIPShape(Shape):
         return self.shape()[2]
 
 
-class FileModel():
+class FileModel:
 
     def __init__(self, path:Path, header:OpenSpectraHeader):
         self._file: np.ndarray = None
@@ -304,7 +500,7 @@ class FileModel():
                 format(shape.size(), self._file.size))
 
 
-class FileTypeDelegate():
+class FileTypeDelegate:
 
     def __init__(self, shape:Shape, file_model:FileModel):
         self.__shape = shape
@@ -480,13 +676,20 @@ class OpenSpectraFile:
         return self.__file_delegate.image(band)
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
-        """Return all of the band values for a given pixel.
-        It's important to understand that selecting images with an int index
+        """Return all of the band values for a given pixel.  The number of lines and samples passed needs
+        to be the same.  The array returned will have a shape of (number of lines & samples, number of bands)
+        It's important to understand that selecting bands with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
         See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
         for more details"""
         self.__validate_band_args(line, sample)
-        return self.__file_delegate.bands(line, sample)
+        bands = self.__file_delegate.bands(line, sample)
+
+        # If the arguments were single ints the array of bands will be one
+        # dimensional so reshape it so it's consistent with multi-point results
+        if len(bands.shape) == 1:
+            bands = bands.reshape(1, bands.size)
+        return bands
 
     def name(self) -> str:
         return self.__memory_model.name()
@@ -536,11 +739,11 @@ class OpenSpectraFileFactory:
             # TODO logic to choose a memory model
             memory_model:FileModel = MappedModel(path, header)
 
-            if file_type == "bil":
+            if file_type == OpenSpectraHeader.BIL_INTERLEAVE:
                 file_delegate = BILFileDelegate(header, memory_model)
-            elif file_type == 'bsq':
+            elif file_type == OpenSpectraHeader.BSQ_INTERLEAVE:
                 file_delegate = BQSFileDelegate(header, memory_model)
-            elif file_type == 'bip':
+            elif file_type == OpenSpectraHeader.BIP_INTERLEAVE:
                 file_delegate = BIPFileDelegate(header, memory_model)
             else:
                 raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))

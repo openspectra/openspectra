@@ -5,17 +5,17 @@
 import itertools
 from enum import Enum
 from math import floor
+from typing import List
 
 from PyQt5.QtCore import pyqtSignal, Qt, QEvent, QObject, QTimer, QSize, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QCloseEvent, QPaintEvent, QPainter, \
-    QPolygon, QCursor, QColor
+    QPolygon, QCursor, QColor, QBrush, QPainterPath, QPolygonF
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
 from numpy import ma
 
-from openspectra.image import Image
+from openspectra.image import Image, BandDescriptor
 from openspectra.openspecrtra_tools import RegionOfInterest
-from openspectra.ui.toolsdisplay import RegionToggleEvent
 from openspectra.utils import LogHelper, Logger, Singleton
 
 
@@ -28,12 +28,14 @@ class ColorPicker(metaclass=Singleton):
             Qt.lightGray]
         self.__index = 0
 
-    def color(self) -> QColor:
-        color = self.__colors[self.__index]
+    def current_color(self) -> QColor:
+        return self.__colors[self.__index]
+
+    def next_color(self) -> QColor:
         self.__index += 1
         if self.__index >= len(self.__colors):
             self.reset()
-        return color
+        return self.__colors[self.__index]
 
     def reset(self):
         self.__index = 0
@@ -61,18 +63,56 @@ class AdjustedMouseEvent(QObject):
         return self.__pixel_pos
 
 
-class AreaSelectedEvent(QObject):
+class RegionDisplayItem(QObject):
 
-    def __init__(self, area:RegionOfInterest, color:QColor):
+    toggled = pyqtSignal(QObject)
+    closed = pyqtSignal(QObject)
+
+    def __init__(self, painter_path:QPainterPath,
+                    x_zoom_factor:float, y_zoom_factor:float,
+                    color:QColor, is_on:bool):
         super().__init__(None)
-        self.__area = area
+        self.__painter_path = painter_path
+        self.__x_zoom_factor = x_zoom_factor
+        self.__y_zoom_factor = y_zoom_factor
         self.__color = color
+        self.__is_on = is_on
 
-    def area(self) -> RegionOfInterest:
-        return self.__area
+    def painter_path(self) -> QPainterPath:
+        return self.__painter_path
 
     def color(self) -> QColor:
-        return  self.__color
+        return self.__color
+
+    def is_on(self) -> bool:
+        return self.__is_on
+
+    def set_is_on(self, is_on:bool):
+        self.__is_on = is_on
+        self.toggled.emit(self)
+
+    def close(self):
+        self.closed.emit(self)
+
+    def x_zoom_factor(self) -> float:
+        return self.__x_zoom_factor
+
+    def y_zoom_factor(self) -> float:
+        return self.__y_zoom_factor
+
+
+class AreaSelectedEvent(QObject):
+
+    def __init__(self, region:RegionOfInterest, display_item:RegionDisplayItem):
+        super().__init__(None)
+        self.__region = region
+        self.__display_item = display_item
+
+    def region(self) -> RegionOfInterest:
+        return self.__region
+
+    def display_item(self) -> RegionDisplayItem:
+        return self.__display_item
 
 
 class ImageResizeEvent(QObject):
@@ -194,26 +234,6 @@ class ZoomWidget(QWidget):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
 
-class RegionDisplayItem:
-
-    def __init__(self, polygon:QPolygon, color:QColor, is_on:bool):
-        self.__polygon = polygon
-        self.__color = color
-        self.__is_on = is_on
-
-    def polygon(self) -> QPolygon:
-        return self.__polygon
-
-    def color(self) -> QColor:
-        return self.__color
-
-    def is_on(self) -> bool:
-        return self.__is_on
-
-    def set_is_on(self, is_on:bool):
-        self.__is_on = is_on
-
-
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -232,10 +252,10 @@ class ImageLabel(QLabel):
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, label:str, location_rect:bool=True, parent=None):
+    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
-        self.__label = label
+        self.__descriptor = image_descriptor
 
         self.__last_mouse_loc:QPoint = None
         self.__initial_size:QSize = None
@@ -249,13 +269,14 @@ class ImageLabel(QLabel):
         if location_rect:
             # Initial size doesn't really matter,
             # it will get adjusted based on the zoom window size
-            self.__rect = QRect(0, 0, 50, 50)
+            self.__locator_rect = QRect(0, 0, 50, 50)
         else:
-            self.__rect = None
+            self.__locator_rect = None
 
         self.__dragging = False
 
-        self.__regions = dict()
+        self.__region_display_items:List[RegionDisplayItem] = list()
+
         self.__color_picker = ColorPicker()
         self.__polygon:QPolygon = None
         self.__polygon_bounds:QRect = None
@@ -265,13 +286,12 @@ class ImageLabel(QLabel):
 
     def __del__(self):
         ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
-        del self.__regions
-        self.__regions = None
+        del self.__region_display_items
         self.__color_picker = None
         self.__polygon_bounds = None
         self.__polygon = None
 
-        self.__rect = None
+        self.__locator_rect = None
 
         self.__default_cursor = None
         self.__drag_cursor = None
@@ -280,11 +300,11 @@ class ImageLabel(QLabel):
         self.__last_mouse_loc = None
 
     def has_locator(self) -> bool:
-        return self.__rect is not None
+        return self.__locator_rect is not None
 
     def locator_position(self) -> QPoint:
-        assert self.__rect is not None
-        return self.__unscale_point(self.__rect.center())
+        assert self.__locator_rect is not None
+        return self.__unscale_point(self.__locator_rect.center())
 
     def set_locator_position(self, postion:QPoint):
         # calls to this method should always be in 1 to 1 coordinates
@@ -292,12 +312,12 @@ class ImageLabel(QLabel):
             #TODO put contraints on it?
             new_position: QPoint = self.__scale_point(postion)
             ImageLabel.__LOG.debug("setting locator position: {0}, scaled pos: {1}", postion, new_position)
-            self.__rect.moveCenter(new_position)
+            self.__locator_rect.moveCenter(new_position)
             self.update()
 
     def locator_size(self) -> QSize:
-        assert self.__rect is not None
-        return self.__unscale_size(self.__rect.size())
+        assert self.__locator_rect is not None
+        return self.__unscale_size(self.__locator_rect.size())
 
     def set_locator_size(self, size:QSize):
         # calls to this method should always be in 1 to 1 coordinates
@@ -305,28 +325,21 @@ class ImageLabel(QLabel):
             #TODO constraints?
             new_size: QSize = self.__scale_size(size)
             ImageLabel.__LOG.debug("setting locator size: {0}, scaled size: {1}", size, new_size)
-            self.__rect.setSize(new_size)
+            self.__locator_rect.setSize(new_size)
             self.update()
 
-    def clear_selected_area(self):
-        self.__polygon_bounds = None
-        self.__polygon = None
+    @pyqtSlot(AreaSelectedEvent)
+    def add_selected_area(self, event:AreaSelectedEvent):
+        display_item = event.display_item()
+        display_item.toggled.connect(self.__handle_region_toggled)
+        display_item.closed.connect(self.__handle__region_closed)
+        self.__region_display_items.append(display_item)
         self.update()
 
-    def toggle_region(self, region:RegionOfInterest):
-        if region.id() in self.__regions:
-            region = self.__regions[region.id()]
-            region.set_is_on(not region.is_on())
-        self.update()
-
-    def remove_region(self, region:RegionOfInterest):
-        if region.id() in self.__regions:
-            del self.__regions[region.id()]
-            self.update()
-
+    # TODO make private handler?
     def remove_all_regions(self):
-        self.__regions.clear()
-        self.clear_selected_area()
+        self.__region_display_items.clear()
+        self.__clear_selected_area()
         self.__color_picker.reset()
         self.update()
 
@@ -368,11 +381,11 @@ class ImageLabel(QLabel):
             self.__polygon << event.pos()
             self.update()
         elif self.__current_action == ImageLabel.Action.Dragging and \
-                self.__last_mouse_loc is not None and self.__rect is not None:
+                self.__last_mouse_loc is not None and self.__locator_rect is not None:
             # ImageLabel.__LOG.debug("dragging mouse move event, pos: {0}, size: {1}", event.pos(), self.pixmap().size())
-            center = self.__rect.center()
+            center = self.__locator_rect.center()
             center += event.pos() - self.__last_mouse_loc
-            self.__rect.moveCenter(center)
+            self.__locator_rect.moveCenter(center)
             self.__last_mouse_loc = event.pos()
             self.locator_moved.emit(ViewLocationChangeEvent(self.__unscale_point(center)))
             self.update()
@@ -431,7 +444,7 @@ class ImageLabel(QLabel):
                 return True
 
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                # TODO this has to account for scaling
+                # TODO this has to account for scaling - no I don't think so now????
                 self.__last_mouse_loc = event.pos()
                 QTimer.singleShot(300, self.__pressed)
                 # event was handled
@@ -462,24 +475,37 @@ class ImageLabel(QLabel):
         super().paintEvent(paint_event)
         # not sure why but it seems we need to create the painter each time
         painter = QPainter(self)
+        brush:QBrush = QBrush(Qt.SolidPattern)
 
-        # paint the selected regions
-        for region_item in self.__regions.values():
-            if region_item.is_on():
-                painter.setPen(region_item.color())
-                painter.drawPoints(region_item.polygon())
-
-        # TODO current selector is always red?  next color?
-        painter.setPen(Qt.red)
-        if self.__rect is not None:
-            painter.drawRect(self.__rect)
-
+        # draw the polgon that is in the process of being created
         if self.__polygon is not None:
-            painter.drawPoints(self.__polygon)
+            painter.setPen(self.__color_picker.current_color())
+            brush.setColor(self.__color_picker.current_color())
+            path:QPainterPath = QPainterPath()
+            path.addPolygon(QPolygonF(self.__polygon))
+            path.closeSubpath()
+            painter.fillPath(path, brush)
 
-            # TODO probabaly don't need, only for debgging?
-            self.__polygon_bounds = self.__polygon.boundingRect()
-            painter.drawRect(self.__polygon_bounds)
+            # TODO probabaly don't need, only for debugging?
+            if self.__current_action == ImageLabel.Action.Drawing:
+                self.__polygon_bounds = self.__polygon.boundingRect()
+                painter.drawRect(self.__polygon_bounds)
+
+        # draw locator in red if present
+        painter.setPen(Qt.red)
+        if self.__locator_rect is not None:
+            painter.drawRect(self.__locator_rect)
+
+        # paint the selected regions scaling each one appropriately
+        for region_item in self.__region_display_items:
+            # ImageLabel.__LOG.debug("Region: {0}, is on: {1}", region_item.color(), region_item.is_on())
+            if region_item.is_on():
+                painter.scale(self.__width_scale_factor/region_item.x_zoom_factor(),
+                    self.__height_scale_factor/region_item.y_zoom_factor())
+                painter.setPen(region_item.color())
+                brush.setColor(region_item.color())
+                painter.fillPath(region_item.painter_path(), brush)
+                painter.resetTransform()
 
     def __scale_point(self, point:QPoint) -> QPoint:
         new_point:QPoint = QPoint(point)
@@ -521,10 +547,31 @@ class ImageLabel(QLabel):
 
         return new_size
 
+    def __clear_selected_area(self):
+        self.__polygon_bounds = None
+        self.__polygon = None
+        self.update()
+
+    @pyqtSlot(RegionDisplayItem)
+    def __handle__region_closed(self, target:RegionDisplayItem):
+        if target in self.__region_display_items:
+            self.__region_display_items.remove(target)
+            self.update()
+        else:
+            ImageLabel.__LOG.warning("Call to remove non-existent region ignored")
+
+    @pyqtSlot(RegionDisplayItem)
+    def __handle_region_toggled(self, target:RegionDisplayItem):
+        self.update()
+
     def __get_select_pixels(self):
         if self.__polygon_bounds is not None:
             if self.__polygon_bounds.size().height() > 1 and \
                self.__polygon_bounds.size().width() > 1:
+
+                # point_list = self.__path.data()
+                # for point in point_list:
+                #     ImageLabel.__LOG.debug("Polygon point: {0}", point)
 
                 x1, y1, x2, y2 = self.__polygon_bounds.getCoords()
                 ImageLabel.__LOG.debug("Selected coords, x1: {0}, y1: {1}, x2: {2}, y2: {3}, size: {4}",
@@ -548,45 +595,64 @@ class ImageLabel(QLabel):
                 points = ma.array(list(itertools.product(x_range, y_range)))
 
                 # check to see which points also fall inside of the polygon
-                new_polygon = QPolygon()
                 for i in range(len(points)):
                     point = QPoint(points[i][0], points[i][1])
                     if not self.__polygon.containsPoint(point, Qt.WindingFill):
                         points[i] = ma.masked
                         # ImageLabel.__LOG.debug("Point out: {0}", point)
-                    else:
-                        new_polygon << point
-                        # ImageLabel.__LOG.debug("Point in: {0}", point)
 
                 ImageLabel.__LOG.debug("Points size: {0}, count: {1}", points.size, points.count())
 
                 # make sure we haven't masked all the elements
                 if points.count() > 0:
+                    # extract the non-masked points and reshape the result back to a list of pairs
+                    points = points[~points.mask].reshape(floor(points.count() / 2), 2)
+
+                    ImageLabel.__LOG.debug("Final points shape: {0}, size: {1}, count: {2}",
+                        points.shape, points.size, points.count())
+
                     # capture the region of interest and save to the map
                     region = RegionOfInterest(points,
-                        1 / self.__width_scale_factor, 1 / self.__height_scale_factor,
-                        self.__initial_size.height(), self.__initial_size.width(), self.__label)
-                    color = self.__color_picker.color()
-                    self.__regions[region.id()] = RegionDisplayItem(new_polygon, color, True)
+                        self.__width_scale_factor, self.__height_scale_factor,
+                        self.__initial_size.height(), self.__initial_size.width(), self.__descriptor)
+                    color = self.__color_picker.current_color()
 
-                    self.area_selected.emit(AreaSelectedEvent(region, color))
+                    # Save the final version of the polygon as a QPainterPath it's more
+                    # efficient for reuse and has more flexible painting options
+                    painter_path = QPainterPath()
+                    painter_path.addPolygon(QPolygonF(self.__polygon))
+                    painter_path.closeSubpath()
+
+                    display_item = RegionDisplayItem(painter_path,
+                        self.__width_scale_factor, self.__height_scale_factor, color, True)
+                    display_item.closed.connect(self.__handle__region_closed)
+                    display_item.toggled.connect(self.__handle_region_toggled)
+                    self.__region_display_items.append(display_item)
+
+                    self.area_selected.emit(AreaSelectedEvent(region, display_item))
+                    self.__color_picker.next_color()
+                    self.__clear_selected_area()
+
                 else:
                     ImageLabel.__LOG.debug("No points found in region, size: {0}", self.__polygon_bounds.size())
-                    self.clear_selected_area()
+                    self.__clear_selected_area()
             else:
                 ImageLabel.__LOG.debug("Zero dimension polygon rejected, size: {0}", self.__polygon_bounds.size())
-                self.clear_selected_area()
+                self.__clear_selected_area()
 
     def __pressed(self):
         # ImageLabel.__LOG.debug("press called, last_mouse_loc: {0}", self.__last_mouse_loc)
         if self.__last_mouse_loc is not None:
-            if self.__rect is not None and self.__rect.contains(self.__last_mouse_loc):
+            if self.__locator_rect is not None and self.__locator_rect.contains(self.__last_mouse_loc):
                 self.__current_action = ImageLabel.Action.Dragging
                 self.setCursor(self.__drag_cursor)
                 # ImageLabel.__LOG.debug("press called, drag start")
-            else:
+            elif self.__width_scale_factor >= 1.0 or self.__height_scale_factor >= 1.0:
+                # need to limit region selection to scale factors greater than 1.0
+                # or else we end up with a region whose pixel coverage is sparse
                 self.__current_action = ImageLabel.Action.Drawing
                 self.setCursor(self.__draw_cursor)
+                self.__color_picker.current_color()
                 self.__polygon = QPolygon()
                 # ImageLabel.__LOG.debug("press called, draw start")
 
@@ -638,7 +704,7 @@ class ImageDisplay(QScrollArea):
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image:Image, label:str, qimage_format:QImage.Format=QImage.Format_Grayscale8,
+    def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
             location_rect:bool=True, parent=None):
         super().__init__(parent)
 
@@ -650,7 +716,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(label, location_rect, self)
+        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -804,9 +870,6 @@ class ImageDisplay(QScrollArea):
         # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
-    def remove_region(self, region:RegionOfInterest):
-        self.__image_label.remove_region(region)
-
     def remove_all_regions(self):
         self.__image_label.remove_all_regions()
 
@@ -880,8 +943,8 @@ class ImageDisplay(QScrollArea):
     def margin_height(self) -> int:
         return self.__margin_height
 
-    def toggle_region(self, region:RegionOfInterest):
-        self.__image_label.toggle_region(region)
+    def add_selected_area(self, area:AreaSelectedEvent):
+        self.__image_label.add_selected_area(area)
 
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
@@ -921,7 +984,7 @@ class ImageDisplayWindow(QMainWindow):
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__image_label = label
-        self._image_display = ImageDisplay(self.__image, self.__image_label, qimage_format, location_rect, self)
+        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
         self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()
@@ -979,12 +1042,10 @@ class ImageDisplayWindow(QMainWindow):
     def image_label(self) -> str:
         return self.__image_label
 
-    @pyqtSlot(RegionToggleEvent)
-    def handle_region_toggle(self, event:RegionToggleEvent):
-        self._image_display.toggle_region(event.region())
-
-    def remove_region(self, region:RegionOfInterest):
-        self._image_display.remove_region(region)
+    @pyqtSlot(AreaSelectedEvent)
+    def handle_region_selected(self, event:AreaSelectedEvent):
+        """Handle area select events from another associated window"""
+        self._image_display.add_selected_area(event)
 
     def remove_all_regions(self):
         self._image_display.remove_all_regions()
@@ -1056,6 +1117,9 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1/1.5
+        # limit zoom out to going back to 1 to 1
+        if self.__zoom_factor < 1.0:
+            self.__zoom_factor = 1.0
         self.__set_zoom()
 
     @pyqtSlot()
