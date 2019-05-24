@@ -34,8 +34,12 @@ class RegionToggleEvent(RegionEvent):
 
 class RegionCloseEvent(RegionEvent):
 
-    def __init__(self, region:RegionOfInterest):
+    def __init__(self, region:RegionOfInterest, row:int):
         super().__init__(region)
+        self.__row = row
+
+    def row(self) -> int:
+        return self.__row
 
 
 class RegionNameChangeEvent(RegionEvent):
@@ -154,6 +158,15 @@ class RegionOfInterestControl(QWidget):
         self.__regions.clear()
         self.__rows = 0
 
+    def remove(self, event:RegionCloseEvent):
+        row = event.row()
+        region = self.__regions[row]
+        if region is not None:
+            self.__table.removeRow(row)
+            del self.__regions[row]
+            self.__rows -= 1
+            self.__selected_row = None
+
     def __adjust_width(self):
         self.__table.resizeColumnsToContents()
         length = self.__table.horizontalHeader().length()
@@ -195,11 +208,7 @@ class RegionOfInterestControl(QWidget):
     def __handle_region_close(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Close region: {0}", region.display_name())
-        self.__table.removeRow(self.__selected_row)
-        del self.__regions[self.__selected_row]
-        self.region_closed.emit(RegionCloseEvent(region))
-        self.__rows -= 1
-        self.__selected_row = None
+        self.region_closed.emit(RegionCloseEvent(region, self.__selected_row))
 
     def __handle_band_stats(self):
         region = self.__regions[self.__selected_row]
@@ -239,6 +248,9 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     def remove_all(self):
         self.__region_control.remove_all()
+
+    def remove(self, event:RegionCloseEvent):
+        self.__region_control.remove(event)
 
     def closeEvent(self, event:QCloseEvent):
         self.closed.emit()
