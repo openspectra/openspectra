@@ -1,7 +1,6 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-from __future__ import annotations
 
 from io import TextIOBase
 from math import cos, sin
@@ -164,18 +163,6 @@ class RegionOfInterest:
     def set_map_info(self, map_info:OpenSpectraHeader.MapInfo):
         self.__map_info = map_info
         self.__calculate_coords()
-
-    def scale_for(self, x_zoom_factor:float, y_zoom_factor:float, include_map_info:bool=False) -> RegionOfInterest:
-        """Return a copy of the RegionOfInterest with the x and y point scaled for display
-        on an image with x_zoom and y_zoom.  Map info can be ignored for efficiency"""
-        map_info:OpenSpectraHeader.MapInfo = None
-        if include_map_info:
-            map_info = self.map_info()
-
-        area = np.column_stack((self.x_points(), self.y_points()))
-        return RegionOfInterest(area, 1 / x_zoom_factor, 1 / y_zoom_factor,
-            self.__image_height, self.__image_width, self.__descriptor,
-            self.__display_name, map_info)
 
 
 class PlotData:
