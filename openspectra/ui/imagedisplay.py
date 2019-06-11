@@ -3,6 +3,7 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import itertools
+import time
 from enum import Enum
 from math import floor
 from typing import List
@@ -12,6 +13,8 @@ from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QC
     QPolygon, QCursor, QColor, QBrush, QPainterPath, QPolygonF
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
+
+import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, BandDescriptor
@@ -68,18 +71,24 @@ class RegionDisplayItem(QObject):
     toggled = pyqtSignal(QObject)
     closed = pyqtSignal(QObject)
 
-    def __init__(self, painter_path:QPainterPath,
-                    x_zoom_factor:float, y_zoom_factor:float,
-                    color:QColor, is_on:bool):
+    def __init__(self, x_zoom_factor: float, y_zoom_factor:float, color:QColor, is_on:bool,
+            painter_path:QPainterPath=None, points:List[QPoint]=None):
         super().__init__(None)
-        self.__painter_path = painter_path
         self.__x_zoom_factor = x_zoom_factor
         self.__y_zoom_factor = y_zoom_factor
         self.__color = color
         self.__is_on = is_on
+        self.__painter_path = painter_path
+        self.__points = points
 
     def painter_path(self) -> QPainterPath:
         return self.__painter_path
+
+    def points(self) -> List[QPoint]:
+        return self.__points
+
+    def append_points(self, points:List[QPoint]):
+        self.__points.extend(points)
 
     def color(self) -> QColor:
         return self.__color
@@ -234,6 +243,41 @@ class ZoomWidget(QWidget):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
 
+class ReversePixelMap():
+
+    __LOG: Logger = LogHelper.logger("ReversePixelMap")
+
+    # TODO perhaps use viewport's cooridinates to create the map for performance reasons??
+    def __init__(self, x_size, y_size, x_zoom_factor, y_zoom_factor):
+        # if x_zoom_factor <= 1.0 or y_zoom_factor <= 1.0:
+        #     raise ValueError("Zoom factors should be greater than 1.0")
+
+        start_time = time.perf_counter_ns()
+
+        pixel_map = np.indices((x_size, y_size))
+        pixel_map[0] = np.floor(pixel_map[0] / x_zoom_factor).astype(np.int16)
+        pixel_map[1] = np.floor(pixel_map[1] / y_zoom_factor).astype(np.int16)
+        self.__pixel_map = np.moveaxis(pixel_map, 0, 2)
+
+        end_time = time.perf_counter_ns()
+        ReversePixelMap.__LOG.info("Pixel map created in {0} ms".format((end_time - start_time) / 10**6))
+
+    def __get_pixels(self, adjusted_x:int, adjusted_y:int) -> np.ndarray:
+        """Get the zoomed in pixels that map back to a 1 to 1 pixel"""
+        adj_pixel = np.array([adjusted_x, adjusted_y])
+        mask = (self.__pixel_map == adj_pixel).all(2)
+        pixel_list = np.transpose(mask.nonzero())
+        return pixel_list
+
+    def get_points(self, adjusted_x:int, adjusted_y:int) -> List[QPoint]:
+        result = list()
+        pixel_list = self.__get_pixels(adjusted_x, adjusted_y)
+        for pixel in pixel_list:
+            result.append(QPoint(pixel[0], pixel[1]))
+
+        return result
+
+
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -242,6 +286,7 @@ class ImageLabel(QLabel):
         Nothing = 0
         Dragging = 1
         Drawing = 2
+        Picking = 3
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
@@ -281,6 +326,10 @@ class ImageLabel(QLabel):
         self.__polygon:QPolygon = None
         self.__polygon_bounds:QRect = None
         self.__drawing = False
+
+        self.__pixel_mapper:ReversePixelMap = None
+        self.__pixel_list:np.ndarray = None
+        self.__region_display_item = None
 
         self.__current_action = ImageLabel.Action.Nothing
 
@@ -400,9 +449,38 @@ class ImageLabel(QLabel):
 
     def mousePressEvent(self, event:QMouseEvent):
         # only expect right clicks here due to event filter
-        ImageLabel.__LOG.debug("mousePressEvent left: {0} or right: {1}",
-            event.button() == Qt.LeftButton, event.button() == Qt.RightButton)
-        self.right_clicked.emit(self.__create_adjusted_mouse_event(event))
+        adjust_mouse_event = self.__create_adjusted_mouse_event(event)
+
+        ImageLabel.__LOG.debug("mousePressEvent left: {0} or right: {1}, adj pos: {2}",
+            event.button() == Qt.LeftButton, event.button() == Qt.RightButton,
+            adjust_mouse_event.pixel_pos())
+
+        if self.__current_action == ImageLabel.Action.Nothing:
+            self.__current_action = ImageLabel.Action.Picking
+            self.__pixel_mapper = ReversePixelMap(self.pixmap().size().width(), self.pixmap().size().height(),
+                self.__width_scale_factor, self.__height_scale_factor)
+
+            color = self.__color_picker.current_color()
+            self.__region_display_item = RegionDisplayItem(self.__width_scale_factor, self.__height_scale_factor,
+                color, True, points=self.__pixel_mapper.get_points(
+                    adjust_mouse_event.pixel_x(), adjust_mouse_event.pixel_y()))
+            self.__region_display_item.closed.connect(self.__handle__region_closed)
+            self.__region_display_item.toggled.connect(self.__handle_region_toggled)
+
+            self.__region_display_items.append(self.__region_display_item)
+
+            self.__pixel_list = np.array([adjust_mouse_event.pixel_x(), adjust_mouse_event.pixel_y()]).reshape(1, 2)
+
+        elif self.__current_action == ImageLabel.Action.Picking and self.__region_display_item is not None:
+            self.__region_display_item.append_points(self.__pixel_mapper.get_points(
+                    adjust_mouse_event.pixel_x(), adjust_mouse_event.pixel_y()))
+
+            self.__pixel_list = np.append(self.__pixel_list,
+                np.array([adjust_mouse_event.pixel_x(), adjust_mouse_event.pixel_y()]).reshape(1, 2),
+                axis=0)
+
+        self.right_clicked.emit(adjust_mouse_event)
+        self.update()
 
     def mouseReleaseEvent(self, event:QMouseEvent):
         ImageLabel.__LOG.debug("mouseReleaseEvent left: {0} or right: {1}",
@@ -417,7 +495,12 @@ class ImageLabel(QLabel):
             self.__current_action = ImageLabel.Action.Nothing
             self.setCursor(self.__default_cursor)
             # trigger the collection of spectra plots points
-            self.__get_select_pixels()
+            self.__get_select_polygon()
+            self.update()
+
+        elif self.__current_action == ImageLabel.Action.Picking:
+            self.__current_action = ImageLabel.Action.Nothing
+            self.__get_selected_pixels()
             self.update()
 
         # Then it's a left click
@@ -504,7 +587,13 @@ class ImageLabel(QLabel):
                     self.__height_scale_factor/region_item.y_zoom_factor())
                 painter.setPen(region_item.color())
                 brush.setColor(region_item.color())
-                painter.fillPath(region_item.painter_path(), brush)
+
+                if region_item.painter_path() is not None:
+                    painter.fillPath(region_item.painter_path(), brush)
+                elif region_item.points() is not None:
+                    for point in region_item.points():
+                        painter.drawPoints(point)
+
                 painter.resetTransform()
 
     def __scale_point(self, point:QPoint) -> QPoint:
@@ -564,7 +653,21 @@ class ImageLabel(QLabel):
     def __handle_region_toggled(self, target:RegionDisplayItem):
         self.update()
 
-    def __get_select_pixels(self):
+    def __get_selected_pixels(self):
+        if len(self.__pixel_list) > 0:
+
+            # Create region of interest.  The collection of points has already been
+            # converted to 1 to 1 space.
+            region = RegionOfInterest(np.array(self.__pixel_list), 1.0, 1.0,
+                self.__initial_size.height(), self.__initial_size.width(), self.__descriptor)
+
+            self.__pixel_list = None
+
+            self.area_selected.emit(AreaSelectedEvent(region, self.__region_display_item))
+            self.__color_picker.next_color()
+            self.__region_display_item = None
+
+    def __get_select_polygon(self):
         if self.__polygon_bounds is not None:
             if self.__polygon_bounds.size().height() > 1 and \
                self.__polygon_bounds.size().width() > 1:
@@ -623,8 +726,8 @@ class ImageLabel(QLabel):
                     painter_path.addPolygon(QPolygonF(self.__polygon))
                     painter_path.closeSubpath()
 
-                    display_item = RegionDisplayItem(painter_path,
-                        self.__width_scale_factor, self.__height_scale_factor, color, True)
+                    display_item = RegionDisplayItem(self.__width_scale_factor, self.__height_scale_factor,
+                        color, True, painter_path)
                     display_item.closed.connect(self.__handle__region_closed)
                     display_item.toggled.connect(self.__handle_region_toggled)
                     self.__region_display_items.append(display_item)
