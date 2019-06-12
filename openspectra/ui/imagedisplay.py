@@ -247,10 +247,10 @@ class ReversePixelMap():
 
     __LOG: Logger = LogHelper.logger("ReversePixelMap")
 
-    # TODO perhaps use viewport's cooridinates to create the map for performance reasons??
+    # TODO perhaps use viewport's cooridinates to create the map for performance reasons???
     def __init__(self, x_size, y_size, x_zoom_factor, y_zoom_factor):
-        # if x_zoom_factor <= 1.0 or y_zoom_factor <= 1.0:
-        #     raise ValueError("Zoom factors should be greater than 1.0")
+        if x_zoom_factor <= 1.0 or y_zoom_factor <= 1.0:
+            raise ValueError("Zoom factors should be greater than 1.0")
 
         start_time = time.perf_counter_ns()
 
@@ -297,7 +297,8 @@ class ImageLabel(QLabel):
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True, parent=None):
+    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True,
+            pixel_select:bool=False, parent=None):
         super().__init__(parent)
         self.installEventFilter(self)
         self.__descriptor = image_descriptor
@@ -327,6 +328,7 @@ class ImageLabel(QLabel):
         self.__polygon_bounds:QRect = None
         self.__drawing = False
 
+        self.__pixel_select:bool = pixel_select
         self.__pixel_mapper:ReversePixelMap = None
         self.__pixel_list:np.ndarray = None
         self.__region_display_item = None
@@ -455,7 +457,7 @@ class ImageLabel(QLabel):
             event.button() == Qt.LeftButton, event.button() == Qt.RightButton,
             adjust_mouse_event.pixel_pos())
 
-        if self.__current_action == ImageLabel.Action.Nothing:
+        if self.__current_action == ImageLabel.Action.Nothing and self.__pixel_select:
             self.__current_action = ImageLabel.Action.Picking
             self.__pixel_mapper = ReversePixelMap(self.pixmap().size().width(), self.pixmap().size().height(),
                 self.__width_scale_factor, self.__height_scale_factor)
@@ -808,7 +810,7 @@ class ImageDisplay(QScrollArea):
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
     def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
-            location_rect:bool=True, parent=None):
+            location_rect:bool=True, pixel_select:bool=False, parent=None):
         super().__init__(parent)
 
         # TODO make settable prop?
@@ -819,7 +821,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, self)
+        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, pixel_select, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -1082,12 +1084,12 @@ class ImageDisplayWindow(QMainWindow):
     area_selected = pyqtSignal(AreaSelectedEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
-                screen_geometry:QRect, location_rect:bool=True, parent=None):
+                screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
         super().__init__(parent)
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__image_label = label
-        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
+        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, pixel_select, self)
         self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()
@@ -1173,7 +1175,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
             screen_geometry:QRect, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, False, parent)
+        super().__init__(image, label, qimage_format, screen_geometry, False, True, parent)
 
         self.__last_display_center:QPoint = None
 
@@ -1322,7 +1324,7 @@ class MainImageDisplayWindow(ImageDisplayWindow):
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, True, parent)
+        super().__init__(image, label, qimage_format, screen_geometry, True, False, parent)
         self._image_display.right_clicked.connect(self.__handle_right_click)
         self._image_display.image_resized.connect(self.__handle_image_resize)
         self._image_display.locator_moved.connect(self.__handle_location_changed)
