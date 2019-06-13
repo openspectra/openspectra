@@ -433,7 +433,11 @@ class WindowSet(QObject):
         region = event.region()
         if region in self.__band_stats_windows:
             self.__band_stats_windows[region].close()
-            del self.__band_stats_windows[region]
+            # Shouldn't need this since we set Qt.WA_DeleteOnClose when creating the window
+            # so check if it's still there first
+            if region in self.__band_stats_windows:
+                del self.__band_stats_windows[region]
+                WindowSet.__LOG.warning("Band stat window was still in the list after being closed")
 
     @pyqtSlot(RegionNameChangeEvent)
     def handle_region_name_changed(self, event:RegionNameChangeEvent):

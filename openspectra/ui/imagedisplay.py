@@ -3,6 +3,7 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import itertools
+import time
 from enum import Enum
 from math import floor
 from typing import List
@@ -12,6 +13,8 @@ from PyQt5.QtGui import QPalette, QImage, QPixmap, QMouseEvent, QResizeEvent, QC
     QPolygon, QCursor, QColor, QBrush, QPainterPath, QPolygonF
 from PyQt5.QtWidgets import QScrollArea, QLabel, QSizePolicy, QMainWindow, QDockWidget, QWidget, QPushButton, \
     QHBoxLayout, QApplication, QStyle
+
+import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, BandDescriptor
@@ -68,18 +71,24 @@ class RegionDisplayItem(QObject):
     toggled = pyqtSignal(QObject)
     closed = pyqtSignal(QObject)
 
-    def __init__(self, painter_path:QPainterPath,
-                    x_zoom_factor:float, y_zoom_factor:float,
-                    color:QColor, is_on:bool):
+    def __init__(self, x_zoom_factor: float, y_zoom_factor:float, color:QColor, is_on:bool,
+            painter_path:QPainterPath=None, points:List[QPoint]=None):
         super().__init__(None)
-        self.__painter_path = painter_path
         self.__x_zoom_factor = x_zoom_factor
         self.__y_zoom_factor = y_zoom_factor
         self.__color = color
         self.__is_on = is_on
+        self.__painter_path = painter_path
+        self.__points = points
 
     def painter_path(self) -> QPainterPath:
         return self.__painter_path
+
+    def points(self) -> List[QPoint]:
+        return self.__points
+
+    def append_points(self, points:List[QPoint]):
+        self.__points.extend(points)
 
     def color(self) -> QColor:
         return self.__color
@@ -234,6 +243,109 @@ class ZoomWidget(QWidget):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
 
+class ReversePixelCalculator():
+    """For a given pixel selected on a zoomed in image get_points returns
+    all of the pixels that should be drawn on the zoomed image to cover
+    the same area as would be in the 1 to 1 image"""
+
+    __LOG: Logger = LogHelper.logger("ReversePixelCalculator")
+
+    def __init__(self, x_size:int, y_size:int, x_zoom_factor:float, y_zoom_factor:float):
+        if x_zoom_factor < 1.0 or y_zoom_factor < 1.0:
+            raise ValueError("Zoom factors should be at least 1.0 or greater")
+
+        self.update_params(x_size, y_size, x_zoom_factor, y_zoom_factor)
+
+    def update_params(self, x_size:int, y_size:int, x_zoom_factor:float, y_zoom_factor:float):
+        self.__x_max = x_size
+        self.__y_max = y_size
+        self.__x_zoom = x_zoom_factor
+        self.__y_zoom = y_zoom_factor
+
+    def get_points(self, x:int, y:int) -> List[QPoint]:
+        if x >= self.__x_max:
+            raise ValueError("x value must be less than {0}".format(self.__x_max))
+
+        if y >= self.__y_max:
+            raise ValueError("y value must be less than {0}".format(self.__y_max))
+
+        start_time = time.perf_counter_ns()
+
+        x_mapped = floor(x/self.__x_zoom)
+        y_mapped = floor(y/self.__y_zoom)
+
+        x_min = x_max = x
+        x_val = x - 1
+        while floor(x_val/self.__x_zoom) == x_mapped:
+            x_min = x_val
+            x_val = x_val - 1
+
+        x_val = x + 1
+        while floor(x_val/self.__x_zoom) == x_mapped:
+            x_max = x_val
+            x_val = x_val + 1
+
+        y_min = y_max = y
+        y_val = y - 1
+        while floor(y_val/self.__y_zoom) == y_mapped:
+            y_min = y_val
+            y_val = y_val - 1
+
+        y_val = y + 1
+        while floor(y_val/self.__y_zoom) == y_mapped:
+            y_max = y_val
+            y_val = y_val + 1
+
+        point_list:List[QPoint] = list()
+        for x_point in range(x_min, x_max + 1):
+            for y_point in range(y_min, y_max + 1):
+                point_list.append(QPoint(x_point, y_point))
+
+        end_time = time.perf_counter_ns()
+        ReversePixelCalculator.__LOG.debug("Pixel point list created in {0} ms".format((end_time - start_time) / 10**6))
+        ReversePixelCalculator.__LOG.debug("x_map: {0}, y_map: {1}, x_min: {2}, x_max: {3}, y_min: {4}, y_max: {5}".
+            format(x_mapped, y_mapped, x_min, x_max, y_min, y_max))
+
+        return point_list
+
+
+# TODO this performs poorly for large and/or highly zoomed images
+# TODO remove?  Anything interesting to be learned???
+class ReversePixelMap():
+
+    __LOG: Logger = LogHelper.logger("ReversePixelMap")
+
+    # TODO perhaps use viewport's cooridinates to create the map for performance reasons???
+    def __init__(self, x_size:int, y_size:int, x_zoom_factor:float, y_zoom_factor:float):
+        if x_zoom_factor <= 1.0 or y_zoom_factor <= 1.0:
+            raise ValueError("Zoom factors should be greater than 1.0")
+
+        start_time = time.perf_counter_ns()
+
+        pixel_map = np.indices((x_size, y_size))
+        pixel_map[0] = np.floor(pixel_map[0] / x_zoom_factor).astype(np.int16)
+        pixel_map[1] = np.floor(pixel_map[1] / y_zoom_factor).astype(np.int16)
+        self.__pixel_map = np.moveaxis(pixel_map, 0, 2)
+
+        end_time = time.perf_counter_ns()
+        ReversePixelMap.__LOG.debug("Pixel map created in {0} ms".format((end_time - start_time) / 10**6))
+
+    def __get_pixels(self, adjusted_x:int, adjusted_y:int) -> np.ndarray:
+        """Get the zoomed in pixels that map back to a 1 to 1 pixel"""
+        adj_pixel = np.array([adjusted_x, adjusted_y])
+        mask = (self.__pixel_map == adj_pixel).all(2)
+        pixel_list = np.transpose(mask.nonzero())
+        return pixel_list
+
+    def get_points(self, adjusted_x:int, adjusted_y:int) -> List[QPoint]:
+        result = list()
+        pixel_list = self.__get_pixels(adjusted_x, adjusted_y)
+        for pixel in pixel_list:
+            result.append(QPoint(pixel[0], pixel[1]))
+
+        return result
+
+
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -242,6 +354,7 @@ class ImageLabel(QLabel):
         Nothing = 0
         Dragging = 1
         Drawing = 2
+        Picking = 3
 
     # TODO on double click we get both clicked and doubleClicked
     # TODO decide if we need both and fix
@@ -252,20 +365,30 @@ class ImageLabel(QLabel):
     mouse_move = pyqtSignal(AdjustedMouseEvent)
     locator_moved = pyqtSignal(ViewLocationChangeEvent)
 
-    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True, parent=None):
+    def __init__(self, image_descriptor:BandDescriptor, location_rect:bool=True,
+            pixel_select:bool=False, parent=None):
         super().__init__(parent)
+
+        # Install our event filter
         self.installEventFilter(self)
+
+        # Image descriptor
         self.__descriptor = image_descriptor
 
+        # mouse location
         self.__last_mouse_loc:QPoint = None
+
+        # Parameters related to the image size
         self.__initial_size:QSize = None
         self.__width_scale_factor = 1.0
         self.__height_scale_factor = 1.0
 
+        # Cursors we'll use
         self.__default_cursor = self.cursor()
         self.__drag_cursor = QCursor(Qt.ClosedHandCursor)
         self.__draw_cursor = QCursor(Qt.CrossCursor)
 
+        # Initialize the locator if we have one
         if location_rect:
             # Initial size doesn't really matter,
             # it will get adjusted based on the zoom window size
@@ -273,14 +396,21 @@ class ImageLabel(QLabel):
         else:
             self.__locator_rect = None
 
-        self.__dragging = False
-
+        # The list of regions of interest
         self.__region_display_items:List[RegionDisplayItem] = list()
 
+        # Color picker for region of interest displays
         self.__color_picker = ColorPicker()
+
+        # Polygon selection items
         self.__polygon:QPolygon = None
         self.__polygon_bounds:QRect = None
-        self.__drawing = False
+
+        # Pixel selection items
+        self.__pixel_select:bool = pixel_select
+        self.__pixel_mapper:ReversePixelCalculator = None
+        self.__pixel_list:np.ndarray = None
+        self.__region_display_item = None
 
         self.__current_action = ImageLabel.Action.Nothing
 
@@ -347,6 +477,11 @@ class ImageLabel(QLabel):
         locator_size:QSize = None
         locator_position:QPoint = None
 
+        # If zoom changed we need to end any pixel selecting in progress
+        if self.__current_action == ImageLabel.Action.Picking:
+            self.__current_action = ImageLabel.Action.Nothing
+            self.__get_selected_pixels()
+
         if self.has_locator():
             locator_size = self.locator_size()
             locator_position = self.locator_position()
@@ -361,10 +496,16 @@ class ImageLabel(QLabel):
             ImageLabel.__LOG.debug("setting image size: {0}, scale factor w: {1}, h: {2}",
                 size, self.__width_scale_factor, self.__height_scale_factor)
 
-        # reset locator
+        # reset locator if we have one
         if self.has_locator():
             self.set_locator_size(locator_size)
             self.set_locator_position(locator_position)
+
+        # If there's a pixel mapper update it too
+        if self.__pixel_mapper is not None:
+            self.__pixel_mapper.update_params(
+                    self.pixmap().size().width(), self.pixmap().size().height(),
+                    self.__width_scale_factor, self.__height_scale_factor)
 
         self.setMinimumSize(size)
         self.setMaximumSize(size)
@@ -400,9 +541,17 @@ class ImageLabel(QLabel):
 
     def mousePressEvent(self, event:QMouseEvent):
         # only expect right clicks here due to event filter
-        ImageLabel.__LOG.debug("mousePressEvent left: {0} or right: {1}",
-            event.button() == Qt.LeftButton, event.button() == Qt.RightButton)
-        self.right_clicked.emit(self.__create_adjusted_mouse_event(event))
+        adjust_mouse_event = self.__create_adjusted_mouse_event(event)
+
+        ImageLabel.__LOG.debug("mousePressEvent left: {0} or right: {1}, adj pos: {2}",
+            event.button() == Qt.LeftButton, event.button() == Qt.RightButton,
+            adjust_mouse_event.pixel_pos())
+
+        # Check if we're selecting pixels and if so do it
+        self.__select_pixel(adjust_mouse_event)
+
+        self.right_clicked.emit(adjust_mouse_event)
+        self.update()
 
     def mouseReleaseEvent(self, event:QMouseEvent):
         ImageLabel.__LOG.debug("mouseReleaseEvent left: {0} or right: {1}",
@@ -417,7 +566,12 @@ class ImageLabel(QLabel):
             self.__current_action = ImageLabel.Action.Nothing
             self.setCursor(self.__default_cursor)
             # trigger the collection of spectra plots points
-            self.__get_select_pixels()
+            self.__get_select_polygon()
+            self.update()
+
+        elif self.__current_action == ImageLabel.Action.Picking and event.button() == Qt.LeftButton:
+            self.__current_action = ImageLabel.Action.Nothing
+            self.__get_selected_pixels()
             self.update()
 
         # Then it's a left click
@@ -504,7 +658,13 @@ class ImageLabel(QLabel):
                     self.__height_scale_factor/region_item.y_zoom_factor())
                 painter.setPen(region_item.color())
                 brush.setColor(region_item.color())
-                painter.fillPath(region_item.painter_path(), brush)
+
+                if region_item.painter_path() is not None:
+                    painter.fillPath(region_item.painter_path(), brush)
+                elif region_item.points() is not None:
+                    for point in region_item.points():
+                        painter.drawPoints(point)
+
                 painter.resetTransform()
 
     def __scale_point(self, point:QPoint) -> QPoint:
@@ -564,7 +724,60 @@ class ImageLabel(QLabel):
     def __handle_region_toggled(self, target:RegionDisplayItem):
         self.update()
 
-    def __get_select_pixels(self):
+    def __select_pixel(self, adjusted_mouse_event:AdjustedMouseEvent):
+        ImageLabel.__LOG.debug("__select_pixel called with current action: {0}".format(self.__current_action))
+        if self.__current_action == ImageLabel.Action.Nothing and self.__pixel_select:
+            self.__current_action = ImageLabel.Action.Picking
+
+            # Create of update the pixel mapper
+            if self.__pixel_mapper is None:
+                self.__pixel_mapper = ReversePixelCalculator(
+                    self.pixmap().size().width(), self.pixmap().size().height(),
+                    self.__width_scale_factor, self.__height_scale_factor)
+            else:
+                self.__pixel_mapper.update_params(
+                    self.pixmap().size().width(), self.pixmap().size().height(),
+                    self.__width_scale_factor, self.__height_scale_factor)
+
+            # Create a RegionDisplayItem and wire it up
+            color = self.__color_picker.current_color()
+            self.__region_display_item = RegionDisplayItem(self.__width_scale_factor, self.__height_scale_factor,
+                color, True, points=self.__pixel_mapper.get_points(
+                    adjusted_mouse_event.mouse_event().x(), adjusted_mouse_event.mouse_event().y()))
+            self.__region_display_item.closed.connect(self.__handle__region_closed)
+            self.__region_display_item.toggled.connect(self.__handle_region_toggled)
+
+            # Add it to the list of RegionDisplayItems
+            self.__region_display_items.append(self.__region_display_item)
+
+            # Create a new pixel list and add the selected adjusted pixel to list being
+            # gathered for the RegionOfInterest
+            self.__pixel_list = np.array([adjusted_mouse_event.pixel_x(), adjusted_mouse_event.pixel_y()]).reshape(1, 2)
+
+        elif self.__current_action == ImageLabel.Action.Picking and self.__region_display_item is not None:
+            # We're already in the process of selecting pixels so append to the RegionDisplayItems
+            self.__region_display_item.append_points(self.__pixel_mapper.get_points(
+                adjusted_mouse_event.mouse_event().x(), adjusted_mouse_event.mouse_event().y()))
+
+            # And append to the pixel list
+            self.__pixel_list = np.append(self.__pixel_list,
+                np.array([adjusted_mouse_event.pixel_x(), adjusted_mouse_event.pixel_y()]).reshape(1, 2),
+                axis=0)
+
+    def __get_selected_pixels(self):
+        if len(self.__pixel_list) > 0:
+            # Create region of interest.  The collection of points has already been
+            # converted to 1 to 1 space.
+            region = RegionOfInterest(np.array(self.__pixel_list), 1.0, 1.0,
+                self.__initial_size.height(), self.__initial_size.width(), self.__descriptor)
+
+            self.__pixel_list = None
+
+            self.area_selected.emit(AreaSelectedEvent(region, self.__region_display_item))
+            self.__color_picker.next_color()
+            self.__region_display_item = None
+
+    def __get_select_polygon(self):
         if self.__polygon_bounds is not None:
             if self.__polygon_bounds.size().height() > 1 and \
                self.__polygon_bounds.size().width() > 1:
@@ -623,8 +836,8 @@ class ImageLabel(QLabel):
                     painter_path.addPolygon(QPolygonF(self.__polygon))
                     painter_path.closeSubpath()
 
-                    display_item = RegionDisplayItem(painter_path,
-                        self.__width_scale_factor, self.__height_scale_factor, color, True)
+                    display_item = RegionDisplayItem(self.__width_scale_factor, self.__height_scale_factor,
+                        color, True, painter_path)
                     display_item.closed.connect(self.__handle__region_closed)
                     display_item.toggled.connect(self.__handle_region_toggled)
                     self.__region_display_items.append(display_item)
@@ -705,7 +918,7 @@ class ImageDisplay(QScrollArea):
     viewport_scrolled = pyqtSignal(ViewLocationChangeEvent)
 
     def __init__(self, image:Image, qimage_format:QImage.Format=QImage.Format_Grayscale8,
-            location_rect:bool=True, parent=None):
+            location_rect:bool=True, pixel_select:bool=False, parent=None):
         super().__init__(parent)
 
         # TODO make settable prop?
@@ -716,7 +929,7 @@ class ImageDisplay(QScrollArea):
         self.__image = image
         self.__qimage_format = qimage_format
 
-        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, self)
+        self.__image_label = ImageLabel(self.__image.descriptor(), location_rect, pixel_select, self)
         self.__image_label.setBackgroundRole(QPalette.Base)
         self.__image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.__image_label.setMouseTracking(True)
@@ -979,12 +1192,12 @@ class ImageDisplayWindow(QMainWindow):
     area_selected = pyqtSignal(AreaSelectedEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
-                screen_geometry:QRect, location_rect:bool=True, parent=None):
+                screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
         super().__init__(parent)
         # TODO do we need to hold the data itself?
         self.__image = image
         self.__image_label = label
-        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, self)
+        self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, pixel_select, self)
         self.__init_ui()
 
         self._margin_width = self._image_display.margin_width()
@@ -1070,7 +1283,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
             screen_geometry:QRect, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, False, parent)
+        super().__init__(image, label, qimage_format, screen_geometry, False, True, parent)
 
         self.__last_display_center:QPoint = None
 
@@ -1219,7 +1432,7 @@ class MainImageDisplayWindow(ImageDisplayWindow):
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
                 screen_geometry:QRect, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, True, parent)
+        super().__init__(image, label, qimage_format, screen_geometry, True, False, parent)
         self._image_display.right_clicked.connect(self.__handle_right_click)
         self._image_display.image_resized.connect(self.__handle_image_resize)
         self._image_display.locator_moved.connect(self.__handle_location_changed)
