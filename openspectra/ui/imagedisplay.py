@@ -387,6 +387,7 @@ class ImageLabel(QLabel):
         self.__default_cursor = self.cursor()
         self.__drag_cursor = QCursor(Qt.ClosedHandCursor)
         self.__draw_cursor = QCursor(Qt.CrossCursor)
+        self.__pick_cursor = QCursor(Qt.PointingHandCursor)
 
         # Initialize the locator if we have one
         if location_rect:
@@ -479,8 +480,7 @@ class ImageLabel(QLabel):
 
         # If zoom changed we need to end any pixel selecting in progress
         if self.__current_action == ImageLabel.Action.Picking:
-            self.__current_action = ImageLabel.Action.Nothing
-            self.__get_selected_pixels()
+            self.__end_pixel_select()
 
         if self.has_locator():
             locator_size = self.locator_size()
@@ -570,8 +570,7 @@ class ImageLabel(QLabel):
             self.update()
 
         elif self.__current_action == ImageLabel.Action.Picking and event.button() == Qt.LeftButton:
-            self.__current_action = ImageLabel.Action.Nothing
-            self.__get_selected_pixels()
+            self.__end_pixel_select()
             self.update()
 
         # Then it's a left click
@@ -728,6 +727,7 @@ class ImageLabel(QLabel):
         ImageLabel.__LOG.debug("__select_pixel called with current action: {0}".format(self.__current_action))
         if self.__current_action == ImageLabel.Action.Nothing and self.__pixel_select:
             self.__current_action = ImageLabel.Action.Picking
+            self.setCursor(self.__pick_cursor)
 
             # Create of update the pixel mapper
             if self.__pixel_mapper is None:
@@ -763,6 +763,11 @@ class ImageLabel(QLabel):
             self.__pixel_list = np.append(self.__pixel_list,
                 np.array([adjusted_mouse_event.pixel_x(), adjusted_mouse_event.pixel_y()]).reshape(1, 2),
                 axis=0)
+
+    def __end_pixel_select(self):
+        self.__current_action = ImageLabel.Action.Nothing
+        self.setCursor(self.__default_cursor)
+        self.__get_selected_pixels()
 
     def __get_selected_pixels(self):
         if len(self.__pixel_list) > 0:
