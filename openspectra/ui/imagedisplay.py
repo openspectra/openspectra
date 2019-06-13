@@ -477,6 +477,11 @@ class ImageLabel(QLabel):
         locator_size:QSize = None
         locator_position:QPoint = None
 
+        # If zoom changed we need to end any pixel selecting in progress
+        if self.__current_action == ImageLabel.Action.Picking:
+            self.__current_action = ImageLabel.Action.Nothing
+            self.__get_selected_pixels()
+
         if self.has_locator():
             locator_size = self.locator_size()
             locator_position = self.locator_position()
