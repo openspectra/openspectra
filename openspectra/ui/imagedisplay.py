@@ -110,6 +110,16 @@ class RegionDisplayItem(QObject):
         return self.__y_zoom_factor
 
 
+class WindowCloseEvent(QObject):
+
+    def __init__(self, target:QMainWindow):
+        super().__init__(None)
+        self.__target = target
+
+    def target(self) -> QMainWindow:
+        return self.__target
+
+
 class AreaSelectedEvent(QObject):
 
     def __init__(self, region:RegionOfInterest, display_item:RegionDisplayItem):
@@ -233,11 +243,6 @@ class ZoomWidget(QWidget):
         layout.addWidget(self.__zoom_out_button)
         layout.addWidget(self.__factor_label)
         self.setLayout(layout)
-
-    def __del__(self):
-        self.__factor_label = None
-        self.__zoom_out_button = None
-        self.__zoom_in_button = None
 
     def set_zoom_label(self, new_zoom_factor:float):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
@@ -414,21 +419,6 @@ class ImageLabel(QLabel):
         self.__region_display_item = None
 
         self.__current_action = ImageLabel.Action.Nothing
-
-    def __del__(self):
-        ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
-        del self.__region_display_items
-        self.__color_picker = None
-        self.__polygon_bounds = None
-        self.__polygon = None
-
-        self.__locator_rect = None
-
-        self.__default_cursor = None
-        self.__drag_cursor = None
-        self.__draw_cursor = None
-
-        self.__last_mouse_loc = None
 
     def has_locator(self) -> bool:
         return self.__locator_rect is not None
@@ -954,15 +944,6 @@ class ImageDisplay(QScrollArea):
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
 
-    def __del__(self):
-        # TODO ??
-        ImageDisplay.__LOG.debug("ImageDisplay.__del__ called...")
-        self.__pix_map = None
-        self.__qimage = None
-        self.__image_size = None
-        self.__image_label = None
-        self.__image = None
-
     @pyqtSlot(int)
     def __handle_bar_action(self, action:int):
         # Action are triggered by user interactions with the scroll bars so capture
@@ -1195,6 +1176,7 @@ class ImageDisplayWindow(QMainWindow):
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
     area_selected = pyqtSignal(AreaSelectedEvent)
+    closed = pyqtSignal(WindowCloseEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
@@ -1243,20 +1225,6 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_widget.setWidget(self._mouse_viewer)
         self.addDockWidget(Qt.BottomDockWidgetArea, self._mouse_widget)
 
-    def __del__(self):
-        # TODO???
-        ImageDisplayWindow.__LOG.debug("ImageDisplayWindow.__del__ called...")
-        self._title_bar_height = None
-        self._margin_height = None
-        self._margin_width = None
-        self._frame_width = None
-        self._scroll_bar_width = None
-        self.__image_label = None
-        self._image_display = None
-        self.__image = None
-        #TODO self.____mouseWidget = None Or does the window system handle this?
-        self._screen_geometry = None
-
     def image_label(self) -> str:
         return self.__image_label
 
@@ -1270,6 +1238,12 @@ class ImageDisplayWindow(QMainWindow):
 
     def refresh_image(self):
         self._image_display.refresh_image()
+
+    def closeEvent(self, event:QCloseEvent):
+        MainImageDisplayWindow.__LOG.debug("About to emit closed...")
+        self.closed.emit(WindowCloseEvent(self))
+        # accepting hides the window
+        event.accept()
 
     # TODO remove if not needed
     # def resizeEvent(self, event:QResizeEvent):
@@ -1432,7 +1406,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
 
     __LOG:Logger = LogHelper.logger("MainImageDisplayWindow")
 
-    closed = pyqtSignal()
     view_location_changed = pyqtSignal(ViewLocationChangeEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
@@ -1449,12 +1422,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         self.setContextMenuPolicy(Qt.PreventContextMenu)
 
         self.__calculate_sizes()
-
-    def __del__(self):
-        self.__fit_to_size = None
-        self.__oversize_height = None
-        self.__oversize_width = None
-        self.__mouse_viewer_height = None
 
     def __calculate_sizes(self):
         self.__mouse_viewer_height = self._mouse_viewer.height()
@@ -1564,12 +1531,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         window.location_changed.connect(self.__handle_zoom_window_location_changed)
         window.view_changed.connect(self.__handle_view_changed)
         self.view_location_changed.connect(window.handle_location_changed)
-
-    def closeEvent(self, event:QCloseEvent):
-        self.closed.emit()
-        # accepting hides the window
-        event.accept()
-        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
 
     # TODO don't need?
     def resizeEvent(self, event:QResizeEvent):

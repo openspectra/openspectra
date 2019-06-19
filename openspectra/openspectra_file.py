@@ -165,9 +165,6 @@ class OpenSpectraHeader:
         self.__default_stretch:Union[float, Tuple[float, float]] = None
         self.__bad_band_list:List[bool] = None
 
-    def __del__(self):
-        del  self.__props
-
     def dump(self) -> str:
         return "Props:\n" + str(self.__props)
 
