@@ -244,11 +244,6 @@ class ZoomWidget(QWidget):
         layout.addWidget(self.__factor_label)
         self.setLayout(layout)
 
-    def __del__(self):
-        self.__factor_label = None
-        self.__zoom_out_button = None
-        self.__zoom_in_button = None
-
     def set_zoom_label(self, new_zoom_factor:float):
         self.__factor_label.setText("{:5.2f}".format(new_zoom_factor))
 
@@ -423,21 +418,6 @@ class ImageLabel(QLabel):
         self.__region_display_item = None
 
         self.__current_action = ImageLabel.Action.Nothing
-
-    def __del__(self):
-        ImageLabel.__LOG.debug("ImageLabel.__del__ called...")
-        del self.__region_display_items
-        self.__color_picker = None
-        self.__polygon_bounds = None
-        self.__polygon = None
-
-        self.__locator_rect = None
-
-        self.__default_cursor = None
-        self.__drag_cursor = None
-        self.__draw_cursor = None
-
-        self.__last_mouse_loc = None
 
     def has_locator(self) -> bool:
         return self.__locator_rect is not None
@@ -959,15 +939,6 @@ class ImageDisplay(QScrollArea):
         self.setBackgroundRole(QPalette.Dark)
         self.__display_image()
 
-    def __del__(self):
-        # TODO ??
-        ImageDisplay.__LOG.debug("ImageDisplay.__del__ called...")
-        self.__pix_map = None
-        self.__qimage = None
-        self.__image_size = None
-        self.__image_label = None
-        self.__image = None
-
     @pyqtSlot(int)
     def __handle_bar_action(self, action:int):
         # Action are triggered by user interactions with the scroll bars so capture
@@ -1249,20 +1220,6 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_widget.setWidget(self._mouse_viewer)
         self.addDockWidget(Qt.BottomDockWidgetArea, self._mouse_widget)
 
-    def __del__(self):
-        # TODO???
-        ImageDisplayWindow.__LOG.debug("ImageDisplayWindow.__del__ called...")
-        self._title_bar_height = None
-        self._margin_height = None
-        self._margin_width = None
-        self._frame_width = None
-        self._scroll_bar_width = None
-        self.__image_label = None
-        self._image_display = None
-        self.__image = None
-        #TODO self.____mouseWidget = None Or does the window system handle this?
-        self._screen_geometry = None
-
     def image_label(self) -> str:
         return self.__image_label
 
@@ -1460,12 +1417,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         self.setContextMenuPolicy(Qt.PreventContextMenu)
 
         self.__calculate_sizes()
-
-    def __del__(self):
-        self.__fit_to_size = None
-        self.__oversize_height = None
-        self.__oversize_width = None
-        self.__mouse_viewer_height = None
 
     def __calculate_sizes(self):
         self.__mouse_viewer_height = self._mouse_viewer.height()

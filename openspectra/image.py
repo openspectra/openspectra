@@ -78,10 +78,6 @@ class BandImageAdjuster(ImageAdjuster):
         BandImageAdjuster.__LOG.debug("type: {0}", self.__type)
         BandImageAdjuster.__LOG.debug("min: {0}, max: {1}", self.__band.min(), self.__band.max())
 
-    def __del__(self):
-        self.__image_data = None
-        self.__band = None
-
     def adjusted_data(self) -> np.ndarray:
         return self.__image_data
 
@@ -168,9 +164,6 @@ class RGBImageAdjuster(ImageAdjuster):
         self.__adjusted_bands = {Band.RED: BandImageAdjuster(red),
                                  Band.GREEN: BandImageAdjuster(green),
                                  Band.BLUE: BandImageAdjuster(blue)}
-
-    def __del__(self):
-        del self.__adjusted_bands
 
     def _adjusted_data(self, band:Band) -> np.ndarray:
         return self.__adjusted_bands[band].adjusted_data()
@@ -304,10 +297,6 @@ class GreyscaleImage(Image, BandImageAdjuster):
         self.__band = band
         self.__band_descriptor = band_descriptor
 
-    def __del__(self):
-        super().__del__()
-        self.__band = None
-
     def adjusted_data(self) -> np.ndarray:
         """Do not call this method, it's an unfortunate consequence of needing
         it to be public on BandImageAdjuster for use by RGBImageAdjuster"""
@@ -380,14 +369,6 @@ class RGBImage(Image, RGBImageAdjuster):
             RGBImage.__LOG.debug("width: {0}", self.__image_data.shape[1])
             RGBImage.__LOG.debug("size: {0}", self.__image_data.size)
             np.set_printoptions()
-
-    def __del__(self):
-        super().__del__()
-        self.__image_data = None
-        self.__high_bytes = None
-        self.__label = None
-        del self.__labels
-        del self.__bands
 
     def adjust(self):
         if super().is_updated():

@@ -218,10 +218,6 @@ class WindowSet(QObject):
         self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
 
     def __init_plot_windows(self):
-        # setting the image_window as the parent causes the children to
-        # close when image_window is closed but it doesn't destroy them
-        # i.e. call __del__.  I think it's more intended from parents contain
-        # their children not really among QMainWindows
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
@@ -299,21 +295,17 @@ class WindowSet(QObject):
             WindowSet.__LOG.error("Received WindowCloseEvent but target was not in this WindowSet")
 
         if self.__histogram_window is not None:
-            # It should have been closed when the main window, it's parent closed
             self.__histogram_window.close()
             self.__histogram_window = None
-            WindowSet.__LOG.warning("Histogram window still open after main window was closed.")
 
         if self.__spec_plot_window is not None:
             # It should have been closed when the main window, it's parent closed
             self.__spec_plot_window.close()
             self.__spec_plot_window = None
-            WindowSet.__LOG.warning("Spectral plot window still open after main window was closed.")
 
         while len(self.__band_stats_windows) > 0:
             key, window = self.__band_stats_windows.popitem()
             window.close()
-            WindowSet.__LOG.warning("One or more band stats windows were still open after main window was closed.")
 
         self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
 
