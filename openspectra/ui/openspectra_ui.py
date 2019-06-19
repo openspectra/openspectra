@@ -66,9 +66,11 @@ class OpenSpectraUI(QMainWindow):
         plot_menu.addAction(plot_action)
 
         self.__band_list = BandList(self)
+
+        # TODO ummmm need to think this through
         self.setCentralWidget(self.__band_list)
 
-        self.__window_manager = WindowManager(self.__band_list)
+        self.__window_manager = WindowManager(self, self.__band_list)
 
         self.statusBar().showMessage('Ready')
         self.setGeometry(10, 25, 270, 700)
