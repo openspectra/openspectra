@@ -7,6 +7,13 @@ from PyQt5.QtWidgets import QApplication
 from openspectra.ui.openspectra_ui import OpenSpectraUI
 
 if __name__ == '__main__':
+    return_val = 0
     app = QApplication(sys.argv)
-    os = OpenSpectraUI()
-    sys.exit(app.exec_())
+    try:
+        os = OpenSpectraUI()
+        return_val = app.exec_()
+    except:
+        print("Uncaught exception {0}".format(sys.exc_info()[0]))
+    finally:
+        print("Terminating with value {0}".format(return_val))
+        sys.exit(return_val)

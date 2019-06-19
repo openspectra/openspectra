@@ -110,6 +110,16 @@ class RegionDisplayItem(QObject):
         return self.__y_zoom_factor
 
 
+class WindowCloseEvent(QObject):
+
+    def __init__(self, target:QMainWindow):
+        super().__init__(None)
+        self.__target = target
+
+    def target(self) -> QMainWindow:
+        return self.__target
+
+
 class AreaSelectedEvent(QObject):
 
     def __init__(self, region:RegionOfInterest, display_item:RegionDisplayItem):
@@ -1190,6 +1200,7 @@ class ImageDisplayWindow(QMainWindow):
     pixel_selected = pyqtSignal(AdjustedMouseEvent)
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
     area_selected = pyqtSignal(AreaSelectedEvent)
+    closed = pyqtSignal(WindowCloseEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
@@ -1265,6 +1276,12 @@ class ImageDisplayWindow(QMainWindow):
 
     def refresh_image(self):
         self._image_display.refresh_image()
+
+    def closeEvent(self, event:QCloseEvent):
+        MainImageDisplayWindow.__LOG.debug("About to emit closed...")
+        self.closed.emit(WindowCloseEvent(self))
+        # accepting hides the window
+        event.accept()
 
     # TODO remove if not needed
     # def resizeEvent(self, event:QResizeEvent):
@@ -1427,7 +1444,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
 
     __LOG:Logger = LogHelper.logger("MainImageDisplayWindow")
 
-    closed = pyqtSignal()
     view_location_changed = pyqtSignal(ViewLocationChangeEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
@@ -1559,12 +1575,6 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         window.location_changed.connect(self.__handle_zoom_window_location_changed)
         window.view_changed.connect(self.__handle_view_changed)
         self.view_location_changed.connect(window.handle_location_changed)
-
-    def closeEvent(self, event:QCloseEvent):
-        self.closed.emit()
-        # accepting hides the window
-        event.accept()
-        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
 
     # TODO don't need?
     def resizeEvent(self, event:QResizeEvent):

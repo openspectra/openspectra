@@ -216,10 +216,6 @@ class RegionOfInterestControl(QWidget):
         self.stats_clicked.emit(RegionStatsEvent(region))
         self.__selected_row = None
 
-    # TODO for testing only, remove if not used otherwise
-    # def resizeEvent(self, event:QResizeEvent):
-    #     RegionOfInterestControl.__LOG.debug("Resize to {0}", event.size())
-
 
 class RegionOfInterestDisplayWindow(QMainWindow):
 
@@ -256,8 +252,3 @@ class RegionOfInterestDisplayWindow(QMainWindow):
         self.closed.emit()
         # accepting hides the window
         event.accept()
-        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
-
-    # TODO for testing only, remove if not used otherwise
-    # def resizeEvent(self, event:QResizeEvent):
-    #     RegionOfInterestDisplayWindow.__LOG.debug("Resize to {0}", event.size())

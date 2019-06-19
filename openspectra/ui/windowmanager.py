@@ -16,7 +16,7 @@ from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectr
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow, RegionDisplayItem
+    ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
     RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
@@ -27,7 +27,7 @@ class WindowManager(QObject):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
 
-    def __init__(self, band_list:BandList):
+    def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
         screen:QScreen = QGuiApplication.primaryScreen()
         self.__screen_geometry:QRect = screen.geometry()
@@ -40,25 +40,11 @@ class WindowManager(QObject):
         WindowManager.__LOG.debug("Available height: {0}, width: {1}",
             self.__available_geometry.height(), self.__available_geometry.width())
 
+        self.__parent_window = parent_window
         self.__file_sets = dict()
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
-
-    def __del__(self):
-        # TODO This works but for some reason throws an exception on shutdown
-        # TODO this broke again after upgrade, don't really need it
-        # try:
-        #    WindowManager.__LOG.debug("WindowManager.__del__ called...")
-        # except Exception:
-        #     pass
-
-        del self.__file_sets
-        del self.__regions
-        self.__file_sets = None
-        self.__band_list = None
-        self.__screen_geometry = None
-        self.__available_geometry = None
 
     def add_file(self, file:OpenSpectraFile):
         file_widget = self.__band_list.add_file(file)
@@ -84,6 +70,9 @@ class WindowManager(QObject):
 
     def available_geometry(self) -> QRect:
         return self.__available_geometry
+
+    def parent_window(self) -> QMainWindow:
+        return self.__parent_window
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
@@ -125,21 +114,6 @@ class FileManager(QObject):
         self.__file_widget = file_widget
         self.__file_name = file_widget.text(0)
         self.__window_sets = list()
-
-    def __del__(self):
-        # TODO This works but for some reason throws an exception on shutdown
-        # TODO this broke again after upgrade, don't really need it
-        # try:
-        #     FileManager.__LOG.debug("FileManager.__del__ called...")
-        # except Exception:
-        #     pass
-
-        self.__window_sets = None
-        self.__file_name = None
-        self.__file_widget = None
-        self.__band_tools = None
-        self.__file = None
-        self.__window_manager = None
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
         FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
@@ -209,17 +183,25 @@ class WindowSet(QObject):
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
-                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
-                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry())
+                QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.file_manager().window_manager().parent_window())
         elif isinstance(self.__image, RGBImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
-                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
+                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
-                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry())
+                QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.file_manager().window_manager().parent_window())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
                 format(type(self.__image)))
+
+        # assure the windows get deleted when closed
+        self.__main_image_window.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.__zoom_image_window.setAttribute(Qt.WA_DeleteOnClose, True)
 
         self.__main_image_window.connect_zoom_window(self.__zoom_image_window)
 
@@ -231,6 +213,7 @@ class WindowSet(QObject):
 
         self.__zoom_image_window.pixel_selected.connect(self.__handle_pixel_click)
         self.__zoom_image_window.mouse_moved.connect(self.__handle_mouse_move)
+        self.__zoom_image_window.closed.connect(self.__handle_image_closed)
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
         self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
 
@@ -252,7 +235,7 @@ class WindowSet(QObject):
         # Register so we know if the region window is closed
         self.__roi_manager.window_closed.connect(self.__handle_region_window_close)
 
-        # a dictionary to keep track of the banc stats windows
+        # a dictionary to keep track of the band stats windows
         self.__band_stats_windows:Dict[str, LinePlotDisplayWindow] = dict()
 
     def __init_histogram(self, x:int, y:int):
@@ -278,20 +261,6 @@ class WindowSet(QObject):
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
         self.__histogram_window.show()
 
-    def __del__(self):
-        WindowSet.__LOG.debug("WindowSet.__del__ called...")
-        del self.__band_stats_windows
-        self.__roi_manager = None
-        self.__spec_plot_window = None
-        self.__histogram_window = None
-        self.__zoom_image_window = None
-        self.__main_image_window = None
-        self.__file_manager = None
-        self.__band_tools = None
-        self.__histogram_tools = None
-        self.__title = None
-        self.__image = None
-
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
         if self.__spec_plot_window.isVisible():
@@ -310,23 +279,41 @@ class WindowSet(QObject):
             self.__spec_plot_window.setGeometry(rect.x() + 50, rect.y() + 50, 500, 400)
             self.__spec_plot_window.show()
 
-    @pyqtSlot()
-    def __handle_image_closed(self):
-        WindowSet.__LOG.debug("__handle_image_closed called...")
-        self.__main_image_window = None
+    @pyqtSlot(WindowCloseEvent)
+    def __handle_image_closed(self, event:WindowCloseEvent):
+        if event.target() == self.__main_image_window:
+            WindowSet.__LOG.debug("__handle_image_closed main window")
+            # disconnect so we don't get a second event
+            self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
+            self.__zoom_image_window.close()
+            self.__zoom_image_window = None
+            self.__main_image_window = None
+        elif event.target() == self.__zoom_image_window:
+            WindowSet.__LOG.debug("__handle_image_closed zoom window")
+            # disconnect so we don't get a second event
+            self.__main_image_window.closed.disconnect(self.__handle_image_closed)
+            self.__main_image_window.close()
+            self.__main_image_window = None
+            self.__zoom_image_window = None
+        else:
+            WindowSet.__LOG.error("Received WindowCloseEvent but target was not in this WindowSet")
 
-        self.__zoom_image_window.close()
-        self.__zoom_image_window = None
+        if self.__histogram_window is not None:
+            # It should have been closed when the main window, it's parent closed
+            self.__histogram_window.close()
+            self.__histogram_window = None
+            WindowSet.__LOG.warning("Histogram window still open after main window was closed.")
 
-        self.__histogram_window.close()
-        self.__histogram_window = None
+        if self.__spec_plot_window is not None:
+            # It should have been closed when the main window, it's parent closed
+            self.__spec_plot_window.close()
+            self.__spec_plot_window = None
+            WindowSet.__LOG.warning("Spectral plot window still open after main window was closed.")
 
-        for window in self.__band_stats_windows.values():
+        while len(self.__band_stats_windows) > 0:
+            key, window = self.__band_stats_windows.popitem()
             window.close()
-        self.__band_stats_windows.clear()
-
-        self.__spec_plot_window.close()
-        self.__spec_plot_window = None
+            WindowSet.__LOG.warning("One or more band stats windows were still open after main window was closed.")
 
         self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
 
@@ -454,7 +441,7 @@ class RegionOfInterestManager(QObject):
     __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
 
     class __RegionSet:
-        """A simple container to hold item we manage"""
+        """A simple container to hold items we manage"""
 
         def __init__(self, window_set:WindowSet, display_item:RegionDisplayItem, is_saved:bool=False):
             self.__window_set = window_set
@@ -493,7 +480,8 @@ class RegionOfInterestManager(QObject):
         else:
             super().__init__()
             # TODO figure out how to position the window??
-            # Region of interest window
+            # Region of interest window, note we intentially don't set Qt.WA_DeleteOnClose
+            # because we can reuse it easily.
             self.__region_window = RegionOfInterestDisplayWindow()
             self.__region_window.region_toggled.connect(self.__handle_region_toggled)
             self.__region_window.region_name_changed.connect(self.__handle_region_name_changed)
@@ -510,11 +498,6 @@ class RegionOfInterestManager(QObject):
 
             # the single instance
             RegionOfInterestManager.__instance = self
-
-    def __del__(self):
-        del self.__region_display_items
-        self.__region_window.close()
-        self.__region_window = None
 
     def add_region(self, region:RegionOfInterest, display_item:RegionDisplayItem, window_set:WindowSet):
         if region.display_name() is None:

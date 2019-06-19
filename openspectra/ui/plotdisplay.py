@@ -357,14 +357,6 @@ class LinePlotDisplayWindow(QMainWindow):
         self.__plot_canvas = LinePlotCanvas(self, width=5, height=4)
         self.setCentralWidget(self.__plot_canvas)
 
-        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
-        # TODO this requires the user to create a new instance to reuse
-        # TODO don't think we want this.
-        # self.setAttribute(Qt.WA_DeleteOnClose)
-
-        # TODO also read that setting a windows paren assures that the child
-        # TODO is deleted when the parent is, might make clean up safer if doing manually
-
     def __del__(self):
         LinePlotDisplayWindow.__LOG.debug("LinePlotDisplayWindow.__del__ called...")
         self.__plot_canvas = None
