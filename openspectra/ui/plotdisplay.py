@@ -115,11 +115,6 @@ class PlotCanvas(FigureCanvas):
             QSizePolicy.Expanding, QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
 
-    def __del__(self):
-        self._current_plot = None
-        self._axes.clear()
-        self._axes = None
-
     def plot(self, data:PlotData):
         # TODO something better than setting it over and over??
         # TODO only reset if change is detected??  Seems to work though
@@ -239,13 +234,6 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.__max_adjust_x = None
         self.__dragging:lines.Line2D = None
 
-    def __del__(self):
-        self.__dragging = None
-        self.__min_adjust_x = None
-        self.__max_adjust_x = None
-        self.__lower_limit = None
-        self.__upper_limit = None
-
     def __on_mouse_release(self, event:MouseEvent):
         if self.__dragging is not None:
             line_id = self.__get_limit_id(self.__dragging)
@@ -357,18 +345,6 @@ class LinePlotDisplayWindow(QMainWindow):
         self.__plot_canvas = LinePlotCanvas(self, width=5, height=4)
         self.setCentralWidget(self.__plot_canvas)
 
-        # TODO Qt::WA_DeleteOnClose - set to make sure it's deleted???
-        # TODO this requires the user to create a new instance to reuse
-        # TODO don't think we want this.
-        # self.setAttribute(Qt.WA_DeleteOnClose)
-
-        # TODO also read that setting a windows paren assures that the child
-        # TODO is deleted when the parent is, might make clean up safer if doing manually
-
-    def __del__(self):
-        LinePlotDisplayWindow.__LOG.debug("LinePlotDisplayWindow.__del__ called...")
-        self.__plot_canvas = None
-
     def plot(self, data:LinePlotData):
         self.__plot_canvas.plot(data)
 
@@ -475,13 +451,6 @@ class AdjustableHistogramControl(QWidget):
         layout.addWidget(plot_frame)
 
         self.setLayout(layout)
-
-    def __del__(self):
-        AdjustableHistogramControl.__LOG.debug("AdjustableHistogramControl.__del__ called...")
-        self.__adjusted_data_canvas = None
-        self.__raw_data_canvas = None
-        self.__lower_edit = None
-        self.__upper_edit = None
 
     def set_raw_data(self, data:HistogramPlotData):
         self.__raw_data_canvas.plot(data)
@@ -655,10 +624,6 @@ class HistogramDisplayControl(QWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.__handle_custom_context_menu)
 
-    def __del__(self):
-        self.__menu = None
-        del self.__bands
-
     def __handle_custom_context_menu(self, position:QPoint):
         HistogramDisplayControl.__LOG.debug("__handle_custom_context_menu called position: {0}", position)
         self.__menu.popup(self.mapToGlobal(position))
@@ -792,10 +757,6 @@ class HistogramDisplayWindow(QMainWindow):
         self.__histogram_control.limit_changed.connect(self.limit_changed)
         self.__histogram_control.layout_changed.connect(self.__handle_layout_changed)
         self.setCentralWidget(self.__histogram_control)
-
-    def __del__(self):
-        HistogramDisplayWindow.__LOG.debug("HistogramDisplayWindow.__del__ called...")
-        self.__histogram_control = None
 
     @pyqtSlot(HistogramDisplayControl.Layout)
     def __handle_layout_changed(self, new_layout:HistogramDisplayControl.Layout):

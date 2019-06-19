@@ -1,19 +1,26 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
+import os
 
-from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog
+from PyQt5.QtCore import QStandardPaths
+from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox
 from PyQt5.QtGui import QIcon
 
-from openspectra.openspectra_file import OpenSpectraFileFactory
+from openspectra.openspectra_file import OpenSpectraFileFactory, OpenSpectraFileError
 from openspectra.ui.bandlist import BandList
 from openspectra.ui.windowmanager import WindowManager
+from openspectra.utils import Logger, LogHelper
 
 
 class OpenSpectraUI(QMainWindow):
 
+    __LOG:Logger = LogHelper.logger("OpenSpectraUI")
+
     def __init__(self):
         super(OpenSpectraUI, self).__init__(None)
+
+        self.__save_dir_default = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
         self.__init_ui()
 
         # TODO QMainWindow can store the state of its layout with saveState(); it can later be retrieved
@@ -68,12 +75,34 @@ class OpenSpectraUI(QMainWindow):
         self.show()
 
     def __open(self):
-        # TODO remove hard coded path
-        file_dialog = QFileDialog.getOpenFileName(None, "Open file", "/Users/jconti/dev/data/JoeSamples")
+        file_dialog = QFileDialog.getOpenFileName(self, "Open file", self.__save_dir_default)
         file_name = file_dialog[0]
 
-        file = OpenSpectraFileFactory.create_open_spectra_file(file_name)
-        self.__window_manager.add_file(file)
+        if len(file_name) > 0:
+            try:
+                file = OpenSpectraFileFactory.create_open_spectra_file(file_name)
+                self.__window_manager.add_file(file)
+
+                # save the last save location, default there next time
+                split_path = os.path.split(file_name)
+                if split_path[0]:
+                    self.__save_dir_default = split_path[0]
+
+            except OpenSpectraFileError as e:
+                OpenSpectraUI.__LOG.error("Failed to open file with error: {0}".format(e))
+                self.__file_not_found_prompt(file_name)
+        else:
+            OpenSpectraUI.__LOG.debug("File open canceled...")
 
     def __plot(self):
         pass
+
+    def __file_not_found_prompt(self, file_name:str):
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText("File named '{0}' not found!".format(file_name))
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()
+
+
+

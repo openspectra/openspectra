@@ -293,9 +293,6 @@ class OpenSpectraBandTools:
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
 
-    def __del__(self):
-        self.__file = None
-
     def bands(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> Bands:
         # return Bands(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)), self.__file.header().band_labels())
         # TODO cleaned or not?
@@ -441,9 +438,6 @@ class OpenSpectraImageTools:
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
 
-    def __del__(self):
-        self.__file = None
-
     def greyscale_image(self, band:int, band_descriptor:BandDescriptor) -> GreyscaleImage:
         return GreyscaleImage(self.__file.raw_image(band), band_descriptor)
 
@@ -465,9 +459,6 @@ class OpenSpectraHistogramTools:
             self.__type = "rgb"
         else:
             raise TypeError("Unknown image type")
-
-    def __del__(self):
-        self.__image = None
 
     def raw_histogram(self, band:Band=None) -> HistogramPlotData:
         """If band is included and the image is Greyscale it is ignores

@@ -148,10 +148,6 @@ class BandList(QWidget):
         # Show widget
         self.show()
 
-    def __del__(self):
-        # TODO???
-        pass
-
     def add_file(self, open_spectra_file:OpenSpectraFile) -> QTreeWidgetItem:
         header = open_spectra_file.header()
         band_labels = header.band_labels()
