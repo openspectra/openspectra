@@ -471,6 +471,7 @@ class FileModel:
     def __init__(self, path:Path, header:OpenSpectraHeader):
         self._file: np.ndarray = None
         self._path = path
+        self._offset:int = header.header_offset()
 
         # size in bytes of each data element in the file
         self._data_type = np.dtype(header.data_type())
@@ -610,6 +611,7 @@ class MemoryModel(FileModel):
     def load(self, shape:Shape):
         self._file = np.array([], self._data_type)
         with self._path.open("rb") as file:
+            file.seek(self._offset)
             bytes_in = file.read()
             while bytes_in:
                 self._file = np.append(self._file, np.frombuffer(bytes_in, self._data_type))
@@ -621,12 +623,12 @@ class MemoryModel(FileModel):
 
 class MappedModel(FileModel):
 
-    def __init__(self, path:Path, header: OpenSpectraHeader):
+    def __init__(self, path:Path, header:OpenSpectraHeader):
         super().__init__(path, header)
 
     def load(self, shape:Shape):
         self._file = np.memmap(self._path, dtype = self._data_type, mode = 'r',
-            shape = shape.shape())
+            offset=self._offset, shape = shape.shape())
         self._validate(shape)
 
 
@@ -722,8 +724,11 @@ class OpenSpectraFileFactory:
 
     __LOG: logging.Logger = LogHelper.logger("OpenSpectraFileFactory")
 
+    MEMORY_MODEL:int = 0
+    MAPPED_MODEL:int = 1
+
     @staticmethod
-    def create_open_spectra_file(file_name) -> OpenSpectraFile:
+    def create_open_spectra_file(file_name, model=MAPPED_MODEL) -> OpenSpectraFile:
         path = Path(file_name)
 
         if path.exists() and path.is_file():
@@ -733,8 +738,11 @@ class OpenSpectraFileFactory:
             header.load()
             file_type = header.interleave()
 
-            # TODO logic to choose a memory model
-            memory_model:FileModel = MappedModel(path, header)
+            memory_model = None
+            if model == OpenSpectraFileFactory.MEMORY_MODEL:
+                memory_model = MemoryModel(path, header)
+            else:
+                memory_model:FileModel = MappedModel(path, header)
 
             if file_type == OpenSpectraHeader.BIL_INTERLEAVE:
                 file_delegate = BILFileDelegate(header, memory_model)
@@ -753,10 +761,10 @@ class OpenSpectraFileFactory:
             raise OpenSpectraFileError("File {0} not found".format(path))
 
 
-def create_open_spectra_file(file_name) -> OpenSpectraFile:
+def create_open_spectra_file(file_name, model=OpenSpectraFileFactory.MAPPED_MODEL) -> OpenSpectraFile:
     """A function based way to create an OpenSpectra file"""
 
-    return OpenSpectraFileFactory.create_open_spectra_file(file_name)
+    return OpenSpectraFileFactory.create_open_spectra_file(file_name, model)
 
 
 class OpenSpectraHeaderError(Exception):
