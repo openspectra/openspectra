@@ -113,7 +113,27 @@ def mask_from_list():
     print(band_values)
 
 
+def append_mask_from_list():
+    """Take a bad band list and apply it as a mask to a list of band values"""
+    bad_band_list = ["0", "1", "1", "0", "1"]
+    print(bad_band_list)
+
+    # remember that "1" means the band is good, "0" means it's bad so
+    # don't forget to flip the mask
+    bad_band_list = [not bool(int(item)) for item in bad_band_list]
+    print(bad_band_list)
+
+    band_values = np.ma.array([1, 2, 3, 4, 5])
+    band_values = ma.masked_equal(band_values, 3)
+    print(band_values.mask)
+
+    band_values.mask = band_values.mask | bad_band_list
+    print(band_values.mask)
+    print(band_values)
+
+
 if __name__ == "__main__":
     replace_values_demo()
     list_masking_test()
     mask_from_list()
+    append_mask_from_list()

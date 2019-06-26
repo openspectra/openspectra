@@ -294,12 +294,10 @@ class OpenSpectraBandTools:
         self.__file = file
 
     def bands(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> Bands:
-        # return Bands(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)), self.__file.header().band_labels())
-        # TODO cleaned or not?
-        return Bands(self.__file.bands(lines, samples), self.__file.header().band_labels())
+        return Bands(self.__clean_data(self.__file.bands(lines, samples)), self.__file.header().band_labels())
 
     def band_statistics(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray]) -> BandStatistics:
-        return BandStatistics(OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(lines, samples)))
+        return BandStatistics(self.__clean_data(self.__file.bands(lines, samples)))
 
     def statistics_plot(self, lines:Union[int, tuple, np.ndarray], samples:Union[int, tuple, np.ndarray],
             title:str=None) -> BandStaticsPlotData:
@@ -307,7 +305,7 @@ class OpenSpectraBandTools:
         return BandStaticsPlotData(band_stats, self.__file.header().wavelengths(), title)
 
     def spectral_plot(self, line:int, sample:int) -> LinePlotData:
-        band = OpenSpectraBandTools.__bogus_noise_cleanup(self.__file.bands(line, sample))
+        band = self.__clean_data(self.__file.bands(line, sample))
 
         wavelengths = self.__file.header().wavelengths()
         # OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
@@ -315,6 +313,23 @@ class OpenSpectraBandTools:
         # TODO something better than having to know to do band[0, :] here?? Use Bands??
         return LinePlotData(wavelengths, band[0, :], "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+
+    def __clean_data(self, bands:np.ndarray) -> np.ndarray:
+        result = bands
+        header = self.__file.header()
+
+        # If there is an ignore value maske any occurrences
+        if header.data_ignore_value() is not None:
+            result = ma.masked_equal(bands, header.data_ignore_value())
+
+        # If there are bad bands mask them
+        if header.bad_band_list() is not None:
+            if not ma.isMaskedArray(result):
+                result = ma.masked_array(result, mask=header.bad_band_list())
+            else:
+                result.mask = result.mask | header.bad_band_list()
+
+        return self.__bogus_noise_cleanup(result)
 
     # TODO work around for now for 1 float file, remove noise from data for floats
     # TODO will need a general solution also for images too?
@@ -368,7 +383,7 @@ class OpenSpectraRegionTools:
 
         bands:Bands = None
         if include_bands:
-            bands = self.__band_tools.bands(self.__region.x_points(), self.__region.y_points())
+            bands = self.__band_tools.bands(self.__region.y_points(), self.__region.x_points())
 
             if bands.bands_shape()[0] != self.__region.x_points().size:
                 raise ValueError("Number of bands didn't match number of points")

@@ -148,3 +148,55 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
     # TODO finish
     def test_save_rgb(self):
         pass
+
+
+class OpenSpectraBandToolsTest(unittest.TestCase):
+
+    def setUp(self) -> None:
+        test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
+        # test_file = "../resources/cup95_eff_fixed_offset_1k"
+        self.__test_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
+        self.__band_tools = OpenSpectraBandTools(self.__test_file)
+
+    def test_bad_bands(self):
+        """Test that the bad bands filter gets applied correctly"""
+        bands = self.__band_tools.bands(10, 10)
+        band_data = bands.bands()
+
+        self.assertTrue(np.ma.isMaskedArray(band_data))
+        self.assertTrue(np.array_equal(band_data.mask, np.array([[
+            False, False, False, False, False, False, False, False, False, False, False, False,
+            False, False, False, False, False, False, False, False, False, False, False, False,
+            False, False, False, False, False, False, False, False, False, False, False, False,
+            False, False, True, True, True, True, True, False, False, False, False, False,
+            False, False]])))
+
+        raw_bands = self.__test_file.bands(10, 10)
+
+        for index in range(0, band_data.shape[1]):
+            if index in (38, 39, 40, 41, 42):
+                self.assertTrue(band_data[0, index] is np.ma.masked)
+            else:
+                self.assertTrue(band_data[0, index] is not np.ma.masked)
+                self.assertEqual(band_data[0, index], raw_bands[0, index])
+
+    def test_ignore_value(self):
+        """Test that both bad bands and ignore value get applied properly"""
+        bands = self.__band_tools.bands(181, 326)
+        band_data = bands.bands()
+
+        self.assertTrue(np.ma.isMaskedArray(band_data))
+        self.assertTrue(np.array_equal(band_data.mask, np.array([[
+            False, False, False, False, False, False, False, False, False, True, False, False,
+            False, False, False, False, False, False, False, False, False, False, False, False,
+            False, False, False, False, False, False, False, False, False, False, False, False,
+            False, False, True, True, True, True, True, False, False, False, False, False,
+            False, False]])))
+
+        raw_bands = self.__test_file.bands(181, 326)
+        for index in range(0, band_data.shape[1]):
+            if index in (9, 38, 39, 40, 41, 42):
+                self.assertTrue(band_data[0, index] is np.ma.masked)
+            else:
+                self.assertTrue(band_data[0, index] is not np.ma.masked)
+                self.assertEqual(band_data[0, index], raw_bands[0, index])
