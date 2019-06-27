@@ -132,8 +132,21 @@ def append_mask_from_list():
     print(band_values)
 
 
+def conditional_masking():
+    test_array = np.arange(10)
+    print(test_array)
+
+    masked_array = ma.masked_equal(test_array, 10)
+    # When the mask function doesn't match any values it's set to False
+    print(masked_array.mask, masked_array)
+
+    masked_array = ma.masked_equal(test_array, 5)
+    print(masked_array.mask, masked_array)
+
+
 if __name__ == "__main__":
     replace_values_demo()
     list_masking_test()
     mask_from_list()
     append_mask_from_list()
+    conditional_masking()

@@ -66,15 +66,19 @@ class BandImageAdjuster(ImageAdjuster):
 
     __LOG:Logger = LogHelper.logger("BandImageAdjuster")
 
-    def __init__(self, band:np.ndarray):
+    def __init__(self, band:np.ndarray, data_ignore_value:Union[int, float]=None):
         self.__band = band
+        self.__data_ignore_vale = data_ignore_value
         self.__type = self.__band.dtype
         self.__image_data = None
         self.__low_cutoff = 0
         self.__high_cutoff = 0
+
+        # Do the initial stretch
         self.adjust_by_percentage(2, 98)
         self.__updated = True
         self.adjust()
+
         BandImageAdjuster.__LOG.debug("type: {0}", self.__type)
         BandImageAdjuster.__LOG.debug("min: {0}, max: {1}", self.__band.min(), self.__band.max())
 
@@ -118,7 +122,13 @@ class BandImageAdjuster(ImageAdjuster):
 
     def adjust(self):
         if self.__updated:
-            BandImageAdjuster.__LOG.debug("low cutoff: {0}, high cutoff: {1}", self.low_cutoff(), self.high_cutoff())
+            BandImageAdjuster.__LOG.debug("low cutoff: {0}, high cutoff: {1}, data ignore value: {2}",
+                self.low_cutoff(), self.high_cutoff(), self.__data_ignore_vale)
+
+            ignore_mask = None
+            if self.__data_ignore_vale is not None:
+                ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
+                BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
 
             # TODO <= or <, looks like <=, with < I get strange dots on the image
             low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
@@ -134,8 +144,14 @@ class BandImageAdjuster(ImageAdjuster):
             A, B = 0, 256
             masked_band = ((masked_band - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
 
+            # Set the low and high masked values to white and black
             masked_band[low_mask] = 0
             masked_band[high_mask] = 255
+
+            # Set ignored values to black
+            if ignore_mask is not None and np.ma.is_mask(ignore_mask):
+                BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
+                masked_band[ignore_mask] = 0
 
             self.__image_data = masked_band.astype("uint8")
             self.__updated = False
@@ -160,10 +176,11 @@ class BandImageAdjuster(ImageAdjuster):
 
 class RGBImageAdjuster(ImageAdjuster):
 
-    def __init__(self, red: np.ndarray, green: np.ndarray, blue: np.ndarray):
-        self.__adjusted_bands = {Band.RED: BandImageAdjuster(red),
-                                 Band.GREEN: BandImageAdjuster(green),
-                                 Band.BLUE: BandImageAdjuster(blue)}
+    def __init__(self, red: np.ndarray, green: np.ndarray, blue: np.ndarray,
+            data_ignore_value:Union[int, float]=None):
+        self.__adjusted_bands = {Band.RED: BandImageAdjuster(red, data_ignore_value),
+                                 Band.GREEN: BandImageAdjuster(green, data_ignore_value),
+                                 Band.BLUE: BandImageAdjuster(blue, data_ignore_value)}
 
     def _adjusted_data(self, band:Band) -> np.ndarray:
         return self.__adjusted_bands[band].adjusted_data()
@@ -244,13 +261,16 @@ class RGBImageAdjuster(ImageAdjuster):
 
 class BandDescriptor:
 
-    def __init__(self, file_name:str, band_name:str, wavelength_label:str):
+    def __init__(self, file_name:str, band_name:str, wavelength_label:str,
+            bad_band:bool=False, data_ignore_value:Union[int, float]=None):
         self.__file_name = file_name
         self.__band_name = band_name
         self.__wavelength_label = wavelength_label
         self.__band_label = self.__band_name + " - " + self.__wavelength_label
         self.__label = self.__file_name + " - " + \
             self.__band_name + " - " + self.__wavelength_label
+        self.__is_bad = bad_band
+        self.__data_ignore_value = data_ignore_value
 
     def file_name(self) -> str:
         return self.__file_name
@@ -266,6 +286,12 @@ class BandDescriptor:
 
     def label(self) -> str:
         return self.__label
+
+    def is_bad_band(self) -> bool:
+        return self.__is_bad
+
+    def data_ignore_value(self) -> Union[int, float]:
+        return self.__data_ignore_value
 
 
 # TODO need to think through how much data we're holding here, clean up, views?
@@ -293,7 +319,7 @@ class Image(ImageAdjuster):
 class GreyscaleImage(Image, BandImageAdjuster):
     """An 8-bit 8-bit grayscale image"""
     def __init__(self, band:np.ndarray, band_descriptor:BandDescriptor):
-        super().__init__(band)
+        super().__init__(band, band_descriptor.data_ignore_value())
         self.__band = band
         self.__band_descriptor = band_descriptor
 

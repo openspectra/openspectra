@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from openspectra.image import Image as OSImage
+from openspectra.image import Image as OSImage, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraImageTools
 from openspectra.openspectra_file import OpenSpectraFileFactory, OpenSpectraFile, OpenSpectraHeader
 from samples import project_path
@@ -85,7 +85,8 @@ def image_sample():
 
     # We can create an OpenSpectra Image object by pass the OpenSpectraImageTools
     # our band of interest
-    grey_os_image:OSImage = image_tools.greyscale_image(band)
+    grey_os_image:OSImage = image_tools.greyscale_image(band,
+        BandDescriptor("file_name", "band_name", "wave_length"))
 
     # From the OpenSpectra Image object we can obtain adjusted image data
     # suitable for display.  One easy way to show that image is using Python's
@@ -108,8 +109,9 @@ def image_sample():
     # Create the image using the band indexes and provide the corresponding
     # band names to identify the bands in the image
     rgb_os_image = image_tools.rgb_image(red_band, green_band, blue_band,
-        os_header.band_name(red_band), os_header.band_name(green_band),
-        os_header.band_name(blue_band))
+        BandDescriptor("file_name", "band_name", "wave_length"),
+        BandDescriptor("file_name", "band_name", "wave_length"),
+        BandDescriptor("file_name", "band_name", "wave_length"))
     # Create the Pillow image
     rgb_image = Image.fromarray(rgb_os_image.image_data(), "RGBA")
     # Now we can show the image using the band name label in the title
