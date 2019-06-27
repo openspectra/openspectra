@@ -203,7 +203,7 @@ class MouseCoordinates(QLabel):
     @pyqtSlot(AdjustedMouseEvent)
     def on_mouse_move(self, event:AdjustedMouseEvent):
         # users are accustom to screen coordinates being 1 based
-        self.setText(" x: {0} y: {1}".format(
+        self.setText(" sample: {0} line: {1}".format(
             event.pixel_x() + 1, event.pixel_y() + 1))
 
 

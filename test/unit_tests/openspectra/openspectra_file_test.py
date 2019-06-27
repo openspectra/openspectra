@@ -213,7 +213,6 @@ class OpenSpectraFileTest(unittest.TestCase):
         self.assertFalse(np.array_equal(image6, image1))
         self.assertFalse(image6 is image1)
 
-
     def test_bands(self):
         """Verify the bands returned."""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
@@ -245,3 +244,43 @@ class OpenSpectraFileTest(unittest.TestCase):
         # Verify the set of bands returns is oriented as expected
         self.assertTrue(np.array_equal(band3[0, :], band1[0, :]))
         self.assertTrue(np.array_equal(band3[1, :], band2[0, :]))
+
+    def test_offset_mapped_model(self):
+        """Verify the byte offset feature works with the mapped model"""
+        test_file = "test/unit_tests/resources/cup95_eff_fixed"
+        # test_file = "../resources/cup95_eff_fixed"
+        os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
+        self.assertEqual(os_file_base.header().header_offset(), 0)
+
+        test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
+        # test_file = "../resources/cup95_eff_fixed_offset_1k"
+        os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
+        self.assertEqual(os_file_offset.header().header_offset(), 1024)
+
+        bands_base = os_file_base.bands(10, 10)
+        bands_offset = os_file_offset.bands(10, 10)
+        self.assertTrue(np.array_equal(bands_base, bands_offset))
+
+        image_base = os_file_base.raw_image(10)
+        image_offset = os_file_offset.raw_image(10)
+        self.assertTrue(np.array_equal(image_base, image_offset))
+
+    def test_offset_memory_model(self):
+        """Verify the byte offset feature works with the memory model"""
+        test_file = "test/unit_tests/resources/cup95_eff_fixed"
+        # test_file = "../resources/cup95_eff_fixed"
+        os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
+        self.assertEqual(os_file_base.header().header_offset(), 0)
+
+        test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
+        # test_file = "../resources/cup95_eff_fixed_offset_1k"
+        os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
+        self.assertEqual(os_file_offset.header().header_offset(), 1024)
+
+        bands_base = os_file_base.bands(10, 10)
+        bands_offset = os_file_offset.bands(10, 10)
+        self.assertTrue(np.array_equal(bands_base, bands_offset))
+
+        image_base = os_file_base.raw_image(10)
+        image_offset = os_file_offset.raw_image(10)
+        self.assertTrue(np.array_equal(image_base, image_offset))

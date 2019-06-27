@@ -1,12 +1,15 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
+import sys
+
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex, Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
-    QHBoxLayout, QPushButton
+    QHBoxLayout, QPushButton, QMessageBox, QCheckBox
 
 from openspectra.image import BandDescriptor
 from openspectra.openspectra_file import OpenSpectraFile
+from openspectra.utils import Logger, LogHelper
 
 
 class RGBSelectedBands(QObject):
@@ -104,6 +107,8 @@ class TypeSelector(QWidget):
 
 class BandList(QWidget):
 
+    __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
+
     bandSelected = pyqtSignal(QTreeWidgetItem)
     rgbSelected = pyqtSignal(RGBSelectedBands)
 
@@ -116,6 +121,7 @@ class BandList(QWidget):
         self.height = 675
         self.__init_ui()
         self.__parent_items = list()
+        self.__show_bad_bands_prompt:bool = True
 
     def __init_ui(self):
         self.setWindowTitle(self.title)
@@ -151,16 +157,23 @@ class BandList(QWidget):
     def add_file(self, open_spectra_file:OpenSpectraFile) -> QTreeWidgetItem:
         header = open_spectra_file.header()
         band_labels = header.band_labels()
+        bad_bands = header.bad_band_list()
+        data_ignore_val = header.data_ignore_value()
 
-        # TODO need to manage multiple parent items, 1 per file
         file_name = open_spectra_file.name()
         parent_item = QTreeWidgetItem()
         parent_item.setText(0, file_name)
         for index, band_label in enumerate(band_labels):
             child = QTreeWidgetItem(parent_item)
             child.setText(0, str(band_label[0] + " - " + band_label[1]))
-            child.setData(0, Qt.UserRole,
-                BandDescriptor(file_name, band_label[0], band_label[1]))
+            if bad_bands[index]:
+                child.setToolTip(0, "Bad band")
+                child.setForeground(0, Qt.red)
+                child.setData(0, Qt.UserRole, BandDescriptor(file_name,
+                    band_label[0], band_label[1], True, data_ignore_val))
+            else:
+                child.setData(0, Qt.UserRole, BandDescriptor(file_name,
+                    band_label[0], band_label[1], False, data_ignore_val))
 
         self.__treeWidget.addTopLevelItem(parent_item)
         parent_item.setExpanded(True)
@@ -182,7 +195,13 @@ class BandList(QWidget):
             parent_item = item.parent()
             # if it has no parent it's a file, ignore it
             if parent_item is not None:
-                self.bandSelected.emit(item)
+                result:int = QMessageBox.Yes
+                descriptor:BandDescriptor = item.data(0, Qt.UserRole)
+                if self.__show_bad_bands_prompt and descriptor.is_bad_band():
+                    result = self.__bad_band_prompt(descriptor)
+
+                if result == QMessageBox.Yes:
+                    self.bandSelected.emit(item)
 
     @pyqtSlot(QTreeWidgetItem)
     def __on_click(self, item:QTreeWidgetItem):
@@ -202,8 +221,32 @@ class BandList(QWidget):
             indexes = self.__treeWidget.selectionModel().selectedIndexes()
             if len(indexes) == 3:
                 try:
-                    selected = RGBSelectedBands(indexes[0], indexes[1], indexes[2])
-                    self.rgbSelected.emit(selected)
+                    result:int = QMessageBox.Yes
+                    for index in range(3):
+                        descriptor:BandDescriptor = indexes[index].data(Qt.UserRole)
+                        if self.__show_bad_bands_prompt and descriptor.is_bad_band():
+                            result = self.__bad_band_prompt(descriptor)
+                            if result == QMessageBox.Cancel:
+                                break
+
+                    if result == QMessageBox.Yes:
+                        selected = RGBSelectedBands(indexes[0], indexes[1], indexes[2])
+                        self.rgbSelected.emit(selected)
+                # TODO why is this here??
                 except:
-                    # TODO report or log somehow??
-                    pass
+                    BandList.__LOG.error("Error: {0}".format(sys.exc_info()[0]))
+
+    def __bad_band_prompt(self, descriptor:BandDescriptor) -> int:
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Warning)
+        dialog.setText(
+            "Band '{0}' from file '{1}' is marked as a 'bad band' in it's header file.  Do you wish to continue?".
+            format(descriptor.band_name(), descriptor.file_name()))
+        check_box = QCheckBox("Don't ask again", dialog)
+        check_box.setCheckState(not self.__show_bad_bands_prompt)
+        dialog.setCheckBox(check_box)
+        dialog.addButton(QMessageBox.Cancel)
+        dialog.addButton(QMessageBox.Yes)
+        result = dialog.exec()
+        self.__show_bad_bands_prompt = not dialog.checkBox().checkState() == Qt.Checked
+        return result
