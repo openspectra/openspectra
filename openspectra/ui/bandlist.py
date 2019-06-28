@@ -166,7 +166,7 @@ class BandList(QWidget):
         for index, band_label in enumerate(band_labels):
             child = QTreeWidgetItem(parent_item)
             child.setText(0, str(band_label[0] + " - " + band_label[1]))
-            if bad_bands[index]:
+            if bad_bands is not None and bad_bands[index]:
                 child.setToolTip(0, "Bad band")
                 child.setForeground(0, Qt.red)
                 child.setData(0, Qt.UserRole, BandDescriptor(file_name,
