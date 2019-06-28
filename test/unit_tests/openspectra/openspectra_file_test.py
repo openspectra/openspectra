@@ -6,7 +6,8 @@ from typing import List, Tuple
 
 import numpy as np
 
-from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory
+from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory, PercentageStretch, LinearImageStretch, \
+    ValueStretch, OpenSpectraHeaderError
 
 
 class OpenSpectraHeaderTest(unittest.TestCase):
@@ -49,8 +50,11 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(os_header.description(),
                 "1995 AVIRIS \"Effort\" Corrected ATREM [Thu Apr 25 00:52:03 1996] [Thu Mar  2912:49:46 2012]")
             self.assertEqual(os_header.data_ignore_value(), -9999)
-            self.assertEqual(os_header.default_stretch()[0], 0.0)
-            self.assertEqual(os_header.default_stretch()[1], 1000.0)
+
+            default_stretch:LinearImageStretch = os_header.default_stretch()
+            self.assertTrue(isinstance(default_stretch, ValueStretch))
+            self.assertEqual(default_stretch.low(), 0.0)
+            self.assertEqual(default_stretch.high(), 1000.0)
 
             bbl = os_header.bad_band_list()
             self.assertEqual(len(bbl), band_count)
@@ -116,7 +120,9 @@ class OpenSpectraHeaderTest(unittest.TestCase):
 
             # TODO the rest?  just what is different?
 
-            self.assertEqual(os_header.default_stretch(), 5.0)
+            default_stretch = os_header.default_stretch()
+            self.assertTrue(isinstance(default_stretch, PercentageStretch))
+            self.assertEqual(default_stretch.percentage(), 5.0)
 
             map_info:OpenSpectraHeader.MapInfo = os_header.map_info()
             self.assertIsNotNone(map_info)
@@ -284,3 +290,36 @@ class OpenSpectraFileTest(unittest.TestCase):
         image_base = os_file_base.raw_image(10)
         image_offset = os_file_offset.raw_image(10)
         self.assertTrue(np.array_equal(image_base, image_offset))
+
+# TODO validate OpenSpectraFileFactory switches work...
+
+
+class ImageStretchTest(unittest.TestCase):
+
+    def test_percentage(self):
+        stretch = LinearImageStretch.create_default_stretch("5.0% linear")
+        self.assertTrue(isinstance(stretch, PercentageStretch))
+        self.assertEqual(stretch.percentage(), 5.0)
+
+        with self.assertRaises(NotImplementedError):
+            stretch.low()
+
+        with self.assertRaises(NotImplementedError):
+            stretch.high()
+
+    def test_value(self):
+        stretch = LinearImageStretch.create_default_stretch("0.000000 1000.000000 linear")
+        self.assertTrue(isinstance(stretch, ValueStretch))
+        self.assertEqual(stretch.low(), 0.0)
+        self.assertEqual(stretch.high(), 1000.0)
+
+        with self.assertRaises(NotImplementedError):
+            stretch.percentage()
+
+    def test_fail(self):
+        with self.assertRaises(OpenSpectraHeaderError):
+            LinearImageStretch.create_default_stretch("127.0 10.0 gaussian")
+
+    def test_base_class(self):
+        with self.assertRaises(TypeError):
+            test = LinearImageStretch()

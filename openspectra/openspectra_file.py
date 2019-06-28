@@ -3,12 +3,76 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 import re
 from typing import List, Union, Tuple
 import numpy as np
 
 from openspectra.utils import LogHelper, Logger
+
+
+class LinearImageStretch(ABC):
+
+    @staticmethod
+    def create_default_stretch(parameters:str):
+        result:LinearImageStretch = None
+        if parameters is not None:
+            if not re.match(".*linear$", parameters):
+                raise OpenSpectraHeaderError("Only 'linear' 'default stretch' is supported, got: {0}", parameters)
+            else:
+                parts = re.split("\s+", parameters)
+                if re.match("[0-9]*[\.][0-9]*%", parts[0]):
+                    result = PercentageStretch(float(re.split("%", parts[0])[0]))
+                elif len(parts) == 3:
+                    result = ValueStretch(float(parts[0]), float(parts[1]))
+                else:
+                    raise OpenSpectraHeaderError("'default stretch' value is malformed, value was: {0}", parameters)
+
+        return result
+
+    @abstractmethod
+    def percentage(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this class")
+
+    @abstractmethod
+    def low(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this class")
+
+    @abstractmethod
+    def high(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this class")
+
+
+class PercentageStretch(LinearImageStretch):
+
+    def __init__(self, percentage:Union[int, float]):
+        self.__stretch = percentage
+
+    def percentage(self) -> Union[int, float]:
+        return self.__stretch
+
+    def low(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this sub-class")
+
+    def high(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this sub-class")
+
+
+class ValueStretch(LinearImageStretch):
+
+    def __init__(self, low:Union[int, float], high:Union[int, float]):
+        self.__low = low
+        self.__high = high
+
+    def percentage(self) -> Union[int, float]:
+        raise NotImplementedError("Method not implemented on this sub-class")
+
+    def low(self) -> Union[int, float]:
+        return self.__low
+
+    def high(self) -> Union[int, float]:
+        return self.__high
 
 
 class OpenSpectraHeader:
@@ -161,8 +225,7 @@ class OpenSpectraHeader:
         self.__map_info:OpenSpectraHeader.MapInfo = None
         self.__description:str = None
         self.__data_ignore_value: Union[int, float] = None
-        # TODO not the final form???
-        self.__default_stretch:Union[float, Tuple[float, float]] = None
+        self.__default_stretch:LinearImageStretch = None
         self.__bad_band_list:List[bool] = None
 
     def dump(self) -> str:
@@ -367,19 +430,8 @@ class OpenSpectraHeader:
             else:
                 raise OpenSpectraHeaderError("Couldn't parse 'data ignore value' as a float or int, value was: {0}", data_ignore_value)
 
-        # TODO not the final form for this member??
-        default_stretch = self.__props.get(OpenSpectraHeader.__DEFAULT_STRETCH)
-        if default_stretch is not None:
-            if not re.match(".*linear$", default_stretch):
-                raise OpenSpectraHeaderError("Only 'linear' 'default stretch' is supported, got: {0}", default_stretch)
-            else:
-                parts = re.split("\s+", default_stretch)
-                if re.match("[0-9]*[\.][0-9]*%", parts[0]):
-                    self.__default_stretch = float(re.split("%", parts[0])[0])
-                elif len(parts) == 3:
-                    self.__default_stretch = (float(parts[0]), float(parts[1]))
-                else:
-                    raise OpenSpectraHeaderError("'default stretch' value is malformed, value was: {0}", default_stretch)
+        default_stretch:str = self.__props.get(OpenSpectraHeader.__DEFAULT_STRETCH)
+        self.__default_stretch = LinearImageStretch.create_default_stretch(default_stretch)
 
         bad_band_list:list = self.__props.get(OpenSpectraHeader.__BAD_BAND_LIST)
         if bad_band_list is not None:
