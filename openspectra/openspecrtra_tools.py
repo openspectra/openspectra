@@ -196,8 +196,20 @@ class HistogramPlotData(PlotData):
             lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
         super().__init__(x_data, y_data, x_label, y_label, title, color, line_style, legend)
         self.bins = bins
-        self.lower_limit = lower_limit
-        self.upper_limit = upper_limit
+        self.__lower_limit = lower_limit
+        self.__upper_limit = upper_limit
+
+    def lower_limit(self) -> Union[int, float]:
+        return self.__lower_limit
+
+    def set_lower_limit(self, limit:Union[int, float]):
+        self.__lower_limit = limit
+
+    def upper_limit(self) -> Union[int, float]:
+        return self.__upper_limit
+
+    def set_upper_limit(self, limit:Union[int, float]):
+        self.__upper_limit = limit
 
 
 class Bands:
@@ -499,8 +511,8 @@ class OpenSpectraHistogramTools:
         plot_data.y_label = "Y-FixMe"
         plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
-        plot_data.lower_limit = self.__image.low_cutoff(band)
-        plot_data.upper_limit = self.__image.high_cutoff(band)
+        plot_data.set_lower_limit(self.__image.low_cutoff(band))
+        plot_data.set_upper_limit(self.__image.high_cutoff(band))
         return plot_data
 
     def adjusted_histogram(self, band:Band=None) -> HistogramPlotData:

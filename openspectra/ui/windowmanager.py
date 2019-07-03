@@ -17,7 +17,7 @@ from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
-from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent
+from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
     RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
 from openspectra.utils import LogHelper, Logger
@@ -220,6 +220,7 @@ class WindowSet(QObject):
 
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
+        self.__histogram_window.limits_reset.connect(self.__handle_hist_limits_reset)
 
     def __init_roi(self):
         # RegionOfInterestManager is a singleton so all WindowSets
@@ -315,6 +316,25 @@ class WindowSet(QObject):
 
         self.__main_image_window.remove_all_regions()
         self.__zoom_image_window.remove_all_regions()
+
+    @pyqtSlot(LimitResetEvent)
+    def __handle_hist_limits_reset(self):
+        self.__image.reset_stretch()
+        self.__image.adjust()
+        self.__main_image_window.refresh_image()
+        self.__zoom_image_window.refresh_image()
+
+        bands = list()
+        if isinstance(self.__image, RGBImage):
+            bands.extend([Band.RED, Band.GREEN, Band.BLUE])
+        else:
+            bands.append(Band.GREY)
+
+        for band in bands:
+            image_hist = self.__histogram_tools.adjusted_histogram(band)
+            raw_data = self.__histogram_tools.raw_histogram(band)
+            self.__histogram_window.update_limits(raw_data, band)
+            self.__histogram_window.set_adjusted_data(image_hist, band)
 
     @pyqtSlot(LimitChangeEvent)
     def __handle_hist_limit_change(self, event:LimitChangeEvent):

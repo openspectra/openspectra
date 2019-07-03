@@ -83,6 +83,7 @@ class BandImageAdjuster(ImageAdjuster):
         # Do the initial stretch
         self.__default_stretch = default_stretch
         self.__do_default_stretch()
+        self.adjust()
 
         BandImageAdjuster.__LOG.debug("type: {0}", self.__type)
         BandImageAdjuster.__LOG.debug("min: {0}, max: {1}", self.__band.min(), self.__band.max())
@@ -104,7 +105,6 @@ class BandImageAdjuster(ImageAdjuster):
             self.adjust_by_percentage(2, 98)
 
         self.__updated = True
-        self.adjust()
 
     def adjusted_data(self) -> np.ndarray:
         return self.__image_data
@@ -156,7 +156,7 @@ class BandImageAdjuster(ImageAdjuster):
             ignore_mask = None
             if self.__data_ignore_vale is not None:
                 ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
-                BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
+                # BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
 
             # TODO <= or <, looks like <=, with < I get strange dots on the image
             low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
@@ -178,7 +178,7 @@ class BandImageAdjuster(ImageAdjuster):
 
             # Set ignored values to black
             if ignore_mask is not None and np.ma.is_mask(ignore_mask):
-                BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
+                # BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
                 masked_band[ignore_mask] = 0
 
             self.__image_data = masked_band.astype("uint8")
