@@ -10,7 +10,7 @@ import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
-from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, LinearImageStretch
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
@@ -313,6 +313,17 @@ class OpenSpectraBandTools:
         # TODO something better than having to know to do band[0, :] here?? Use Bands??
         return LinePlotData(wavelengths, band[0, :], "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+
+    def band_descriptor(self, band_index:int) -> BandDescriptor:
+        header = self.__file.header()
+        band_label = header.band_label(band_index)
+        bad_bands = header.bad_band_list()
+        is_bad_band = bad_bands is not None and bad_bands[band_index]
+        data_ignore_val = header.data_ignore_value()
+        default_stretch: LinearImageStretch = header.default_stretch()
+
+        return BandDescriptor(self.__file.name(), band_label[0], band_label[1],
+            is_bad_band, data_ignore_val, default_stretch)
 
     def __clean_data(self, bands:np.ndarray) -> np.ndarray:
         result = bands

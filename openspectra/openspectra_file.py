@@ -282,7 +282,7 @@ class OpenSpectraHeader:
         data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
         return self.__DATA_TYPE_DIC.get(data_type)
 
-    def default_stretch(self) -> Union[float, Tuple[float, float]]:
+    def default_stretch(self) -> LinearImageStretch:
         return self.__default_stretch
 
     def description(self) -> str:

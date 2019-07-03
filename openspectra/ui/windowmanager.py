@@ -41,29 +41,24 @@ class WindowManager(QObject):
             self.__available_geometry.height(), self.__available_geometry.width())
 
         self.__parent_window = parent_window
-        self.__file_sets = dict()
+        self.__file_managers = dict()
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
 
     def add_file(self, file:OpenSpectraFile):
-        file_widget = self.__band_list.add_file(file)
-        file_name = file_widget.text(0)
-
-        if file_name in self.__file_sets:
+        file_manager = FileManager(file, self)
+        file_name = file_manager.file_name()
+        if file_name in self.__file_managers:
             # TODO file names must be unique, handle dups somehow, no need to reopen really
             # TODO Just throw a up a dialog box saying it's already open?
             return
 
-        file_set = FileManager(file, file_widget, self)
-        self.__file_sets[file_name] = file_set
+        self.__file_managers[file_name] = file_manager
+        self.__band_list.add_file(file_name, file_manager.header().band_count(), file_manager.band_tools())
 
         if WindowManager.__LOG.isEnabledFor(logging.DEBUG):
             WindowManager.__LOG.debug("{0}", file.header().dump())
-
-    # TODO - not used????
-    def file(self, index=0) -> OpenSpectraFile:
-        return self.__file_sets[index]
 
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
@@ -81,8 +76,8 @@ class WindowManager(QObject):
             band_descriptor.file_name(), band_descriptor.band_name(), band_descriptor.wavelength_label()))
         parent_item = item.parent()
         file_name = parent_item.text(0)
-        if file_name in self.__file_sets:
-            file_set = self.__file_sets[file_name]
+        if file_name in self.__file_managers:
+            file_set = self.__file_managers[file_name]
             file_set.add_grey_window_set(
                 parent_item.indexOfChild(item), band_descriptor)
         else:
@@ -92,8 +87,8 @@ class WindowManager(QObject):
     @pyqtSlot(RGBSelectedBands)
     def __handle_rgb_select(self, bands:RGBSelectedBands):
         file_name = bands.file_name()
-        if file_name in self.__file_sets:
-            file_set = self.__file_sets[file_name]
+        if file_name in self.__file_managers:
+            file_set = self.__file_managers[file_name]
             file_set.add_rgb_window_set(bands)
         else:
             # TODO report or log?
@@ -104,15 +99,12 @@ class FileManager(QObject):
 
     __LOG:Logger = LogHelper.logger("FileManager")
 
-    def __init__(self, file:OpenSpectraFile, file_widget:QTreeWidgetItem,
-                window_manager:WindowManager):
+    def __init__(self, file:OpenSpectraFile, window_manager:WindowManager):
         super().__init__()
         self.__window_manager = window_manager
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
         self.__image_tools = OpenSpectraImageTools(self.__file)
-        self.__file_widget = file_widget
-        self.__file_name = file_widget.text(0)
         self.__window_sets = list()
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
@@ -131,8 +123,14 @@ class FileManager(QObject):
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
 
-    def band_tools(self):
+    def file_name(self) -> str:
+        return self.__file.name()
+
+    def band_tools(self) -> OpenSpectraBandTools:
         return self.__band_tools
+
+    def image_tools(self) -> OpenSpectraImageTools:
+        return self.__image_tools
 
     def window_manager(self) -> WindowManager:
         return self.__window_manager
