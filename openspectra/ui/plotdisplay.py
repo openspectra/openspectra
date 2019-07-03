@@ -251,7 +251,6 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
             self.__dragging = None
 
-    # TODO why do I need this? eventually need to tell them apart? better way?
     def __get_limit_id(self, limit_line:lines.Line2D) -> Limit:
         if limit_line is self.__lower_limit:
             return Limit.Lower
@@ -291,20 +290,23 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.mpl_connect("motion_notify_event", self.__on_mouse_move)
         self.mpl_connect("button_release_event", self.__on_mouse_release)
 
-        self.__lower_limit = lines.Line2D([data.lower_limit(), data.lower_limit()],
-            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
-            figure=self._axes.figure, picker=5)
-
-        self.__upper_limit = lines.Line2D([data.upper_limit(), data.upper_limit()],
-            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
-            figure=self._axes.figure, picker=5)
-        self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
-        self.mpl_connect("pick_event", self.__on_pick)
-
         self.__min_adjust_x = self._axes.get_xlim()[0]
         self.__max_adjust_x = self._axes.get_xlim()[1]
         AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: {0}, max_adjust_x {1}",
             self.__min_adjust_x, self.__max_adjust_x)
+
+        lower_limit = self.__get_line_position(data.lower_limit())
+        self.__lower_limit = lines.Line2D([lower_limit, lower_limit],
+            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
+            figure=self._axes.figure, picker=5)
+
+        upper_limit = self.__get_line_position(data.upper_limit())
+        self.__upper_limit = lines.Line2D([upper_limit, upper_limit],
+            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
+            figure=self._axes.figure, picker=5)
+
+        self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
+        self.mpl_connect("pick_event", self.__on_pick)
 
         plot_event = PlotChangeEvent(data.lower_limit(), data.upper_limit(),
             self.__min_adjust_x, self.__max_adjust_x)
@@ -314,27 +316,27 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
         updated:bool = False
         if lower_limit is not None:
-            if self.__max_adjust_x >= lower_limit >= self.__min_adjust_x:
-                self.__get_limit_from_id(Limit.Lower).set_xdata([lower_limit, lower_limit])
-                updated = True
-            else:
-                # TODO then what? Throw?  It's really a programming error if it happens so assert?
-                AdjustableHistogramPlotCanvas.__LOG.error(
-                    "Attempt was made to set lower limit to an invalid value {0}, min of {1}, max of {2} allowed",
-                    lower_limit, self.__min_adjust_x, self.__max_adjust_x)
+            lower_limit = self.__get_line_position(lower_limit)
+            self.__get_limit_from_id(Limit.Lower).set_xdata([lower_limit, lower_limit])
+            updated = True
 
         if upper_limit is not None:
-            if self.__max_adjust_x >= upper_limit >= self.__min_adjust_x:
-                self.__get_limit_from_id(Limit.Upper).set_xdata([upper_limit, upper_limit])
-                updated = True
-            else:
-                # TODO then what? Throw?  It's really a programming error if it happens so assert?
-                AdjustableHistogramPlotCanvas.__LOG.error(
-                    "Attempt was made to set upper limit to an invalid value {0}, min of {1}, max of {2} allowed",
-                    upper_limit, self.__min_adjust_x, self.__max_adjust_x)
+            upper_limit = self.__get_line_position(upper_limit)
+            self.__get_limit_from_id(Limit.Upper).set_xdata([upper_limit, upper_limit])
+            updated = True
 
         if updated:
             self.draw()
+
+    def __get_line_position(self, limit:Union[int, float]):
+        result = limit
+        if result > self.__max_adjust_x:
+            result = self.__max_adjust_x
+
+        if result < self.__min_adjust_x:
+            result = self.__min_adjust_x
+
+        return result
 
 
 class LinePlotDisplayWindow(QMainWindow):
