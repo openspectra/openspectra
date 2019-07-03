@@ -24,6 +24,12 @@ class Limit(Enum):
     Upper = 1
 
 
+class LimitResetEvent(QObject):
+
+    def __init__(self):
+        super().__init__()
+
+
 class LimitChangeEvent(QObject):
 
     def __init__(self, limit:Limit=None, value:Union[int, float]=None,
@@ -78,7 +84,7 @@ class LimitChangeEvent(QObject):
 class PlotChangeEvent(QObject):
 
     def __init__(self, lower_limit:Union[int, float], upper_limit:Union[int, float],
-            lower_min: Union[int, float], upper_max: Union[int, float]):
+            lower_min:Union[int, float], upper_max:Union[int, float]):
         super().__init__()
         self.__lower_limit = lower_limit
         self.__upper_limit = upper_limit
@@ -245,7 +251,6 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
 
             self.__dragging = None
 
-    # TODO why do I need this? eventually need to tell them apart? better way?
     def __get_limit_id(self, limit_line:lines.Line2D) -> Limit:
         if limit_line is self.__lower_limit:
             return Limit.Lower
@@ -285,50 +290,60 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.mpl_connect("motion_notify_event", self.__on_mouse_move)
         self.mpl_connect("button_release_event", self.__on_mouse_release)
 
-        self.__lower_limit = lines.Line2D([data.lower_limit, data.lower_limit],
-            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
-            figure=self._axes.figure, picker=5)
-
-        self.__upper_limit = lines.Line2D([data.upper_limit, data.upper_limit],
-            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
-            figure=self._axes.figure, picker=5)
-        self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
-        self.mpl_connect("pick_event", self.__on_pick)
-
         self.__min_adjust_x = self._axes.get_xlim()[0]
         self.__max_adjust_x = self._axes.get_xlim()[1]
         AdjustableHistogramPlotCanvas.__LOG.debug("min_adjust_x: {0}, max_adjust_x {1}",
             self.__min_adjust_x, self.__max_adjust_x)
 
-        plot_event = PlotChangeEvent(data.lower_limit, data.upper_limit,
-            self.__min_adjust_x, self.__max_adjust_x)
+        lower_limit = self.__get_line_position(data.lower_limit())
+        self.__lower_limit = lines.Line2D([lower_limit, lower_limit],
+            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
+            figure=self._axes.figure, picker=5)
+
+        upper_limit = self.__get_line_position(data.upper_limit())
+        self.__upper_limit = lines.Line2D([upper_limit, upper_limit],
+            [0, self._axes.get_ylim()[1] - 8], transform=self._axes.transData,
+            figure=self._axes.figure, picker=5)
+
+        self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
+        self.mpl_connect("pick_event", self.__on_pick)
+
+        min_valid = self.__min_adjust_x
+        if data.lower_limit() < min_valid:
+            min_valid = data.lower_limit()
+
+        max_valid = self.__max_adjust_x
+        if data.upper_limit() > max_valid:
+            max_valid = data.upper_limit()
+
+        plot_event = PlotChangeEvent(data.lower_limit(), data.upper_limit(), min_valid, max_valid)
         self.plot_changed.emit(plot_event)
 
     def update_limit_line(self, lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
 
         updated:bool = False
         if lower_limit is not None:
-            if self.__max_adjust_x >= lower_limit >= self.__min_adjust_x:
-                self.__get_limit_from_id(Limit.Lower).set_xdata([lower_limit, lower_limit])
-                updated = True
-            else:
-                # TODO then what? Throw?  It's really a programming error if it happens so assert?
-                AdjustableHistogramPlotCanvas.__LOG.error(
-                    "Attempt was made to set lower limit to an invalid value {0}, min of {1}, max of {2} allowed",
-                    lower_limit, self.__min_adjust_x, self.__max_adjust_x)
+            lower_limit = self.__get_line_position(lower_limit)
+            self.__get_limit_from_id(Limit.Lower).set_xdata([lower_limit, lower_limit])
+            updated = True
 
         if upper_limit is not None:
-            if self.__max_adjust_x >= upper_limit >= self.__min_adjust_x:
-                self.__get_limit_from_id(Limit.Upper).set_xdata([upper_limit, upper_limit])
-                updated = True
-            else:
-                # TODO then what? Throw?  It's really a programming error if it happens so assert?
-                AdjustableHistogramPlotCanvas.__LOG.error(
-                    "Attempt was made to set upper limit to an invalid value {0}, min of {1}, max of {2} allowed",
-                    upper_limit, self.__min_adjust_x, self.__max_adjust_x)
+            upper_limit = self.__get_line_position(upper_limit)
+            self.__get_limit_from_id(Limit.Upper).set_xdata([upper_limit, upper_limit])
+            updated = True
 
         if updated:
             self.draw()
+
+    def __get_line_position(self, limit:Union[int, float]):
+        result = limit
+        if result > self.__max_adjust_x:
+            result = self.__max_adjust_x
+
+        if result < self.__min_adjust_x:
+            result = self.__min_adjust_x
+
+        return result
 
 
 class LinePlotDisplayWindow(QMainWindow):
@@ -371,6 +386,7 @@ class AdjustableHistogramControl(QWidget):
     __LOG:Logger = LogHelper.logger("AdjustableHistogramControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
+    limits_reset = pyqtSignal(LimitResetEvent)
 
     def __init__(self, band:Band, parent=None):
         super().__init__(parent)
@@ -383,8 +399,6 @@ class AdjustableHistogramControl(QWidget):
 
         # TODO need to set the data's precision
         self.__edit_precision:int = 3
-        self.__lower_limit_default:Union[int, float] = None
-        self.__upper_limit_default:Union[int, float] = None
 
         self.__init_ui()
 
@@ -410,7 +424,6 @@ class AdjustableHistogramControl(QWidget):
         self.__lower_edit.setMaximumWidth(80)
         self.__lower_edit.deselect()
         self.__lower_edit.setAlignment(Qt.AlignLeft)
-        self.__lower_validator = None
         self.__lower_edit.value_changed.connect(self.__handle_lower_limit_edit)
         control_layout.addWidget(self.__lower_edit)
         control_layout.addSpacing(10)
@@ -423,7 +436,6 @@ class AdjustableHistogramControl(QWidget):
         self.__upper_edit.setMaximumWidth(80)
         self.__upper_edit.deselect()
         self.__upper_edit.setAlignment(Qt.AlignLeft)
-        self.__upper_validator = None
         self.__upper_edit.value_changed.connect(self.__handle_upper_limit_edit)
         control_layout.addWidget(self.__upper_edit)
         control_layout.addSpacing(10)
@@ -455,6 +467,12 @@ class AdjustableHistogramControl(QWidget):
     def set_raw_data(self, data:HistogramPlotData):
         self.__raw_data_canvas.plot(data)
 
+    def update_limits(self, data:HistogramPlotData):
+        self.__lower_edit.set_value(data.lower_limit())
+        self.__upper_edit.set_value(data.upper_limit())
+        self.__raw_data_canvas.update_limit_line(
+            data.lower_limit(), data.upper_limit())
+
     def set_adjusted_data(self, data:HistogramPlotData):
         if not self.__has_adjusted_data:
             self.__adjusted_data_canvas.plot(data)
@@ -464,15 +482,7 @@ class AdjustableHistogramControl(QWidget):
 
     @pyqtSlot()
     def __handle_reset_clicked(self):
-        self.__lower_edit.set_value(self.__lower_limit_default)
-        self.__upper_edit.set_value(self.__upper_limit_default)
-        # emit limit_changed to bubble up and notify
-        self.limit_changed.emit(LimitChangeEvent(
-            lower_limit=self.__lower_limit_default,
-            upper_limit=self.__upper_limit_default,
-            band=self.__band))
-        self.__raw_data_canvas.update_limit_line(
-            self.__lower_limit_default, self.__upper_limit_default)
+        self.limits_reset.emit(LimitResetEvent())
 
     @pyqtSlot(float)
     def __handle_lower_limit_edit(self, new_value:Union[int, float]):
@@ -515,15 +525,9 @@ class AdjustableHistogramControl(QWidget):
         self.__lower_edit.set_validator(
             event.lower_min(), event.upper_max(), self.__edit_precision)
 
-        self.__lower_limit_default = event.lower_limit()
-        self.__lower_edit.set_value(self.__lower_limit_default)
+        self.__lower_edit.set_value(event.lower_limit())
 
-        self.__upper_limit_default = event.upper_limit()
-        self.__upper_edit.set_value(self.__upper_limit_default)
-
-    # TODO test only!!
-    # def resizeEvent(self, event:QResizeEvent):
-    #     AdjustableHistogramControl.__LOG.debug("resize to {0}", event.size())
+        self.__upper_edit.set_value(event.upper_limit())
 
 
 class HistogramDisplayControl(QWidget):
@@ -540,12 +544,13 @@ class HistogramDisplayControl(QWidget):
     __LOG:Logger = LogHelper.logger("HistogramDisplayControl")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
+    limits_reset = pyqtSignal(LimitResetEvent)
     layout_changed = pyqtSignal(Layout)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.__menu = None
-        self.__bands = dict()
+        self.__plots = dict()
 
         # Use stacked layout as default
         self.__create_stacked_layout()
@@ -640,7 +645,7 @@ class HistogramDisplayControl(QWidget):
     def __swap_layout(self, new_layout:Layout):
         # The plot's will have had their parent set to the layout so first
         # we undo that so they won't get deleted when the layout does.
-        for band, plot in self.__bands.items():
+        for band, plot in self.__plots.items():
             plot.setParent(None)
 
         if self.__current_layout == HistogramDisplayControl.Layout.STACKED:
@@ -665,7 +670,7 @@ class HistogramDisplayControl(QWidget):
         if new_layout == HistogramDisplayControl.Layout.VERTICAL:
             self.__create_vertical_layout()
 
-        for band, plot in self.__bands.items():
+        for band, plot in self.__plots.items():
             self.__plot_layout.addWidget(plot)
             self.__wire_band(band, plot)
             if new_layout != HistogramDisplayControl.Layout.STACKED:
@@ -719,8 +724,9 @@ class HistogramDisplayControl(QWidget):
         plots.set_raw_data(raw_data)
         plots.set_adjusted_data(adjusted_data)
         plots.limit_changed.connect(self.limit_changed)
+        plots.limits_reset.connect(self.limits_reset)
 
-        self.__bands[band] = plots
+        self.__plots[band] = plots
         self.__plot_layout.addWidget(plots)
 
         if self.__plot_layout.count() == 2:
@@ -732,13 +738,14 @@ class HistogramDisplayControl(QWidget):
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
         """Update the adjusted data for a Band that has already been added using
         add_plot"""
-        plots:AdjustableHistogramControl = self.__bands[band]
+        plots:AdjustableHistogramControl = self.__plots[band]
         if plots is not None:
             plots.set_adjusted_data(data)
 
-    # TODO test only!!
-    # def resizeEvent(self, event:QResizeEvent):
-    #     HistogramDisplayControl.__LOG.debug("resize to {0}", event.size())
+    def update_limits(self, data:HistogramPlotData, band:Band):
+        plots:AdjustableHistogramControl = self.__plots[band]
+        if plots is not None:
+            plots.update_limits(data)
 
 
 class HistogramDisplayWindow(QMainWindow):
@@ -746,6 +753,7 @@ class HistogramDisplayWindow(QMainWindow):
     __LOG:Logger = LogHelper.logger("HistogramDisplayWindow")
 
     limit_changed = pyqtSignal(LimitChangeEvent)
+    limits_reset = pyqtSignal(LimitResetEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -755,6 +763,7 @@ class HistogramDisplayWindow(QMainWindow):
         self.setWindowTitle("Histogram")
         self.__histogram_control = HistogramDisplayControl()
         self.__histogram_control.limit_changed.connect(self.limit_changed)
+        self.__histogram_control.limits_reset.connect(self.limits_reset)
         self.__histogram_control.layout_changed.connect(self.__handle_layout_changed)
         self.setCentralWidget(self.__histogram_control)
 
@@ -777,6 +786,5 @@ class HistogramDisplayWindow(QMainWindow):
     def set_adjusted_data(self, data:HistogramPlotData, band:Band):
         self.__histogram_control.set_adjusted_data(data, band)
 
-    # TODO test only
-    # def resizeEvent(self, event:QResizeEvent):
-    #     HistogramDisplayWindow.__LOG.debug("resize to {0}", event.size())
+    def update_limits(self, raw_data:HistogramPlotData, band:Band):
+        self.__histogram_control.update_limits(raw_data, band)

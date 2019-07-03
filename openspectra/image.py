@@ -9,6 +9,7 @@ from typing import Union, Dict
 import numpy as np
 
 from openspectra.utils import LogHelper, OpenSpectraDataTypes, OpenSpectraProperties, Logger
+from openspectra.openspectra_file import LinearImageStretch, ValueStretch, PercentageStretch
 
 
 class Band(Enum):
@@ -46,6 +47,9 @@ class ImageAdjuster:
     def adjust(self):
         pass
 
+    def reset_stretch(self, band:Band):
+        pass
+
     def low_cutoff(self, band:Band) -> Union[Union[int, float], RGBLimits]:
         pass
 
@@ -66,7 +70,9 @@ class BandImageAdjuster(ImageAdjuster):
 
     __LOG:Logger = LogHelper.logger("BandImageAdjuster")
 
-    def __init__(self, band:np.ndarray, data_ignore_value:Union[int, float]=None):
+    def __init__(self, band:np.ndarray, data_ignore_value:Union[int, float]=None,
+            default_stretch:LinearImageStretch=None):
+
         self.__band = band
         self.__data_ignore_vale = data_ignore_value
         self.__type = self.__band.dtype
@@ -75,15 +81,37 @@ class BandImageAdjuster(ImageAdjuster):
         self.__high_cutoff = 0
 
         # Do the initial stretch
-        self.adjust_by_percentage(2, 98)
-        self.__updated = True
+        self.__default_stretch = default_stretch
+        self.__do_default_stretch()
         self.adjust()
 
         BandImageAdjuster.__LOG.debug("type: {0}", self.__type)
         BandImageAdjuster.__LOG.debug("min: {0}, max: {1}", self.__band.min(), self.__band.max())
 
+    def __do_default_stretch(self):
+        if self.__default_stretch is not None:
+            if isinstance(self.__default_stretch, PercentageStretch):
+                percentage = self.__default_stretch.percentage()
+                self.adjust_by_percentage(percentage, 100 - percentage)
+            elif isinstance(self.__default_stretch, ValueStretch):
+                self.set_low_cutoff(self.__default_stretch.low())
+                self.set_high_cutoff(self.__default_stretch.high())
+            else:
+                BandImageAdjuster.__LOG.warning(
+                    "Received unknown type {0} of image stretch, defaulting to 2%".
+                        format(type(self.__default_stretch)))
+                self.adjust_by_percentage(2, 98)
+        else:
+            self.adjust_by_percentage(2, 98)
+
+        self.__updated = True
+
     def adjusted_data(self) -> np.ndarray:
         return self.__image_data
+
+    def reset_stretch(self, band:Band=None):
+        """band is ignore here if passed"""
+        self.__do_default_stretch()
 
     def adjust_by_percentage(self, lower:Union[int, float], upper:Union[int, float], band:Band=None):
         """band is ignore here if passed"""
@@ -128,7 +156,7 @@ class BandImageAdjuster(ImageAdjuster):
             ignore_mask = None
             if self.__data_ignore_vale is not None:
                 ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
-                BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
+                # BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
 
             # TODO <= or <, looks like <=, with < I get strange dots on the image
             low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
@@ -150,7 +178,7 @@ class BandImageAdjuster(ImageAdjuster):
 
             # Set ignored values to black
             if ignore_mask is not None and np.ma.is_mask(ignore_mask):
-                BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
+                # BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
                 masked_band[ignore_mask] = 0
 
             self.__image_data = masked_band.astype("uint8")
@@ -177,10 +205,11 @@ class BandImageAdjuster(ImageAdjuster):
 class RGBImageAdjuster(ImageAdjuster):
 
     def __init__(self, red: np.ndarray, green: np.ndarray, blue: np.ndarray,
-            data_ignore_value:Union[int, float]=None):
-        self.__adjusted_bands = {Band.RED: BandImageAdjuster(red, data_ignore_value),
-                                 Band.GREEN: BandImageAdjuster(green, data_ignore_value),
-                                 Band.BLUE: BandImageAdjuster(blue, data_ignore_value)}
+            red_default_stretch:LinearImageStretch=None, green_default_stretch:LinearImageStretch=None,
+            blue_default_stretch:LinearImageStretch=None, data_ignore_value:Union[int, float]=None):
+        self.__adjusted_bands = {Band.RED: BandImageAdjuster(red, data_ignore_value, red_default_stretch),
+                                 Band.GREEN: BandImageAdjuster(green, data_ignore_value, green_default_stretch),
+                                 Band.BLUE: BandImageAdjuster(blue, data_ignore_value, blue_default_stretch)}
 
     def _adjusted_data(self, band:Band) -> np.ndarray:
         return self.__adjusted_bands[band].adjusted_data()
@@ -204,6 +233,16 @@ class RGBImageAdjuster(ImageAdjuster):
             self.__adjusted_bands[Band.BLUE].adjust_by_value(lower, upper)
         else:
             self.__adjusted_bands[band].adjust_by_value(lower, upper)
+
+    def reset_stretch(self, band:Band=None):
+        """If band is None reset stretch for all three bands, otherwise
+        reset only the given band"""
+        if band is None:
+            self.__adjusted_bands[Band.RED].reset_stretch()
+            self.__adjusted_bands[Band.GREEN].reset_stretch()
+            self.__adjusted_bands[Band.BLUE].reset_stretch()
+        else:
+            self.__adjusted_bands[band].reset_stretch()
 
     def adjust(self):
         """Adjust all three bands, if the band is not out of date
@@ -262,7 +301,8 @@ class RGBImageAdjuster(ImageAdjuster):
 class BandDescriptor:
 
     def __init__(self, file_name:str, band_name:str, wavelength_label:str,
-            bad_band:bool=False, data_ignore_value:Union[int, float]=None):
+            bad_band:bool=False, data_ignore_value:Union[int, float]=None,
+            default_stretch:LinearImageStretch=None):
         self.__file_name = file_name
         self.__band_name = band_name
         self.__wavelength_label = wavelength_label
@@ -271,6 +311,7 @@ class BandDescriptor:
             self.__band_name + " - " + self.__wavelength_label
         self.__is_bad = bad_band
         self.__data_ignore_value = data_ignore_value
+        self.__default_stretch = default_stretch
 
     def file_name(self) -> str:
         return self.__file_name
@@ -292,6 +333,9 @@ class BandDescriptor:
 
     def data_ignore_value(self) -> Union[int, float]:
         return self.__data_ignore_value
+
+    def default_stretch(self) -> LinearImageStretch:
+        return self.__default_stretch
 
 
 # TODO need to think through how much data we're holding here, clean up, views?
@@ -318,8 +362,9 @@ class Image(ImageAdjuster):
 
 class GreyscaleImage(Image, BandImageAdjuster):
     """An 8-bit 8-bit grayscale image"""
+
     def __init__(self, band:np.ndarray, band_descriptor:BandDescriptor):
-        super().__init__(band, band_descriptor.data_ignore_value())
+        super().__init__(band, band_descriptor.data_ignore_value(), band_descriptor.default_stretch())
         self.__band = band
         self.__band_descriptor = band_descriptor
 
@@ -368,7 +413,8 @@ class RGBImage(Image, RGBImageAdjuster):
         if not ((red.size == green.size == blue.size) and
                 (red.shape == green.shape == blue.shape)):
             raise ValueError("All bands must have the same size and shape")
-        super().__init__(red, green, blue)
+        super().__init__(red, green, blue, red_descriptor.default_stretch(), green_descriptor.default_stretch(),
+            blue_descriptor.default_stretch(), red_descriptor.data_ignore_value())
 
         self.__descriptors = {Band.RED: red_descriptor,
                          Band.GREEN: green_descriptor,

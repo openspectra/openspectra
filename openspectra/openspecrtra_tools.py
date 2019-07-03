@@ -10,7 +10,7 @@ import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
-from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, LinearImageStretch
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
@@ -196,8 +196,20 @@ class HistogramPlotData(PlotData):
             lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
         super().__init__(x_data, y_data, x_label, y_label, title, color, line_style, legend)
         self.bins = bins
-        self.lower_limit = lower_limit
-        self.upper_limit = upper_limit
+        self.__lower_limit = lower_limit
+        self.__upper_limit = upper_limit
+
+    def lower_limit(self) -> Union[int, float]:
+        return self.__lower_limit
+
+    def set_lower_limit(self, limit:Union[int, float]):
+        self.__lower_limit = limit
+
+    def upper_limit(self) -> Union[int, float]:
+        return self.__upper_limit
+
+    def set_upper_limit(self, limit:Union[int, float]):
+        self.__upper_limit = limit
 
 
 class Bands:
@@ -313,6 +325,17 @@ class OpenSpectraBandTools:
         # TODO something better than having to know to do band[0, :] here?? Use Bands??
         return LinePlotData(wavelengths, band[0, :], "Wavelength", "Brightness",
             "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+
+    def band_descriptor(self, band_index:int) -> BandDescriptor:
+        header = self.__file.header()
+        band_label = header.band_label(band_index)
+        bad_bands = header.bad_band_list()
+        is_bad_band = bad_bands is not None and bad_bands[band_index]
+        data_ignore_val = header.data_ignore_value()
+        default_stretch: LinearImageStretch = header.default_stretch()
+
+        return BandDescriptor(self.__file.name(), band_label[0], band_label[1],
+            is_bad_band, data_ignore_val, default_stretch)
 
     def __clean_data(self, bands:np.ndarray) -> np.ndarray:
         result = bands
@@ -484,12 +507,12 @@ class OpenSpectraHistogramTools:
 
         raw_data = self.__image.raw_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(raw_data)
-        plot_data.x_label = "X-FixMe"
+        plot_data.x_label = "Brightness"
         plot_data.y_label = "Y-FixMe"
         plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
-        plot_data.lower_limit = self.__image.low_cutoff(band)
-        plot_data.upper_limit = self.__image.high_cutoff(band)
+        plot_data.set_lower_limit(self.__image.low_cutoff(band))
+        plot_data.set_upper_limit(self.__image.high_cutoff(band))
         return plot_data
 
     def adjusted_histogram(self, band:Band=None) -> HistogramPlotData:
@@ -499,7 +522,7 @@ class OpenSpectraHistogramTools:
 
         image_data = self.__image.image_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(image_data)
-        plot_data.x_label = "X-FixMe"
+        plot_data.x_label = "Pixel Values"
         plot_data.y_label = "Y-FixMe"
         plot_data.title = "Adjusted " + self.__image.label(band)
         plot_data.color = "b"

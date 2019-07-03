@@ -7,8 +7,8 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QMo
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
     QHBoxLayout, QPushButton, QMessageBox, QCheckBox
 
+from openspectra.openspecrtra_tools import OpenSpectraBandTools
 from openspectra.image import BandDescriptor
-from openspectra.openspectra_file import OpenSpectraFile
 from openspectra.utils import Logger, LogHelper
 
 
@@ -154,26 +154,19 @@ class BandList(QWidget):
         # Show widget
         self.show()
 
-    def add_file(self, open_spectra_file:OpenSpectraFile) -> QTreeWidgetItem:
-        header = open_spectra_file.header()
-        band_labels = header.band_labels()
-        bad_bands = header.bad_band_list()
-        data_ignore_val = header.data_ignore_value()
-
-        file_name = open_spectra_file.name()
+    def add_file(self, file_name:str, band_count:int, band_tools:OpenSpectraBandTools):
         parent_item = QTreeWidgetItem()
         parent_item.setText(0, file_name)
-        for index, band_label in enumerate(band_labels):
+
+        for band_index in range(band_count):
             child = QTreeWidgetItem(parent_item)
-            child.setText(0, str(band_label[0] + " - " + band_label[1]))
-            if bad_bands is not None and bad_bands[index]:
+            band_descriptor = band_tools.band_descriptor(band_index)
+            if band_descriptor.is_bad_band():
                 child.setToolTip(0, "Bad band")
                 child.setForeground(0, Qt.red)
-                child.setData(0, Qt.UserRole, BandDescriptor(file_name,
-                    band_label[0], band_label[1], True, data_ignore_val))
-            else:
-                child.setData(0, Qt.UserRole, BandDescriptor(file_name,
-                    band_label[0], band_label[1], False, data_ignore_val))
+
+            child.setText(0, band_descriptor.band_label())
+            child.setData(0, Qt.UserRole, band_descriptor)
 
         self.__treeWidget.addTopLevelItem(parent_item)
         parent_item.setExpanded(True)
