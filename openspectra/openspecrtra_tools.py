@@ -507,7 +507,7 @@ class OpenSpectraHistogramTools:
 
         raw_data = self.__image.raw_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(raw_data)
-        plot_data.x_label = "X-FixMe"
+        plot_data.x_label = "Brightness"
         plot_data.y_label = "Y-FixMe"
         plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
@@ -522,7 +522,7 @@ class OpenSpectraHistogramTools:
 
         image_data = self.__image.image_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(image_data)
-        plot_data.x_label = "X-FixMe"
+        plot_data.x_label = "Pixel Values"
         plot_data.y_label = "Y-FixMe"
         plot_data.title = "Adjusted " + self.__image.label(band)
         plot_data.color = "b"
