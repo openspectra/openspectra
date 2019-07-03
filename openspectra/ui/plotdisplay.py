@@ -84,7 +84,7 @@ class LimitChangeEvent(QObject):
 class PlotChangeEvent(QObject):
 
     def __init__(self, lower_limit:Union[int, float], upper_limit:Union[int, float],
-            lower_min: Union[int, float], upper_max: Union[int, float]):
+            lower_min:Union[int, float], upper_max:Union[int, float]):
         super().__init__()
         self.__lower_limit = lower_limit
         self.__upper_limit = upper_limit
@@ -308,8 +308,15 @@ class AdjustableHistogramPlotCanvas(HistogramPlotCanvas):
         self.figure.lines.extend([self.__lower_limit, self.__upper_limit])
         self.mpl_connect("pick_event", self.__on_pick)
 
-        plot_event = PlotChangeEvent(data.lower_limit(), data.upper_limit(),
-            self.__min_adjust_x, self.__max_adjust_x)
+        min_valid = self.__min_adjust_x
+        if data.lower_limit() < min_valid:
+            min_valid = data.lower_limit()
+
+        max_valid = self.__max_adjust_x
+        if data.upper_limit() > max_valid:
+            max_valid = data.upper_limit()
+
+        plot_event = PlotChangeEvent(data.lower_limit(), data.upper_limit(), min_valid, max_valid)
         self.plot_changed.emit(plot_event)
 
     def update_limit_line(self, lower_limit:Union[int, float]=None, upper_limit:Union[int, float]=None):
@@ -417,7 +424,6 @@ class AdjustableHistogramControl(QWidget):
         self.__lower_edit.setMaximumWidth(80)
         self.__lower_edit.deselect()
         self.__lower_edit.setAlignment(Qt.AlignLeft)
-        self.__lower_validator = None
         self.__lower_edit.value_changed.connect(self.__handle_lower_limit_edit)
         control_layout.addWidget(self.__lower_edit)
         control_layout.addSpacing(10)
@@ -430,7 +436,6 @@ class AdjustableHistogramControl(QWidget):
         self.__upper_edit.setMaximumWidth(80)
         self.__upper_edit.deselect()
         self.__upper_edit.setAlignment(Qt.AlignLeft)
-        self.__upper_validator = None
         self.__upper_edit.value_changed.connect(self.__handle_upper_limit_edit)
         control_layout.addWidget(self.__upper_edit)
         control_layout.addSpacing(10)
