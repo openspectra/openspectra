@@ -19,7 +19,7 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow
 from openspectra.utils import LogHelper, Logger
 
 
@@ -68,6 +68,10 @@ class WindowManager(QObject):
 
     def parent_window(self) -> QMainWindow:
         return self.__parent_window
+
+    def open_save(self):
+        save_window = SubCubeWindow(self.parent_window())
+        save_window.show()
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):

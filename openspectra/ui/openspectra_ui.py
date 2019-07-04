@@ -44,6 +44,11 @@ class OpenSpectraUI(QMainWindow):
         open_action.setStatusTip('Open file')
         open_action.triggered.connect(self.__open)
 
+        save_action = QAction(QIcon("save.png"), "&Save", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.setStatusTip("Save sub-cube")
+        save_action.triggered.connect(self.__save)
+
         plot_action = QAction(QIcon('plot.png'), '&Plot', self)
         plot_action.setShortcut('Ctrl+P')
         plot_action.setStatusTip('Plot stuff')
@@ -60,6 +65,7 @@ class OpenSpectraUI(QMainWindow):
 
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(open_action)
+        file_menu.addAction(save_action)
         # fileMenu.addAction(exitAct)
 
         plot_menu = menu_bar.addMenu("&Plot")
@@ -95,6 +101,9 @@ class OpenSpectraUI(QMainWindow):
                 self.__file_not_found_prompt(file_name)
         else:
             OpenSpectraUI.__LOG.debug("File open canceled...")
+
+    def __save(self):
+        self.__window_manager.open_save()
 
     def __plot(self):
         pass

@@ -2,9 +2,10 @@
 #  Last modified 3/17/19 2:30 PM
 #  Copyright (c) 2019. All rights reserved.
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint
-from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont
+from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
-    QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction
+    QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QFormLayout, QLabel, QHBoxLayout, QPushButton, \
+    QLineEdit, QComboBox
 
 from openspectra.openspecrtra_tools import RegionOfInterest
 from openspectra.utils import Logger, LogHelper
@@ -252,3 +253,103 @@ class RegionOfInterestDisplayWindow(QMainWindow):
         self.closed.emit()
         # accepting hides the window
         event.accept()
+
+
+class RangeSelector(QWidget):
+
+    def __init__(self, start:int, end:int, parent=None):
+        super().__init__(parent)
+
+        central_layout = QHBoxLayout()
+
+        from_layout = QVBoxLayout()
+        from_layout.addWidget(QLabel("From:"))
+
+        from_select = QComboBox(self)
+        # TODO get ignored for certain styles, like Mac, when not editable
+        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        from_select.setMaxVisibleItems(20)
+
+        index = 0
+        for item in range(start, end):
+            from_select.insertItem(index, str(item))
+            index += 1
+
+        from_layout.addWidget(from_select)
+        central_layout.addLayout(from_layout)
+
+        to_layout = QVBoxLayout()
+        to_layout.addWidget(QLabel("To:"))
+
+        to_select = QComboBox(self)
+        # TODO get ignored for certain styles, like Mac, when not editable
+        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        to_select.setMaxVisibleItems(20)
+
+        index = 0
+        for item in range(start + 1, end + 1):
+            to_select.insertItem(index, str(item))
+            index += 1
+
+        to_layout.addWidget(to_select)
+        central_layout.addLayout(to_layout)
+
+        self.setLayout(central_layout)
+
+
+class SubCubeWindow(QMainWindow):
+
+    __LOG:Logger = LogHelper.logger("SubCubeWindow")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Save Sub-Cube")
+
+        central_widget = QWidget(self)
+        central_layout = QVBoxLayout()
+
+        # form = QWidget(self)
+        form_layout = QFormLayout()
+
+        # TODO add the file we're saving
+        form_layout.addRow("Original File:", QLabel("File Name", self))
+
+        file_type = QComboBox(self)
+        file_type.insertItems(0, ["BIL - Band Interleaved by Line",
+                                  "BQS - Band Sequential",
+                                  "BIP - Band Interleaved by Pixel"])
+        form_layout.addRow("Output File Type:", file_type)
+
+        form_layout.addRow("Sample Range:", RangeSelector(1, 450, self))
+        form_layout.addRow("Line Range:", RangeSelector(1, 1000, self))
+
+        band_select = QLineEdit(self)
+        band_select.setMinimumWidth(250)
+        form_layout.addRow("Bands:", band_select)
+        central_layout.addLayout(form_layout)
+
+        button_layout = QHBoxLayout()
+        cancel_button = QPushButton("Cancel", self)
+        # self.__reset_button.setFixedWidth(60)
+        # self.__reset_button.clicked.connect(self.__handle_reset_clicked)
+        button_layout.addWidget(cancel_button)
+
+        save_button = QPushButton("Save", self)
+        # self.__reset_button.setFixedWidth(60)
+        # self.__reset_button.clicked.connect(self.__handle_reset_clicked)
+        button_layout.addWidget(save_button)
+        central_layout.addLayout(button_layout)
+
+        central_widget.setLayout(central_layout)
+        self.setCentralWidget(central_widget)
+
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(300)
+        # TODO is this what we really want???
+        self.setMaximumWidth(500)
+        self.setMaximumHeight(300)
+
+        # TODO position center of screen??
+
+    def resizeEvent(self, event:QResizeEvent):
+        SubCubeWindow.__LOG.debug("new size: {0}".format(event.size()))
