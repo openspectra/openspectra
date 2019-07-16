@@ -521,7 +521,7 @@ class BIPShape(Shape):
 class FileModel:
 
     def __init__(self, path:Path, header:OpenSpectraHeader):
-        self._file: np.ndarray = None
+        self._file:np.ndarray = None
         self._path = path
         self._offset:int = header.header_offset()
 
@@ -550,6 +550,28 @@ class FileModel:
                 format(shape.size(), self._file.size))
 
 
+class CubeSliceArgs():
+
+    def __init__(self, lines:Tuple[int, int], samples:Tuple[int, int], bands:Union[Tuple[int, int], List[int]]):
+        self.__line_arg = slice(lines[0], lines[1])
+        self.__sample_arg = slice(samples[0], samples[1])
+
+        self.__band_arg = None
+        if isinstance(bands, Tuple):
+            self.__band_arg = slice(bands[0], bands[1])
+        elif isinstance(bands, List):
+            self.__band_arg = bands
+
+    def line_arg(self) -> slice:
+        return self.__line_arg
+
+    def sample_arg(self) -> slice:
+        return self.__sample_arg
+
+    def band_arg(self) -> Union[slice, List[int]]:
+        return self.__band_arg
+
+
 class FileTypeDelegate:
 
     def __init__(self, shape:Shape, file_model:FileModel):
@@ -557,17 +579,33 @@ class FileTypeDelegate:
         self._file_model = file_model
 
     def image(self, band:Union[int, tuple]) -> np.ndarray:
-        """It's important to understand that selecting images with an int index
+        """bands are zero based here with a max value of len(band) - 1
+        It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         pass
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
-        """It's important to understand that selecting images with an int index
+        """lines and samples are zero based here with a max value of len(line) - 1
+        It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
+        pass
+
+    def cube(self, lines:Tuple[int, int], samples:Tuple[int, int],
+            bands:Union[Tuple[int, int], List[int]]) -> np.ndarray:
+        """Return a sub-cube or the whole data cube depending on the argument values.
+        lines, samples and bands are zero based here and work like the standard python and numpy slicing.
+        lines and samples should be a tuple of integers where line[0] is the start line and
+        line[1] is the end line and the last line included with be line[1] - 1.
+        The same applies for samples. lines and samples are then selected contiguously
+        from the start value to the end value - 1.  Bands can be a tuple of 2 integers indicating the start and end
+        bands as with lines and samples or a list of contiguous or non-contiguous integers to be selected.
+        Using the start and end option for selecting contiguous bands will be more efficient since it will result
+        in a numpy view being returned while the other two options result in a copy being returned.  See
+        https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html for more information"""
         pass
 
     def shape(self) -> Shape:
@@ -589,16 +627,21 @@ class BILFileDelegate(FileTypeDelegate):
     def image(self, band:Union[int, tuple]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[:, band, :]
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[line, :, sample]
+
+    def cube(self, lines:Tuple[int, int], samples:Tuple[int, int],
+            bands:Union[Tuple[int, int], List[int]]) -> np.ndarray:
+        args = CubeSliceArgs(lines, samples, bands)
+        return self._file_model.file()[args.line_arg(), args.band_arg(), args.sample_arg()]
 
 
 class BQSFileDelegate(FileTypeDelegate):
@@ -616,16 +659,21 @@ class BQSFileDelegate(FileTypeDelegate):
     def image(self, band:Union[int, tuple]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[band, :, :]
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[:, line, sample]
+
+    def cube(self, lines:Tuple[int, int], samples:Tuple[int, int],
+            bands:Union[Tuple[int, int], List[int]]) -> np.ndarray:
+        args = CubeSliceArgs(lines, samples, bands)
+        return self._file_model.file()[args.band_arg(), args.line_arg(), args.sample_arg()]
 
 
 class BIPFileDelegate(FileTypeDelegate):
@@ -643,16 +691,21 @@ class BIPFileDelegate(FileTypeDelegate):
     def image(self, band:Union[int, tuple]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[:, :, band]
 
     def bands(self, line:Union[int, tuple, np.ndarray], sample:Union[int, tuple, np.ndarray]) -> np.ndarray:
         """It's important to understand that selecting images with an int index
         returns a view of the underlying data while using a tuple or ndarray returns a copy.
-        See https://docs.scipy.org/doc/numpy-1.16.0/user/basics.indexing.html
+        See https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
         for more details"""
         return self._file_model.file()[line, sample, :]
+
+    def cube(self, lines:Tuple[int, int], samples:Tuple[int, int],
+            bands:Union[Tuple[int, int], List[int]]) -> np.ndarray:
+        args = CubeSliceArgs(lines, samples, bands)
+        return self._file_model.file()[args.line_arg(), args.sample_arg(), args.band_arg()]
 
 
 class MemoryModel(FileModel):
@@ -690,11 +743,6 @@ class OpenSpectraFile:
 
     def __init__(self, header:OpenSpectraHeader, file_delegate:FileTypeDelegate,
             memory_model:FileModel):
-        # self.__path = Path(file_name)
-        # self.header.load()
-        # TODO later we'll pass these in from a factory function?
-        # self.__memory_model = MemoryModel(self.header)
-
         self.__header = header
         self.__memory_model = memory_model
         self.__file_delegate = file_delegate
@@ -741,6 +789,10 @@ class OpenSpectraFile:
         if len(bands.shape) == 1:
             bands = bands.reshape(1, bands.size)
         return bands
+
+    def cube(self, lines:Tuple[int, int], samples:Tuple[int, int],
+            bands:Union[Tuple[int, int], List[int]]) -> np.ndarray:
+        return self.__file_delegate.cube(lines, samples, bands)
 
     def name(self) -> str:
         return self.__memory_model.name()
