@@ -1,10 +1,16 @@
-## OpenSpectraDev 
+## OpenSpectra 
 
-...is a development project for OpenSpectra
+An open source tool for viewing hyperspectral image data.
 
-You'll need Python 3.7 installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.
+## Warning!!
+At this time this application is still under development.  It's been made available here for pre-release preview to help facilate the development of a workshop built around it and other tools.  We hope to have version 1.0 ready in the next couple months.  In the meantime please be aware the code may change signifigantly and you may run into issues we haven't had a chance to address yet.  Test coverage and documentation is very sparse.  Thank you for your patients and we hope you enjoy.
 
-If you're using a virtual environment set up your project directory first then see the [Clone](https://gitlab.com/openspectradev/openspectradev/wikis/git/Git-Tips#clone) section of git tips for how to get the code added to your project.  If not using a virtual environment you can jump straight to the clone instructions.
+### Setup notes
+At this point the application is available only via this Github repo.  We plan to create an installer in the future for easier setup.
+
+You'll need Python 3.7 installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.  Setup may be easier if you don't mind installing the dependencies globablly.
+
+If you're using a virtual environment set up your project directory first then see the [Clone](https://github.com/openspectra/openspectra/wiki/Git-Tips#clone) section of git tips for how to get the code added to your project.  If not using a virtual environment you can jump straight to the clone instructions.
 
 Once you have the code in your project you'll see a "requirements.txt" file in the top level project directory.  From that directory using the command line execute the follow "pip" command to download the project's dependencies.
 
@@ -20,7 +26,7 @@ python main.py
 
 from the top level project directory.
 
-On Mac if your are using a virtual environment you'll need to update and use the provided "run.sh" script.  It contains a workaround for a permissing problem when running from within a virtual environment.  You'll need to update the value of PYTHON_ROOT in run.sh to point to your installation of Python 3.7.  And in this case to start the application use,
+On Mac if your are using a virtual environment you'll need to update and use the provided "run.sh" script.  It contains a workaround for a permission issue when running from within a virtual environment.  You'll need to update the value of PYTHON_ROOT in run.sh to point to your installation of Python 3.7.  And in this case to start the application use,
 
 ````
 ./run.sh main.py
@@ -48,5 +54,5 @@ python -m unittest discover -t . -s test/unit_tests -p "*_test.py"
 ````
 
 ### Wiki links
-*  [Home page](https://gitlab.com/openspectradev/openspectradev/wikis/OpenSpectraDev-Wiki-Home)
-*  [Git Tips](https://gitlab.com/openspectradev/openspectradev/wikis/git/Git-Tips)
+*  [Home page](https://github.com/openspectra/openspectra/wiki)
+*  [Git Tips](https://github.com/openspectra/openspectra/wiki/Git-Tips)
