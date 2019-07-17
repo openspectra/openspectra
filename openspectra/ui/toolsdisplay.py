@@ -1,8 +1,8 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 3/17/19 2:30 PM.
 #  Last modified 3/17/19 2:30 PM
 #  Copyright (c) 2019. All rights reserved.
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint
-from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint, pyqtSlot, QRegExp
+from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent, QRegExpValidator
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QFormLayout, QLabel, QHBoxLayout, QPushButton, \
     QLineEdit, QComboBox
@@ -175,6 +175,7 @@ class RegionOfInterestControl(QWidget):
         self.setMinimumWidth(length + self.__margins * 2 +
                              QApplication.style().pixelMetric(QStyle.PM_DefaultFrameWidth) * 2)
 
+    @pyqtSlot(int, int)
     def __handle_cell_clicked(self, row:int, column:int):
         position = self.mapToGlobal(QPoint(self.__table.columnViewportPosition(column), self.__table.rowViewportPosition(row)))
         RegionOfInterestControl.__LOG.debug("Cell clicked row: {0}, column: {1}, y pos: {2}",
@@ -184,6 +185,7 @@ class RegionOfInterestControl(QWidget):
             RegionOfInterestControl.__LOG.debug("Found region: {0}", self.__regions[row].display_name())
             self.__menu.popup(position)
 
+    @pyqtSlot(int, int)
     def __handle_cell_changed(self, row:int, column:int):
         RegionOfInterestControl.__LOG.debug("Cell changed row: {0}, column: {1}", row, column)
         if column == 1:
@@ -194,23 +196,27 @@ class RegionOfInterestControl(QWidget):
             self.region_name_changed.emit(RegionNameChangeEvent(region))
             self.__adjust_width()
 
+    @pyqtSlot()
     def __handle_region_toggle(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Toogle region: {0}", region.display_name())
         self.region_toggled.emit(RegionToggleEvent(region))
         self.__selected_row = None
 
+    @pyqtSlot()
     def __handle_region_save(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Save region: {0}", region.display_name())
         self.region_saved.emit(RegionSaveEvent(region))
         self.__selected_row = None
 
+    @pyqtSlot()
     def __handle_region_close(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Close region: {0}", region.display_name())
         self.region_closed.emit(RegionCloseEvent(region, self.__selected_row))
 
+    @pyqtSlot()
     def __handle_band_stats(self):
         region = self.__regions[self.__selected_row]
         RegionOfInterestControl.__LOG.debug("Band stats region: {0}", region.display_name())
@@ -257,6 +263,8 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
 class RangeSelector(QWidget):
 
+    __LOG:Logger = LogHelper.logger("RangeSelector")
+
     def __init__(self, start:int, end:int, parent=None):
         super().__init__(parent)
 
@@ -265,36 +273,52 @@ class RangeSelector(QWidget):
         from_layout = QVBoxLayout()
         from_layout.addWidget(QLabel("From:"))
 
-        from_select = QComboBox(self)
+        self.__from_select = QComboBox(self)
         # TODO get ignored for certain styles, like Mac, when not editable
         # TODO possibly allow editable but make it jump to item instead of adding to list?
-        from_select.setMaxVisibleItems(20)
+        self.__from_select.setMaxVisibleItems(20)
+        self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
 
-        index = 0
-        for item in range(start, end):
-            from_select.insertItem(index, str(item))
-            index += 1
-
-        from_layout.addWidget(from_select)
+        from_layout.addWidget(self.__from_select)
         central_layout.addLayout(from_layout)
 
         to_layout = QVBoxLayout()
         to_layout.addWidget(QLabel("To:"))
 
-        to_select = QComboBox(self)
+        self.__to_select = QComboBox(self)
         # TODO get ignored for certain styles, like Mac, when not editable
         # TODO possibly allow editable but make it jump to item instead of adding to list?
-        to_select.setMaxVisibleItems(20)
+        self.__to_select.setMaxVisibleItems(20)
+        self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
 
         index = 0
-        for item in range(start + 1, end + 1):
-            to_select.insertItem(index, str(item))
+        for item in range(start, end):
+            self.__from_select.insertItem(index, str(item))
+            self.__to_select.insertItem(index, str(item + 1))
             index += 1
 
-        to_layout.addWidget(to_select)
+        to_layout.addWidget(self.__to_select)
         central_layout.addLayout(to_layout)
 
         self.setLayout(central_layout)
+
+    @pyqtSlot(int)
+    def __handle_from_changed(self, index:int):
+        # RangeSelector.__LOG.debug("from index changed to: {0}".format(index))
+        if self.__to_select.currentIndex() < index:
+            self.__to_select.setCurrentIndex(index)
+
+    @pyqtSlot(int)
+    def __handle_to_changed(self, index:int):
+        # RangeSelector.__LOG.debug("to index changed to: {0}".format(index))
+        if self.__from_select.currentIndex() > index:
+            self.__from_select.setCurrentIndex(index)
+
+    def from_value(self) -> int:
+        return int(self.__from_select.currentText())
+
+    def to_value(self) -> int:
+        return int(self.__to_select.currentText())
 
 
 class SubCubeWindow(QMainWindow):
@@ -308,35 +332,38 @@ class SubCubeWindow(QMainWindow):
         central_widget = QWidget(self)
         central_layout = QVBoxLayout()
 
-        # form = QWidget(self)
         form_layout = QFormLayout()
 
         # TODO add the file we're saving
         form_layout.addRow("Original File:", QLabel("File Name", self))
 
-        file_type = QComboBox(self)
-        file_type.insertItems(0, ["BIL - Band Interleaved by Line",
+        self.__file_type = QComboBox(self)
+        self.__file_type.insertItems(0, ["BIL - Band Interleaved by Line",
                                   "BQS - Band Sequential",
                                   "BIP - Band Interleaved by Pixel"])
-        form_layout.addRow("Output File Type:", file_type)
+        form_layout.addRow("Output File Type:", self.__file_type)
 
-        form_layout.addRow("Sample Range:", RangeSelector(1, 450, self))
-        form_layout.addRow("Line Range:", RangeSelector(1, 1000, self))
+        self.__sample_range = RangeSelector(1, 450, self)
+        form_layout.addRow("Sample Range:", self.__sample_range)
 
-        band_select = QLineEdit(self)
-        band_select.setMinimumWidth(250)
-        form_layout.addRow("Bands:", band_select)
+        self.__line_range = RangeSelector(1, 1000, self)
+        form_layout.addRow("Line Range:", self.__line_range)
+
+        self.__band_select = QLineEdit(self)
+        self.__band_select.setMinimumWidth(250)
+        self.__band_validator = QRegExpValidator(QRegExp("[0-9]+((-|,)([0-9]+))*"))
+        self.__band_select.setValidator(self.__band_validator)
+
+        form_layout.addRow("Bands:", self.__band_select)
         central_layout.addLayout(form_layout)
 
         button_layout = QHBoxLayout()
         cancel_button = QPushButton("Cancel", self)
-        # self.__reset_button.setFixedWidth(60)
-        # self.__reset_button.clicked.connect(self.__handle_reset_clicked)
+        cancel_button.clicked.connect(self.__handle_cancel)
         button_layout.addWidget(cancel_button)
 
         save_button = QPushButton("Save", self)
-        # self.__reset_button.setFixedWidth(60)
-        # self.__reset_button.clicked.connect(self.__handle_reset_clicked)
+        save_button.clicked.connect(self.__handle_save)
         button_layout.addWidget(save_button)
         central_layout.addLayout(button_layout)
 
@@ -350,6 +377,20 @@ class SubCubeWindow(QMainWindow):
         self.setMaximumHeight(300)
 
         # TODO position center of screen??
+
+    def __handle_save(self):
+        file_type = self.__file_type.currentText()
+        lines = self.__line_range.from_value(), self.__line_range.to_value()
+        samples = self.__sample_range.from_value(), self.__sample_range.to_value()
+        bands = self.__band_select.text()
+
+        SubCubeWindow.__LOG.debug(
+            "save button clicked, type: {0}, lines: {1}, samples: {2}, bands: {3}, bands valid: {4}".
+                format(file_type, lines, samples, bands, self.__band_validator.validate(bands, 0)))
+
+    def __handle_cancel(self):
+        SubCubeWindow.__LOG.debug("cancel button clicked")
+        self.close()
 
     def resizeEvent(self, event:QResizeEvent):
         SubCubeWindow.__LOG.debug("new size: {0}".format(event.size()))
