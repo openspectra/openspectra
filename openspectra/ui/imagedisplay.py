@@ -274,8 +274,6 @@ class ReversePixelCalculator():
         if y >= self.__y_max:
             raise ValueError("y value must be less than {0}".format(self.__y_max))
 
-        start_time = time.perf_counter_ns()
-
         x_mapped = floor(x/self.__x_zoom)
         y_mapped = floor(y/self.__y_zoom)
 
@@ -306,8 +304,6 @@ class ReversePixelCalculator():
             for y_point in range(y_min, y_max + 1):
                 point_list.append(QPoint(x_point, y_point))
 
-        end_time = time.perf_counter_ns()
-        ReversePixelCalculator.__LOG.debug("Pixel point list created in {0} ms".format((end_time - start_time) / 10**6))
         ReversePixelCalculator.__LOG.debug("x_map: {0}, y_map: {1}, x_min: {2}, x_max: {3}, y_min: {4}, y_max: {5}".
             format(x_mapped, y_mapped, x_min, x_max, y_min, y_max))
 
