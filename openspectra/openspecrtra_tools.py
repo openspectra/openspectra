@@ -277,23 +277,23 @@ class BandStaticsPlotData():
 
     def mean(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.mean(),
-            "Wavelength", "Brightness", self.__title, "b", legend="mean")
+            "Wavelength", "Magnitude", self.__title, "b", legend="mean")
 
     def min(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.min(),
-            "Wavelength", "Brightness", self.__title, "r", legend="min")
+            "Wavelength", "Magnitude", self.__title, "r", legend="min")
 
     def max(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.max(),
-            "Wavelength", "Brightness", self.__title, "r", legend="max")
+            "Wavelength", "Magnitude", self.__title, "r", legend="max")
 
     def plus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.plus_one_std(),
-            "Wavelength", "Brightness", self.__title, "g", legend="std+")
+            "Wavelength", "Magnitude", self.__title, "g", legend="std+")
 
     def minus_one_std(self) -> LinePlotData:
         return LinePlotData(self.__wavelengths, self.__band_stats.minus_one_std(),
-            "Wavelength", "Brightness", self.__title, "g", legend="std-")
+            "Wavelength", "Magnitude", self.__title, "g", legend="std-")
 
 
 # TODO needs much attention!!!
@@ -323,8 +323,8 @@ class OpenSpectraBandTools:
         # OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
 
         # TODO something better than having to know to do band[0, :] here?? Use Bands??
-        return LinePlotData(wavelengths, band[0, :], "Wavelength", "Brightness",
-            "Spectra S-{0}, L-{1}".format(sample + 1, line + 1))
+        return LinePlotData(wavelengths, band[0, :], "Wavelength", "Magnitude",
+            "Spectrum S-{0}, L-{1}".format(sample + 1, line + 1))
 
     def band_descriptor(self, band_index:int) -> BandDescriptor:
         header = self.__file.header()
@@ -507,8 +507,8 @@ class OpenSpectraHistogramTools:
 
         raw_data = self.__image.raw_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(raw_data)
-        plot_data.x_label = "Brightness"
-        plot_data.y_label = "Y-FixMe"
+        plot_data.x_label = "Magnitude"
+        plot_data.y_label = "Count  "
         plot_data.title = "Raw " + self.__image.label(band)
         plot_data.color = "r"
         plot_data.set_lower_limit(self.__image.low_cutoff(band))
@@ -523,7 +523,7 @@ class OpenSpectraHistogramTools:
         image_data = self.__image.image_data(band)
         plot_data = OpenSpectraHistogramTools.__get_hist_data(image_data)
         plot_data.x_label = "Pixel Values"
-        plot_data.y_label = "Y-FixMe"
+        plot_data.y_label = "Count"
         plot_data.title = "Adjusted " + self.__image.label(band)
         plot_data.color = "b"
         return plot_data
