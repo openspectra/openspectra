@@ -548,12 +548,12 @@ class RegionOfInterestManager(QObject):
                 default_save_name = os.path.join(self.__save_dir_default, region.display_name())
                 RegionOfInterestManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
                 dialog_result = QFileDialog.getSaveFileName(caption="Save region", directory=default_save_name,
-                    filter="ROI files (*.roi)", options=QFileDialog.DontUseNativeDialog)
+                    filter="CSV files (*.csv)", options=QFileDialog.DontUseNativeDialog)
                 file_name:str = dialog_result[0]
 
                 if file_name:
-                    if not file_name.endswith(".roi"):
-                        file_name = file_name + ".roi"
+                    if not file_name.endswith(".csv"):
+                        file_name = file_name + ".csv"
 
                     # save the last save location, default there next time
                     split_path = os.path.split(file_name)

@@ -66,7 +66,7 @@ class RegionOfInterestControl(QWidget):
     region_toggled = pyqtSignal(RegionToggleEvent)
     region_name_changed = pyqtSignal(RegionNameChangeEvent)
     region_saved = pyqtSignal(RegionSaveEvent)
-    region_closed =  pyqtSignal(RegionCloseEvent)
+    region_closed = pyqtSignal(RegionCloseEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)

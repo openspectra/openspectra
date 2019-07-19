@@ -434,16 +434,16 @@ class OpenSpectraRegionTools:
             band_name = descriptor.band_name()
             wavelength = descriptor.wavelength_label()
 
-        out.write("name:{0}\n".format(self.__region.display_name()))
-        out.write("file name:{0}\n".format(file_name))
-        out.write("band name:{0}\n".format(band_name))
-        out.write("wavelength:{0}\n".format(wavelength))
-        out.write("image width:{0}\n".format(self.__region.image_width()))
-        out.write("image height:{0}\n".format(self.__region.image_height()))
+        out.write("# name:{0}\n".format(self.__region.display_name()))
+        out.write("# file name:{0}\n".format(file_name))
+        out.write("# band name:{0}\n".format(band_name))
+        out.write("# wavelength:{0}\n".format(wavelength))
+        out.write("# image width:{0}\n".format(self.__region.image_width()))
+        out.write("# image height:{0}\n".format(self.__region.image_height()))
         if self.__projection is not None:
-            out.write("projection:{0}\n".format(self.__projection))
-        out.write("description:{0}\n".format(self.__region.description()))
-        out.write("data:\n")
+            out.write("# projection:{0}\n".format(self.__projection))
+        out.write("# description:{0}\n".format(self.__region.description()))
+        out.write("# data:\n")
 
         # TODO output formatting?  Specific number of decimal places to print?
         out.write(self.__get_data_header(bands))
