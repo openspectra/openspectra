@@ -127,6 +127,8 @@ class PlotCanvas(FigureCanvas):
         self._axes.set_xlabel(data.x_label)
         self._axes.set_ylabel(data.y_label)
         self._axes.set_title(data.title)
+        self._axes.relim()
+        self._axes.autoscale(True)
         self.draw()
 
     def set_plot_title(self, title:str):
