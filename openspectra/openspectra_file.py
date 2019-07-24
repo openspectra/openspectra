@@ -6,7 +6,7 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 import re
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Dict
 import numpy as np
 
 from openspectra.utils import LogHelper, Logger
@@ -113,7 +113,7 @@ class OpenSpectraHeader:
 
     BIL_INTERLEAVE:str = "bil"
     BSQ_INTERLEAVE:str = "bsq"
-    BIP_INTERLEAVE: str = "bip"
+    BIP_INTERLEAVE:str = "bip"
 
     class MapInfo:
         """"A simple class for holding map info from a header file"""
@@ -212,8 +212,9 @@ class OpenSpectraHeader:
 
     def __init__(self, file_name):
         self.__path = Path(file_name)
-        self.__props = dict()
+        self.__props:Dict[str, str] = dict()
 
+        self.__interleave:str = None
         self.__samples:int = 0
         self.__lines:int = 0
         self.__band_count:int = 0
@@ -307,7 +308,7 @@ class OpenSpectraHeader:
         return self.__props.get(OpenSpectraHeader.__WAVELENGTH_UNITS)
 
     def interleave(self) -> str:
-        return self.__props.get(OpenSpectraHeader.__INTERLEAVE)
+        return self.__interleave
 
     def header_offset(self) -> int:
         return self.__header_offset
@@ -352,6 +353,17 @@ class OpenSpectraHeader:
         self.__props[key] = list_value
 
     def __validate(self):
+        interleave:str = self.__props.get(OpenSpectraHeader.__INTERLEAVE).lower()
+        if interleave == OpenSpectraHeader.BIP_INTERLEAVE:
+            self.__interleave = OpenSpectraHeader.BIP_INTERLEAVE
+        elif interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
+            self.__interleave = OpenSpectraHeader.BSQ_INTERLEAVE
+        elif interleave == OpenSpectraHeader.BIL_INTERLEAVE:
+            self.__interleave = OpenSpectraHeader.BIL_INTERLEAVE
+        else:
+            raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {0}".
+                format(self.__props.get(OpenSpectraHeader.__INTERLEAVE)))
+
         self.__samples = int(self.__props[OpenSpectraHeader.__SAMPLES])
         self.__lines = int(self.__props[OpenSpectraHeader.__LINES])
         self.__band_count = int(self.__props[OpenSpectraHeader.__BANDS])
@@ -617,7 +629,7 @@ class BILFileDelegate(FileTypeDelegate):
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
-        if header.interleave() != "bil":
+        if header.interleave() != OpenSpectraHeader.BIL_INTERLEAVE:
             raise OpenSpectraFileError("Expected a file with interleave type 'bil' got {0}".
                 format(header.interleave()))
 
@@ -649,7 +661,7 @@ class BQSFileDelegate(FileTypeDelegate):
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
-        if header.interleave() != "bsq":
+        if header.interleave() != OpenSpectraHeader.BSQ_INTERLEAVE:
             raise OpenSpectraFileError("Expected a file with interleave type 'bsq' got {0}".
                 format(header.interleave()))
 
@@ -681,7 +693,7 @@ class BIPFileDelegate(FileTypeDelegate):
 
     def __init__(self, header:OpenSpectraHeader, file_model:FileModel):
         # inspect header info to make sure it's what we expect
-        if header.interleave() != "bip":
+        if header.interleave() != OpenSpectraHeader.BIP_INTERLEAVE:
             raise OpenSpectraFileError("Expected a file with interleave type 'bip' got {0}".
                 format(header.interleave()))
 

@@ -2,6 +2,7 @@
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
 import sys
+from typing import List
 
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex, Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
@@ -14,38 +15,36 @@ from openspectra.utils import Logger, LogHelper
 
 class RGBSelectedBands(QObject):
 
-    def __init__(self, red: QModelIndex, green: QModelIndex, blue: QModelIndex):
+    def __init__(self, parent_file:QTreeWidgetItem, red:QTreeWidgetItem, green:QTreeWidgetItem, blue:QTreeWidgetItem):
         super().__init__()
-        if not (red.parent().row() == green.parent().row() == blue.parent().row()):
-            raise ValueError("Bands are not all from the same file")
+        if not(red.parent() == green.parent() == blue.parent() == parent_file):
+            ValueError("All bands must have parent_file as their parent")
 
+        self.__parent_file = parent_file
         self.__red = red
         self.__green = green
         self.__blue = blue
 
     def file_name(self) -> str:
-        return self.__red.parent().data()
-
-    def parent_index(self) -> int:
-        return self.__red.parent().row()
+        return self.__parent_file.text(0)
 
     def red_index(self) -> int:
-        return self.__red.row()
+        return self.__parent_file.indexOfChild(self.__red)
 
     def green_index(self) -> int:
-        return self.__green.row()
+        return self.__parent_file.indexOfChild(self.__green)
 
     def blue_index(self) -> int:
-        return self.__blue.row()
+        return self.__parent_file.indexOfChild(self.__blue)
 
     def red_descriptor(self) -> BandDescriptor:
-        return self.__red.data(Qt.UserRole)
+        return self.__red.data(0, Qt.UserRole)
 
     def green_descriptor(self) -> BandDescriptor:
-        return self.__green.data(Qt.UserRole)
+        return self.__green.data(0, Qt.UserRole)
 
     def blue_descriptor(self) -> BandDescriptor:
-        return self.__blue.data(Qt.UserRole)
+        return self.__blue.data(0, Qt.UserRole)
 
 
 class TypeSelector(QWidget):
@@ -107,7 +106,7 @@ class TypeSelector(QWidget):
 
 class BandList(QWidget):
 
-    __LOG:Logger = LogHelper.logger("RegionOfInterestManager")
+    __LOG:Logger = LogHelper.logger("BandList")
 
     bandSelected = pyqtSignal(QTreeWidgetItem)
     rgbSelected = pyqtSignal(RGBSelectedBands)
@@ -184,7 +183,7 @@ class BandList(QWidget):
 
     @pyqtSlot(QTreeWidgetItem)
     def __on_double_click(self, item:QTreeWidgetItem):
-        if self.__type_selector.is_greyscale_selected():
+        if self.__type_selector.is_greyscale_selected() and item.parent() is not None:
             self.__open_item(item)
 
     @pyqtSlot(QTreeWidgetItem)
@@ -202,23 +201,28 @@ class BandList(QWidget):
 
     def __handle_open_clicked(self):
         if self.__type_selector.is_rgb_selected():
-            indexes = self.__treeWidget.selectionModel().selectedIndexes()
-            if len(indexes) == 3:
-                try:
-                    result:int = QMessageBox.Yes
-                    for index in range(3):
-                        descriptor:BandDescriptor = indexes[index].data(Qt.UserRole)
-                        if self.__show_bad_bands_prompt and descriptor.is_bad_band():
-                            result = self.__bad_band_prompt(descriptor)
-                            if result == QMessageBox.Cancel:
-                                break
+            items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
+            if len(items) == 3:
 
-                    if result == QMessageBox.Yes:
-                        selected = RGBSelectedBands(indexes[0], indexes[1], indexes[2])
-                        self.rgbSelected.emit(selected)
-                # TODO why is this here??
-                except:
-                    BandList.__LOG.error("Error: {0}".format(sys.exc_info()[0]))
+                if items[0].parent() is None or items[1].parent() is None or items[2].parent() is None:
+                    self.__show_error("Only bands should be selected, not files")
+                    return
+
+                if not (items[0].parent() == items[1].parent() == items[2].parent()):
+                    self.__show_error("All bands must be from the same file")
+                    return
+
+                result:int = QMessageBox.Yes
+                for index in range(3):
+                    descriptor:BandDescriptor = items[index].data(0, Qt.UserRole)
+                    if self.__show_bad_bands_prompt and descriptor.is_bad_band():
+                        result = self.__bad_band_prompt(descriptor)
+                        if result == QMessageBox.Cancel:
+                            break
+
+                if result == QMessageBox.Yes:
+                    selected = RGBSelectedBands(items[0].parent(), items[0], items[1], items[2])
+                    self.rgbSelected.emit(selected)
 
         if self.__type_selector.is_greyscale_selected():
             item:QTreeWidgetItem = self.__treeWidget.selectedItems()[0]
@@ -235,6 +239,8 @@ class BandList(QWidget):
 
             if result == QMessageBox.Yes:
                 self.bandSelected.emit(item)
+        else:
+            self.__show_error("A band must be selected not a file.")
 
     def __bad_band_prompt(self, descriptor:BandDescriptor) -> int:
         dialog = QMessageBox(self)
@@ -250,3 +256,10 @@ class BandList(QWidget):
         result = dialog.exec()
         self.__show_bad_bands_prompt = not dialog.checkBox().checkState() == Qt.Checked
         return result
+
+    def __show_error(self, message:str):
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText(message)
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()

@@ -105,6 +105,9 @@ class OpenSpectraUI(QMainWindow):
     def __save(self):
         self.__window_manager.open_save()
 
+    def __save(self):
+        self.__window_manager.open_save_subcube()
+
     def __plot(self):
         pass
 

@@ -1,13 +1,16 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 3/17/19 2:30 PM.
 #  Last modified 3/17/19 2:30 PM
 #  Copyright (c) 2019. All rights reserved.
+from typing import Dict
+
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint, pyqtSlot, QRegExp
 from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent, QRegExpValidator
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
-    QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QFormLayout, QLabel, QHBoxLayout, QPushButton, \
-    QLineEdit, QComboBox
+    QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QHBoxLayout, QLabel, QComboBox, QFormLayout, \
+    QLineEdit, QPushButton
 
 from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.openspectra_file import OpenSpectraHeader
 from openspectra.utils import Logger, LogHelper
 
 
@@ -265,10 +268,12 @@ class RangeSelector(QWidget):
 
     __LOG:Logger = LogHelper.logger("RangeSelector")
 
-    def __init__(self, start:int, end:int, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
+        self.__init_ui__()
 
-        central_layout = QHBoxLayout()
+    def __init_ui__(self):
+        layout = QHBoxLayout()
 
         from_layout = QVBoxLayout()
         from_layout.addWidget(QLabel("From:"))
@@ -280,7 +285,7 @@ class RangeSelector(QWidget):
         self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
 
         from_layout.addWidget(self.__from_select)
-        central_layout.addLayout(from_layout)
+        layout.addLayout(from_layout)
 
         to_layout = QVBoxLayout()
         to_layout.addWidget(QLabel("To:"))
@@ -291,28 +296,26 @@ class RangeSelector(QWidget):
         self.__to_select.setMaxVisibleItems(20)
         self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
 
-        index = 0
-        for item in range(start, end):
-            self.__from_select.insertItem(index, str(item))
-            self.__to_select.insertItem(index, str(item + 1))
-            index += 1
-
         to_layout.addWidget(self.__to_select)
-        central_layout.addLayout(to_layout)
+        layout.addLayout(to_layout)
 
-        self.setLayout(central_layout)
+        self.setLayout(layout)
 
     @pyqtSlot(int)
     def __handle_from_changed(self, index:int):
-        # RangeSelector.__LOG.debug("from index changed to: {0}".format(index))
+        RangeSelector.__LOG.debug("from index changed to: {0}".format(index))
         if self.__to_select.currentIndex() < index:
             self.__to_select.setCurrentIndex(index)
 
     @pyqtSlot(int)
     def __handle_to_changed(self, index:int):
-        # RangeSelector.__LOG.debug("to index changed to: {0}".format(index))
+        RangeSelector.__LOG.debug("to index changed to: {0}".format(index))
         if self.__from_select.currentIndex() > index:
             self.__from_select.setCurrentIndex(index)
+
+    def clear(self):
+        self.__from_select.clear()
+        self.__to_select.clear()
 
     def from_value(self) -> int:
         return int(self.__from_select.currentText())
@@ -320,74 +323,158 @@ class RangeSelector(QWidget):
     def to_value(self) -> int:
         return int(self.__to_select.currentText())
 
+    def set_range(self, start:int, end:int):
+        if end <= start:
+            raise ValueError("end value must be greater than start")
 
-class SubCubeWindow(QMainWindow):
+        self.__from_select.currentIndexChanged.disconnect(self.__handle_from_changed)
+        self.__to_select.currentIndexChanged.disconnect(self.__handle_to_changed)
 
-    __LOG:Logger = LogHelper.logger("SubCubeWindow")
+        index = 0
+        for item in range(start, end):
+            self.__from_select.insertItem(index, str(item))
+            self.__to_select.insertItem(index, str(item + 1))
+            index += 1
 
-    def __init__(self, parent=None):
+        self.__from_select.setCurrentIndex(0)
+        self.__to_select.setCurrentIndex(end - 2)
+
+        self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
+        self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
+
+
+class FileSubCubeParams:
+
+    def __init__(self, name:str, lines:int, samples:int, bands:int, file_format:str):
+        self.__name = name
+        self.__lines = lines
+        self.__samples = samples
+        self.__bands = bands
+        self.__file_format = file_format
+
+    def name(self) -> str:
+        return self.__name
+
+    def lines(self) -> int:
+        return self.__lines
+
+    def samples(self) -> int:
+        return self.__samples
+
+    def bands(self) -> int:
+        return self.__bands
+
+    def file_format(self) -> str:
+        return self.__file_format
+
+
+class SubCubeControl(QWidget):
+
+    __LOG:Logger = LogHelper.logger("SubCubeControl")
+
+    cancel = pyqtSignal()
+
+    def __init__(self, files:Dict[str, FileSubCubeParams], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Save Sub-Cube")
+        self.__files = files
 
-        central_widget = QWidget(self)
-        central_layout = QVBoxLayout()
-
+        layout = QVBoxLayout()
         form_layout = QFormLayout()
 
-        # TODO add the file we're saving
-        form_layout.addRow("Original File:", QLabel("File Name", self))
+        self.__file_list = QComboBox(self)
+        self.__file_list.insertItem(0, "Select origin file...")
+        self.__file_list.insertItems(1, self.__files.keys())
+        self.__file_list.currentIndexChanged.connect(self.__handle_file_select)
+        form_layout.addRow("Original File:", self.__file_list)
 
         self.__file_type = QComboBox(self)
-        self.__file_type.insertItems(0, ["BIL - Band Interleaved by Line",
-                                  "BQS - Band Sequential",
-                                  "BIP - Band Interleaved by Pixel"])
+        self.__format_map = {OpenSpectraHeader.BIL_INTERLEAVE : "BIL - Band Interleaved by Line",
+                             OpenSpectraHeader.BSQ_INTERLEAVE : "BQS - Band Sequential",
+                             OpenSpectraHeader.BIP_INTERLEAVE : "BIP - Band Interleaved by Pixel"}
+        self.__file_type.insertItem(0, "")
+        self.__file_type.insertItems(1, self.__format_map.values())
         form_layout.addRow("Output File Type:", self.__file_type)
 
-        self.__sample_range = RangeSelector(1, 450, self)
+        self.__sample_range = RangeSelector(self)
         form_layout.addRow("Sample Range:", self.__sample_range)
 
-        self.__line_range = RangeSelector(1, 1000, self)
+        self.__line_range = RangeSelector(self)
         form_layout.addRow("Line Range:", self.__line_range)
 
         self.__band_select = QLineEdit(self)
         self.__band_select.setMinimumWidth(250)
         self.__band_validator = QRegExpValidator(QRegExp("[0-9]+((-|,)([0-9]+))*"))
         self.__band_select.setValidator(self.__band_validator)
+        self.__band_select.setToolTip\
+                ("Use '-' for a range, ',' to sepearate ranges and single bands.\nExample: 1-10,12,14,19-21")
+        self.__max_band = 0
 
         form_layout.addRow("Bands:", self.__band_select)
-        central_layout.addLayout(form_layout)
+        layout.addLayout(form_layout)
 
         button_layout = QHBoxLayout()
         cancel_button = QPushButton("Cancel", self)
-        cancel_button.clicked.connect(self.__handle_cancel)
+        cancel_button.clicked.connect(self.cancel)
         button_layout.addWidget(cancel_button)
 
         save_button = QPushButton("Save", self)
         save_button.clicked.connect(self.__handle_save)
         button_layout.addWidget(save_button)
-        central_layout.addLayout(button_layout)
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
 
-        central_widget.setLayout(central_layout)
-        self.setCentralWidget(central_widget)
+    @pyqtSlot(int)
+    def __handle_file_select(self, index:int):
+        if index == 0:
+            self.__line_range.clear()
+            self.__sample_range.clear()
+            self.__max_band = 0
+            self.__band_select.clear()
+            self.__file_type.setCurrentIndex(0)
+        else:
+            selected_file_name = self.__file_list.currentText()
+            params:FileSubCubeParams = self.__files[selected_file_name]
+            self.__line_range.set_range(1, params.lines())
+            self.__sample_range.set_range(1, params.samples())
+            self.__max_band = params.bands()
+            self.__band_select.setText("1-" + str(self.__max_band))
+            self.__file_type.setCurrentText(self.__format_map[params.file_format()])
 
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(300)
-        # TODO is this what we really want???
-        self.setMaximumWidth(500)
-        self.setMaximumHeight(300)
-
-        # TODO position center of screen??
-
+    @pyqtSlot()
     def __handle_save(self):
         file_type = self.__file_type.currentText()
         lines = self.__line_range.from_value(), self.__line_range.to_value()
         samples = self.__sample_range.from_value(), self.__sample_range.to_value()
         bands = self.__band_select.text()
 
-        SubCubeWindow.__LOG.debug(
+        SubCubeControl.__LOG.debug(
             "save button clicked, type: {0}, lines: {1}, samples: {2}, bands: {3}, bands valid: {4}".
                 format(file_type, lines, samples, bands, self.__band_validator.validate(bands, 0)))
 
+        # TODO emit create event
+
+
+class SubCubeWindow(QMainWindow):
+
+    __LOG:Logger = LogHelper.logger("SubCubeWindow")
+
+    def __init__(self, files:Dict[str, FileSubCubeParams], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Save Sub-Cube")
+
+        subcube_control = SubCubeControl(files, self)
+        subcube_control.cancel.connect(self.__handle_cancel)
+        self.setCentralWidget(subcube_control)
+
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(325)
+        # TODO is this what we really want???
+        self.setMaximumWidth(500)
+        self.setMaximumHeight(325)
+
+        # TODO position center of screen??
+
+    @pyqtSlot()
     def __handle_cancel(self):
         SubCubeWindow.__LOG.debug("cancel button clicked")
         self.close()

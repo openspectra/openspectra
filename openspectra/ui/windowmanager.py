@@ -19,7 +19,7 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams
 from openspectra.utils import LogHelper, Logger
 
 
@@ -41,7 +41,7 @@ class WindowManager(QObject):
             self.__available_geometry.height(), self.__available_geometry.width())
 
         self.__parent_window = parent_window
-        self.__file_managers = dict()
+        self.__file_managers:Dict[str, FileManager] = dict()
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
@@ -69,9 +69,21 @@ class WindowManager(QObject):
     def parent_window(self) -> QMainWindow:
         return self.__parent_window
 
-    def open_save(self):
-        save_window = SubCubeWindow(self.parent_window())
-        save_window.show()
+    def open_save_subcube(self):
+        if len(self.__file_managers) > 0:
+            open_files = dict()
+            for file_name, manager in self.__file_managers.items():
+                header:OpenSpectraHeader = manager.header()
+                params = FileSubCubeParams(file_name, header.lines(), header.samples(),
+                    header.band_count(), header.interleave())
+                open_files[file_name] = params
+
+            save_window = SubCubeWindow(open_files, self.parent_window())
+            save_window.setAttribute(Qt.WA_DeleteOnClose, True)
+            save_window.show()
+        else:
+            # TODO show dialog
+            pass
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
