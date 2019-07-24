@@ -185,16 +185,7 @@ class BandList(QWidget):
     @pyqtSlot(QTreeWidgetItem)
     def __on_double_click(self, item:QTreeWidgetItem):
         if self.__type_selector.is_greyscale_selected():
-            parent_item = item.parent()
-            # if it has no parent it's a file, ignore it
-            if parent_item is not None:
-                result:int = QMessageBox.Yes
-                descriptor:BandDescriptor = item.data(0, Qt.UserRole)
-                if self.__show_bad_bands_prompt and descriptor.is_bad_band():
-                    result = self.__bad_band_prompt(descriptor)
-
-                if result == QMessageBox.Yes:
-                    self.bandSelected.emit(item)
+            self.__open_item(item)
 
     @pyqtSlot(QTreeWidgetItem)
     def __on_click(self, item:QTreeWidgetItem):
@@ -228,6 +219,22 @@ class BandList(QWidget):
                 # TODO why is this here??
                 except:
                     BandList.__LOG.error("Error: {0}".format(sys.exc_info()[0]))
+
+        if self.__type_selector.is_greyscale_selected():
+            item:QTreeWidgetItem = self.__treeWidget.selectedItems()[0]
+            self.__open_item(item)
+
+    def __open_item(self, item:QTreeWidgetItem):
+        parent_item = item.parent()
+        # if it has no parent it's a file, ignore it
+        if parent_item is not None:
+            result: int = QMessageBox.Yes
+            descriptor: BandDescriptor = item.data(0, Qt.UserRole)
+            if self.__show_bad_bands_prompt and descriptor.is_bad_band():
+                result = self.__bad_band_prompt(descriptor)
+
+            if result == QMessageBox.Yes:
+                self.bandSelected.emit(item)
 
     def __bad_band_prompt(self, descriptor:BandDescriptor) -> int:
         dialog = QMessageBox(self)
