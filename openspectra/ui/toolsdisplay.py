@@ -1,15 +1,16 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 3/17/19 2:30 PM.
 #  Last modified 3/17/19 2:30 PM
 #  Copyright (c) 2019. All rights reserved.
-from typing import Dict
+from itertools import chain
+from typing import Dict, List, Tuple, Union
 
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint, pyqtSlot, QRegExp
-from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent, QRegExpValidator
+from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent, QRegExpValidator, QValidator
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QHBoxLayout, QLabel, QComboBox, QFormLayout, \
-    QLineEdit, QPushButton
+    QLineEdit, QPushButton, QMessageBox
 
-from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.openspecrtra_tools import RegionOfInterest, CubeParams
 from openspectra.openspectra_file import OpenSpectraHeader
 from openspectra.utils import Logger, LogHelper
 
@@ -345,12 +346,12 @@ class RangeSelector(QWidget):
 
 class FileSubCubeParams:
 
-    def __init__(self, name:str, lines:int, samples:int, bands:int, file_format:str):
+    def __init__(self, name:str, lines:int, samples:int, bands:int, interleave:str):
         self.__name = name
         self.__lines = lines
         self.__samples = samples
         self.__bands = bands
-        self.__file_format = file_format
+        self.__interleave = interleave
 
     def name(self) -> str:
         return self.__name
@@ -365,7 +366,21 @@ class FileSubCubeParams:
         return self.__bands
 
     def file_format(self) -> str:
-        return self.__file_format
+        return self.__interleave
+
+
+class SaveSubCubeEvent(QObject):
+
+    def __init__(self, source_file_name:str, new_cude_params:CubeParams):
+        super().__init__(None)
+        self.__source_file_name = source_file_name
+        self.__new_cude_params = new_cude_params
+
+    def source_file_name(self) -> str:
+        return self.__source_file_name
+
+    def cube_params(self) -> CubeParams:
+        return self.__new_cude_params
 
 
 class SubCubeControl(QWidget):
@@ -373,6 +388,7 @@ class SubCubeControl(QWidget):
     __LOG:Logger = LogHelper.logger("SubCubeControl")
 
     cancel = pyqtSignal()
+    save = pyqtSignal(SaveSubCubeEvent)
 
     def __init__(self, files:Dict[str, FileSubCubeParams], parent=None):
         super().__init__(parent)
@@ -393,7 +409,7 @@ class SubCubeControl(QWidget):
                              OpenSpectraHeader.BIP_INTERLEAVE : "BIP - Band Interleaved by Pixel"}
         self.__file_type.insertItem(0, "")
         self.__file_type.insertItems(1, self.__format_map.values())
-        form_layout.addRow("Output File Type:", self.__file_type)
+        form_layout.addRow("Output File Interleave:", self.__file_type)
 
         self.__sample_range = RangeSelector(self)
         form_layout.addRow("Sample Range:", self.__sample_range)
@@ -403,10 +419,10 @@ class SubCubeControl(QWidget):
 
         self.__band_select = QLineEdit(self)
         self.__band_select.setMinimumWidth(250)
-        self.__band_validator = QRegExpValidator(QRegExp("[0-9]+((-|,)([0-9]+))*"))
+        self.__band_validator = QRegExpValidator(QRegExp("[1-9][0-9]*((-|,)([1-9][0-9]*))*"))
         self.__band_select.setValidator(self.__band_validator)
         self.__band_select.setToolTip\
-                ("Use '-' for a range, ',' to sepearate ranges and single bands.\nExample: 1-10,12,14,19-21")
+                ("Use '-' for a range, ',' to separate ranges and single bands.\nExample: 1-10,12,14,19-21")
         self.__max_band = 0
 
         form_layout.addRow("Bands:", self.__band_select)
@@ -417,15 +433,17 @@ class SubCubeControl(QWidget):
         cancel_button.clicked.connect(self.cancel)
         button_layout.addWidget(cancel_button)
 
-        save_button = QPushButton("Save", self)
-        save_button.clicked.connect(self.__handle_save)
-        button_layout.addWidget(save_button)
+        self.__save_button = QPushButton("Save", self)
+        self.__save_button.setDisabled(True)
+        self.__save_button.clicked.connect(self.__handle_save)
+        button_layout.addWidget(self.__save_button)
         layout.addLayout(button_layout)
         self.setLayout(layout)
 
     @pyqtSlot(int)
     def __handle_file_select(self, index:int):
         if index == 0:
+            self.__save_button.setDisabled(True)
             self.__line_range.clear()
             self.__sample_range.clear()
             self.__max_band = 0
@@ -439,24 +457,145 @@ class SubCubeControl(QWidget):
             self.__max_band = params.bands()
             self.__band_select.setText("1-" + str(self.__max_band))
             self.__file_type.setCurrentText(self.__format_map[params.file_format()])
+            self.__save_button.setDisabled(False)
 
     @pyqtSlot()
     def __handle_save(self):
+        source_file_name = self.__file_list.currentText()
         file_type = self.__file_type.currentText()
         lines = self.__line_range.from_value(), self.__line_range.to_value()
         samples = self.__sample_range.from_value(), self.__sample_range.to_value()
-        bands = self.__band_select.text()
+        bands_str = self.__band_select.text()
 
         SubCubeControl.__LOG.debug(
-            "save button clicked, type: {0}, lines: {1}, samples: {2}, bands: {3}, bands valid: {4}".
-                format(file_type, lines, samples, bands, self.__band_validator.validate(bands, 0)))
+            "save button clicked, source file: {0}, type: {1}, lines: {2}, samples: {3}, bands: {4}".
+                format(source_file_name, file_type, lines, samples, bands_str))
 
-        # TODO emit create event
+        # validate bands args and build the parameter
+        bands = self.__get_band_list(bands_str)
+        SubCubeControl.__LOG.debug("get_band_list returned: {0}".format(bands))
+        if bands is not None:
+            cube_params = CubeParams(file_type, lines, samples, bands)
+            self.save.emit(SaveSubCubeEvent(source_file_name, cube_params))
+
+    def __get_band_list(self, bands:str) -> Union[Tuple[int, int], List[int]]:
+        bands_str = bands
+        validate_result = self.__band_validator.validate(bands_str, 0)
+        if validate_result[0] == QValidator.Invalid:
+            self.__show_error("Cannot validate band list argument of {0}".format(self.__band_select.text()))
+            return None
+
+        elif validate_result[0] == QValidator.Intermediate:
+            if str.endswith(bands_str, (",", "-")):
+                bands_str = bands_str[:len(bands_str) - 1]
+                SubCubeControl.__LOG.debug("attempted to fix band str and got: {0}".format(bands_str))
+
+                validate_result = self.__band_validator.validate(bands_str, 0)
+                if validate_result[0] != QValidator.Acceptable:
+                    self.__show_error("Cannot validate band list argument of {0}".format(self.__band_select.text()))
+                    return None
+
+        # collect up the ranges and single bands
+        ranges:List[Tuple[int, int]] = list()
+        single_bands:List[int] = list()
+
+        # this should produce a list of ranges, 1-5, and individual values
+        # we also convert indexes from 1 based to 0 here
+        # thanks to the validator we should not be getting 0 or negative values so no need to check
+        # validate against self.__max_bands
+        band_range_strs = str.split(bands_str, ",")
+        for band_range in band_range_strs:
+            range_parts = str.split(band_range, "-")
+            if len(range_parts) == 2:
+                # make sure tuple ranges have the lesser value first
+                # it will make things a bit more simple below
+                r1 = int(range_parts[0]) - 1
+                r2 = int(range_parts[1]) - 1
+
+                if r1 >= self.__max_band:
+                    self.__show_error("Band range value cannot exceed {0}, received range with one end {1}".
+                        format(self.__max_band, range_parts[0]))
+
+                if r2 >= self.__max_band:
+                    self.__show_error("Band range value cannot exceed {0}, received range with one end {1}".
+                        format(self.__max_band, range_parts[1]))
+
+                if r1 < r2:
+                    ranges.append((r1, r2))
+                elif r2 < r1:
+                    ranges.append((r2, r1))
+                else:
+                    # they were equal
+                    single_bands.append(r1)
+
+            elif len(range_parts) == 1:
+                b = int(range_parts[0]) - 1
+                if b >= self.__max_band:
+                    self.__show_error("Band value cannot exceed {0}, received single band index of {1}".
+                        format(self.__max_band, range_parts[0]))
+                single_bands.append(b)
+            else:
+                self.__show_error("Cannot validate band list argument of {0}".format(self.__band_select.text()))
+                return None
+
+        # check to see if we just have a single range or band
+        range_cnt = len(ranges)
+        singles_cnt = len(single_bands)
+        if range_cnt == 1 and singles_cnt == 0:
+            return ranges[0]
+
+        if range_cnt == 0 and singles_cnt == 1:
+            return single_bands
+
+        # otherwise consolidate the lists to a minimum set of ranges and single bands
+        # reducing it to a tuple if possible
+        # first generate a list of containing all the ranges
+        range_list_list = [list(range(r[0], r[1] +1)) for r in ranges]
+        # SubCubeControl.__LOG.debug("range_list_list: {0}".format(range_list_list))
+
+        band_list = list(chain.from_iterable(range_list_list))
+        # SubCubeControl.__LOG.debug("band_list: {0}".format(band_list))
+
+        band_list.extend(single_bands)
+        # SubCubeControl.__LOG.debug("full band_list: {0}".format(band_list))
+
+        # now we have all the bands specified by both ranges and single bands
+        # so now create a set from the list to eliminate duplicates
+        band_set = set(band_list)
+        sorted_band_list = sorted(band_set)
+        # SubCubeControl.__LOG.debug("sorted band_set: {0}".format(sorted_band_list))
+
+        # now see if it's contiguous and can be returned as a tuple
+        is_contiguous = True
+        last_index = -1
+        for band_index in sorted_band_list:
+            if last_index == -1:
+                last_index = band_index
+            elif band_index != last_index + 1:
+                is_contiguous = False
+                break
+            else:
+                last_index = band_index
+
+        if is_contiguous:
+            # then return the bounds as a tuple
+            return sorted_band_list[0], sorted_band_list[len(sorted_band_list) - 1]
+        else:
+            return sorted_band_list
+
+    def __show_error(self, message:str):
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText(message)
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()
 
 
 class SubCubeWindow(QMainWindow):
 
     __LOG:Logger = LogHelper.logger("SubCubeWindow")
+
+    save = pyqtSignal(SaveSubCubeEvent)
 
     def __init__(self, files:Dict[str, FileSubCubeParams], parent=None):
         super().__init__(parent)
@@ -464,6 +603,7 @@ class SubCubeWindow(QMainWindow):
 
         subcube_control = SubCubeControl(files, self)
         subcube_control.cancel.connect(self.__handle_cancel)
+        subcube_control.save.connect(self.save)
         self.setCentralWidget(subcube_control)
 
         self.setMinimumWidth(500)

@@ -15,6 +15,8 @@ from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logge
 
 
 class RegionOfInterest:
+    """A region of interest is an area on an image of a specific size.
+    Note: all indexes are expected to be zero based."""
 
     def __init__(self, area:np.ndarray, x_zoom_factor:float, y_zoom_factor:float,
             image_height:int, image_width:int, descriptor:Union[BandDescriptor, Dict[Band, BandDescriptor]],
@@ -298,7 +300,8 @@ class BandStaticsPlotData():
 
 # TODO needs much attention!!!
 class OpenSpectraBandTools:
-    """A class for working on OpenSpectra files"""
+    """A class for working on OpenSpectra files.
+    Note: all indexes are expected to be zero based."""
 
     __LOG:Logger = LogHelper.logger("OpenSpectraBandTools")
 
@@ -471,7 +474,8 @@ class OpenSpectraRegionTools:
 
 
 class OpenSpectraImageTools:
-    """A class for creating Images from OpenSpectra files"""
+    """A class for creating Images from OpenSpectra files.
+    Note: all indexes are expected to be zero based."""
 
     def __init__(self, file:OpenSpectraFile):
         self.__file = file
@@ -487,7 +491,8 @@ class OpenSpectraImageTools:
 
 
 class OpenSpectraHistogramTools:
-    """A class for generating histogram data from Images"""
+    """A class for generating histogram data from Images.
+    Note: all indexes are expected to be zero based."""
 
     def __init__(self, image:Image):
         self.__image = image
@@ -541,3 +546,40 @@ class OpenSpectraHistogramTools:
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         else:
             raise TypeError("Data with type {0} is not supported".format(type))
+
+
+class CubeParams:
+    """A class for defining the dimension and interleave of a new data cube
+    Note: all indexes are expected to be zero based."""
+
+    def __init__(self, interleave:str, lines:Tuple[int, int],
+            samples:Tuple[int, int], bands:Union[Tuple[int, int], List[int]]):
+        self.__interleave = interleave
+        self.__lines = lines
+        self.__samples = samples
+        self.__bands = bands
+
+    def interleave(self) -> str:
+        return self.__interleave
+
+    # TODO 0 to lines -1 or Slice rules?
+    def lines(self) -> Tuple[int, int]:
+        return self.__lines
+
+    # TODO 0 to samples -1 or Slice rules?
+    def samples(self) -> Tuple[int, int]:
+        return self.__samples
+
+    # TODO 0 to bands -1 or Slice rules?
+    def bands(self) -> Union[Tuple[int, int], List[int]]:
+        # TODO if we get a list with a single value convert it to a Slice
+        return self.__bands
+
+
+# TODO accept index ranges 0 to len() - 1 and put the smarts to
+# TODO convert to Slice notation here??
+class SubCubeTools:
+
+    def __init__(self, file:OpenSpectraFile, new_cude_params:CubeParams):
+        self.__file = file
+        self.__cube_params = new_cude_params

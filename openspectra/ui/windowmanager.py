@@ -19,7 +19,7 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent
 from openspectra.utils import LogHelper, Logger
 
 
@@ -80,10 +80,16 @@ class WindowManager(QObject):
 
             save_window = SubCubeWindow(open_files, self.parent_window())
             save_window.setAttribute(Qt.WA_DeleteOnClose, True)
+            save_window.save.connect(self.__handle_save_subcube)
             save_window.show()
         else:
             # TODO show dialog
             pass
+
+    @pyqtSlot(SaveSubCubeEvent)
+    def __handle_save_subcube(self, event:SaveSubCubeEvent):
+        WindowManager.__LOG.debug("__handle_save_subcube for source file: {0}, with params: {1}".
+            format(event.source_file_name(), event.cube_params()))
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):

@@ -611,10 +611,12 @@ class FileTypeDelegate:
         """Return a sub-cube or the whole data cube depending on the argument values.
         lines, samples and bands are zero based here and work like the standard python and numpy slicing.
         lines and samples should be a tuple of integers where line[0] is the start line and
-        line[1] is the end line and the last line included with be line[1] - 1.
+        line[1] is the end line and the last line included will be line[1] - 1.  So the valid range
+        for lines is 0 to the line count defined the in the files header.
         The same applies for samples. lines and samples are then selected contiguously
         from the start value to the end value - 1.  Bands can be a tuple of 2 integers indicating the start and end
-        bands as with lines and samples or a list of contiguous or non-contiguous integers to be selected.
+        bands as with lines and samples or a list of contiguous or non-contiguous integers to be selected.  To select
+        a single band with index of i pass a tuple of the form (i, i + 1).
         Using the start and end option for selecting contiguous bands will be more efficient since it will result
         in a numpy view being returned while the other two options result in a copy being returned.  See
         https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html for more information"""
