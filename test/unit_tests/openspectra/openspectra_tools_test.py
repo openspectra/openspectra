@@ -93,15 +93,15 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         region_tools.save_region(text_stream=output, include_bands=True)
 
         lines = output.getvalue().split("\n")
-        self.assertEqual(lines[0], "name:region_name")
-        self.assertEqual(lines[1], "file name:file_name")
-        self.assertEqual(lines[2], "band name:band_label")
-        self.assertEqual(lines[3], "wavelength:wavelength_label")
-        self.assertEqual(lines[4], "image width:400")
-        self.assertEqual(lines[5], "image height:350")
-        self.assertEqual(lines[6], "projection:UTM 4 North WGS-84")
-        self.assertEqual(lines[7], "description:file_name - band_label - wavelength_label")
-        self.assertEqual(lines[8], "data:")
+        self.assertEqual(lines[0], "# name:region_name")
+        self.assertEqual(lines[1], "# file name:file_name")
+        self.assertEqual(lines[2], "# band name:band_label")
+        self.assertEqual(lines[3], "# wavelength:wavelength_label")
+        self.assertEqual(lines[4], "# image width:400")
+        self.assertEqual(lines[5], "# image height:350")
+        self.assertEqual(lines[6], "# projection:UTM 4 North WGS-84")
+        self.assertEqual(lines[7], "# description:file_name - band_label - wavelength_label")
+        self.assertEqual(lines[8], "# data:")
         self.assertEqual(lines[9], "sample,line,x_coordinate,y_coordinate,Band 172-1.990800,Band 173-2.000900,"
                                    "Band 174-2.010900,Band 175-2.020900,Band 176-2.030900,Band 177-2.040900,"
                                    "Band 178-2.050900,Band 179-2.060900,Band 180-2.071000,Band 181-2.081000,"
