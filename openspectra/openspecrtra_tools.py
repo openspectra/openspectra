@@ -94,24 +94,11 @@ class RegionOfInterest:
             self.__index += 1
             return self
 
-    # TODO verify correctness
     def __calculate_coords(self):
         if self.__map_info is not None:
-            x_coords = (self.__x_points - (self.__map_info.x_reference_pixel() - 1)) * self.__map_info.x_pixel_size()
-            y_coords = (self.__y_points - (self.__map_info.y_reference_pixel() - 1)) * self.__map_info.y_pixel_size()
-
-            rotation = self.__map_info.rotation()
-            if rotation is not None:
-                # TODO figure out if rotation specified is clockwise or counterclockwise
-                # This implementation is for counterclockwise rotation
-                self.__x_coords = x_coords * cos(rotation) - y_coords * sin(rotation)
-                self.__y_coords = x_coords * sin(rotation) + y_coords * cos(rotation)
-            else:
-                self.__x_coords = x_coords
-                self.__y_coords = y_coords
-
-            self.__x_coords = self.__x_coords + self.__map_info.x_zero_coordinate()
-            self.__y_coords = self.__map_info.y_zero_coordinate() - self.__y_coords
+            coordinates = self.__map_info.calculate_coordinates(self.__x_points, self.__y_points)
+            self.__x_coords = coordinates[0]
+            self.__y_coords = coordinates[1]
 
     def x_point(self) -> int:
         """get the x point while iterating"""
@@ -579,6 +566,9 @@ class CubeParams:
 # TODO accept index ranges 0 to len() - 1 and put the smarts to
 # TODO convert to Slice notation here??
 class SubCubeTools:
+
+    # TODO when generating the new cube's header we may need to calculate a
+    # TODO new "magic pixel" if the original is not included in the sub cube
 
     def __init__(self, file:OpenSpectraFile, new_cude_params:CubeParams):
         self.__file = file
