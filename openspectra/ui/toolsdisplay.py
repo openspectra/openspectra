@@ -462,9 +462,11 @@ class SubCubeControl(QWidget):
     @pyqtSlot()
     def __handle_save(self):
         source_file_name = self.__file_list.currentText()
-        file_type = self.__file_type.currentText()
-        lines = self.__line_range.from_value(), self.__line_range.to_value()
-        samples = self.__sample_range.from_value(), self.__sample_range.to_value()
+        file_type = self.__file_type.currentText()[0:3].lower()
+
+        # Convert to zero based indexing using slice range rules
+        lines = self.__line_range.from_value() - 1, self.__line_range.to_value()
+        samples = self.__sample_range.from_value() - 1, self.__sample_range.to_value()
         bands_str = self.__band_select.text()
 
         SubCubeControl.__LOG.debug(
@@ -510,13 +512,13 @@ class SubCubeControl(QWidget):
                 # make sure tuple ranges have the lesser value first
                 # it will make things a bit more simple below
                 r1 = int(range_parts[0]) - 1
-                r2 = int(range_parts[1]) - 1
+                r2 = int(range_parts[1])
 
-                if r1 >= self.__max_band:
+                if r1 > self.__max_band:
                     self.__show_error("Band range value cannot exceed {0}, received range with one end {1}".
                         format(self.__max_band, range_parts[0]))
 
-                if r2 >= self.__max_band:
+                if r2 > self.__max_band:
                     self.__show_error("Band range value cannot exceed {0}, received range with one end {1}".
                         format(self.__max_band, range_parts[1]))
 
@@ -529,7 +531,7 @@ class SubCubeControl(QWidget):
                     single_bands.append(r1)
 
             elif len(range_parts) == 1:
-                b = int(range_parts[0]) - 1
+                b = int(range_parts[0])
                 if b >= self.__max_band:
                     self.__show_error("Band value cannot exceed {0}, received single band index of {1}".
                         format(self.__max_band, range_parts[0]))
@@ -550,7 +552,7 @@ class SubCubeControl(QWidget):
         # otherwise consolidate the lists to a minimum set of ranges and single bands
         # reducing it to a tuple if possible
         # first generate a list of containing all the ranges
-        range_list_list = [list(range(r[0], r[1] +1)) for r in ranges]
+        range_list_list = [list(range(r[0], r[1])) for r in ranges]
         # SubCubeControl.__LOG.debug("range_list_list: {0}".format(range_list_list))
 
         band_list = list(chain.from_iterable(range_list_list))

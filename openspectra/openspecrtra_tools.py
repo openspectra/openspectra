@@ -3,14 +3,14 @@
 #  Copyright (c) 2019. All rights reserved.
 
 from io import TextIOBase
-from math import cos, sin
 from typing import Union, List, Tuple, Dict
 
 import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
-from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, LinearImageStretch
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, LinearImageStretch, \
+    MutableOpenSpectraHeader
 from openspectra.utils import OpenSpectraDataTypes, OpenSpectraProperties, Logger, LogHelper
 
 
@@ -544,32 +544,290 @@ class CubeParams:
         self.__interleave = interleave
         self.__lines = lines
         self.__samples = samples
-        self.__bands = bands
+        # if we get a list with a single value convert it to a Slice?
+        if isinstance(bands, list) and len(bands) == 1:
+            self.__bands = (bands[0], bands[0] + 1)
+        else:
+            self.__bands = bands
+
+    def __str__(self):
+        return ", ".join(["interleave: " + self.__interleave,
+                          "lines: {}".format(self.__lines),
+                          "samples: {}".format(self.__samples),
+                          "bands: {}".format(self.__bands)])
 
     def interleave(self) -> str:
         return self.__interleave
 
-    # TODO 0 to lines -1 or Slice rules?
     def lines(self) -> Tuple[int, int]:
+        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        of how these parameters are used"""
         return self.__lines
 
-    # TODO 0 to samples -1 or Slice rules?
     def samples(self) -> Tuple[int, int]:
+        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        of how these parameters are used"""
         return self.__samples
 
-    # TODO 0 to bands -1 or Slice rules?
     def bands(self) -> Union[Tuple[int, int], List[int]]:
-        # TODO if we get a list with a single value convert it to a Slice
+        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        of how these parameters are used"""
         return self.__bands
 
 
-# TODO accept index ranges 0 to len() - 1 and put the smarts to
-# TODO convert to Slice notation here??
 class SubCubeTools:
+    """The range and list index parameters in this class are zero based and
+    follow the standard Python and Numpy slicing rules.  See
+    https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html.  Therefore the lines,
+    samples, and bands (the tuple version) parameters have a valid range of 0 to the total
+    count for each parameter which is the value found in the file's header.  So for example
+    to select all the lines to be included in the sub cube the lines parameter would be
+    (0, OpenSpectraHeader.lines()).  The list form of the bands argument is a list of
+    band indexes to be included in the sub cube and is intended to be used when a
+    non-contiguous set of bands is needed.  Valid values are
+    0 to OpenSpectraHeader.band_count() - 1"""
 
-    # TODO when generating the new cube's header we may need to calculate a
-    # TODO new "magic pixel" if the original is not included in the sub cube
+    __LOG:Logger = LogHelper.logger("SubCubeTools")
 
-    def __init__(self, file:OpenSpectraFile, new_cude_params:CubeParams):
-        self.__file = file
-        self.__cube_params = new_cude_params
+    def __init__(self, source_file:OpenSpectraFile, new_cude_params:CubeParams=None):
+        self.__source_file = source_file
+        self.__source_header:OpenSpectraHeader = self.__source_file.header()
+
+        self.__interleave:str = None
+        self.__lines:Tuple[int, int] = None
+        self.__samples:Tuple[int, int] = None
+        self.__bands:Union[Tuple[int, int], List[int]] = None
+
+        if new_cude_params is not None:
+            self.__interleave = new_cude_params.interleave()
+            self.__lines = new_cude_params.lines()
+            self.__samples = new_cude_params.samples()
+            self.__bands = new_cude_params.bands()
+
+        self.__sub_cube:np.ndarray = None
+        self.__sub_cube_header:MutableOpenSpectraHeader = None
+
+    def __validate(self):
+        """treat a None value as include the full range"""
+        if self.__interleave is None:
+            self.__interleave = self.__source_header.interleave()
+        else:
+            self.__validate_interleave(self.__interleave)
+
+        if self.__lines is None:
+            self.__lines = (0, self.__source_header.lines())
+        else:
+            self.__validate_lines(self.__lines)
+
+        if self.__samples is None:
+            self.__samples = (0, self.__source_header.samples())
+        else:
+            self.__validate_samples(self.__samples)
+
+        if self.__bands is None:
+            self.__bands = (0, self.__source_header.band_count())
+        else:
+            self.__validate_bands(self.__bands)
+
+    @staticmethod
+    def __validate_interleave(interleave:str):
+        if OpenSpectraHeader.BIL_INTERLEAVE != interleave and \
+                OpenSpectraHeader.BIP_INTERLEAVE != interleave and \
+                OpenSpectraHeader.BSQ_INTERLEAVE != interleave:
+            raise ValueError("Interleave must be one of {}, {}, or {}".
+                format(OpenSpectraHeader.BIL_INTERLEAVE, OpenSpectraHeader.BIP_INTERLEAVE,
+                    OpenSpectraHeader.BSQ_INTERLEAVE))
+
+    def __validate_lines(self, lines:Tuple[int, int]):
+        if min(lines) < 0:
+            raise ValueError("Values for lines must be 0 or greater")
+
+        if max(lines) > self.__source_header.lines():
+            raise ValueError("Value for lines must be less than or equal to {}".format(self.__source_header.lines()))
+
+    def __validate_samples(self, samples:Tuple[int, int]):
+        if min(samples) < 0:
+            raise ValueError("Values for samples must be 0 or greater")
+
+        if max(samples) > self.__source_header.samples():
+            raise ValueError("Values for samples must be less than  or equal to {}".format(self.__source_header.samples()))
+
+    def __validate_bands(self, bands:Union[Tuple[int, int], List[int]]):
+        if isinstance(bands, list):
+            len_bands = len(bands)
+            if len(set(bands)) != len_bands:
+                raise ValueError("Duplicate values detected in band list")
+
+            if len_bands > self.__source_header.band_count():
+                raise ValueError("Number of bands in band list cannot exceed {}".format(self.__source_header.band_count()))
+
+            if min(bands) < 0:
+                raise ValueError("Minimum value for bands is 0")
+
+            if max(bands) > self.__source_header.band_count():
+                raise ValueError("Maximum allowed index value for bands is {}".format(self.__source_header.band_count()))
+        else:
+            if min(bands) < 0:
+                raise ValueError("Values for bands must be 0 or greater")
+
+            if max(bands) > self.__source_header.band_count():
+                raise ValueError("Values for bands must be less than  or equal to {}".format(self.__source_header.band_count()))
+
+    def __convert_interleave(self):
+
+        source_interleave = self.__source_header.interleave()
+        if self.__interleave == source_interleave:
+            return
+
+        if source_interleave == OpenSpectraHeader.BIL_INTERLEAVE:
+            # BIL axis order is (lines, bands, samples)
+
+            if self.__interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
+                # BSQ axis order is (bands, lines, samples)
+                self.__sub_cube = self.__sub_cube.tranpose(1, 0, 2)
+
+            elif self.__interleave == OpenSpectraHeader.BIP_INTERLEAVE:
+                # BIP axis order is (line, sample, bands)
+                self.__sub_cube = self.__sub_cube.tranpose(0, 2, 1)
+
+            else:
+                pass
+                # TODO Shouldn't end up here, raise error??
+
+        elif source_interleave == OpenSpectraHeader.BIP_INTERLEAVE:
+            # BIP axis order is (line, sample, bands)
+
+            if self.__interleave == OpenSpectraHeader.BIL_INTERLEAVE:
+                # BIL axis order is (lines, bands, samples)
+                self.__sub_cube = self.__sub_cube.tranpose(0, 2, 1)
+
+            elif self.__interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
+                # BSQ axis order is (bands, lines, samples)
+                self.__sub_cube = self.__sub_cube.tranpose(2, 0, 1)
+
+            else:
+                pass
+                # TODO Shouldn't end up here, raise error??
+
+        elif source_interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
+            # BSQ axis order is (bands, lines, samples)
+
+            if self.__interleave == OpenSpectraHeader.BIL_INTERLEAVE:
+                # BIL axis order is (lines, bands, samples)
+                self.__sub_cube = self.__sub_cube.tranpose(1, 0, 2)
+
+            elif self.__interleave == OpenSpectraHeader.BIP_INTERLEAVE:
+                # BIP axis order is (line, sample, bands)
+                self.__sub_cube = self.__sub_cube.tranpose(1, 2, 0)
+
+            else:
+                pass
+                # TODO Shouldn't end up here, raise error??
+        else:
+            pass
+            # TODO Shouldn't end up here, raise error??
+
+    def __create_header(self):
+        self.__sub_cube_header = MutableOpenSpectraHeader(os_header=self.__source_header)
+        self.__sub_cube_header.set_interleave(self.__interleave)
+        self.__sub_cube_header.set_lines(max(self.__lines) - min(self.__lines))
+        self.__sub_cube_header.set_samples(max(self.__samples) - min(self.__samples))
+
+        if isinstance(self.__bands, list):
+            band_slicer = self.__bands
+        else:
+            band_slicer = slice(self.__bands[0], self.__bands[1])
+
+        # update bands info
+        new_band_names = self.__source_header.band_names()[band_slicer]
+        new_wavelengths = self.__source_header.wavelengths()[band_slicer]
+        new_bad_bands = self.__source_header.bad_band_list()
+        if new_bad_bands is not None:
+            new_bad_bands = new_bad_bands[band_slicer]
+
+        self.__sub_cube_header.set_bands(new_band_names, new_wavelengths, new_bad_bands)
+
+        # TODO description update?
+
+        # check to see if map info needs updating, it the original reference pixel
+        # is not included in the sub cube
+        map_info = self.__sub_cube_header.map_info()
+        if map_info is not None:
+            orig_x_ref = map_info.x_reference_pixel() - 1
+            orig_y_ref = map_info.y_reference_pixel() - 1
+
+            is_updated = False
+            new_x_ref = orig_x_ref
+            if not (min(self.__samples) <= orig_x_ref <= max(self.__samples)):
+                new_x_ref = min(self.__samples)
+                is_updated = True
+
+            new_y_ref = orig_y_ref
+            if not (min(self.__lines) <= orig_y_ref <= max(self.__lines)):
+                new_y_ref = min(self.__lines)
+                is_updated = True
+
+            new_coords = map_info.calculate_coordinates(new_x_ref, new_y_ref)
+            self.__sub_cube_header.set_x_reference(new_x_ref + 1, new_coords[0])
+            self.__sub_cube_header.set_y_reference(new_y_ref + 1, new_coords[1])
+
+    def create_sub_cube(self):
+        # validate params
+        self.__validate()
+
+        SubCubeTools.__LOG.debug("create_sub_cube validation passed...")
+
+        # slice out the sub cube
+        self.__sub_cube = self.__source_file.cube(self.__lines, self.__samples, self.__bands)
+        SubCubeTools.__LOG.debug("create_sub_cube sub cube created: {0}", self.__sub_cube)
+
+        # do the interleave conversion if needed
+        self.__convert_interleave()
+
+        # update header and map info if needed
+        self.__create_header()
+        SubCubeTools.__LOG.debug("create_sub_cube header created: {0}", self.__sub_cube_header.dump())
+
+    # TODO??
+    def save(self, file_name:str):
+        # TODO handle header offset???
+        # TODO data type???
+        if self.__sub_cube  is not None and self.__sub_cube_header is not None:
+            pass
+
+            # TODO write data file
+
+            # TODO write header
+
+    # TODO??
+    def get_file(self) -> OpenSpectraFile:
+        if self.__sub_cube  is not None and self.__sub_cube_header is not None:
+            pass
+
+    def interleave(self) -> str:
+        return self.__interleave
+
+    def set_interleave(self, interleave:str):
+        SubCubeTools.__validate_interleave(interleave)
+        self.__interleave = interleave
+
+    def lines(self) -> Tuple[int, int]:
+        return self.__lines
+
+    def set_lines(self, lines:Tuple[int, int]):
+        self.__validate_lines(lines)
+        self.__lines = lines
+
+    def samples(self) -> Tuple[int, int]:
+        return self.__samples
+
+    def set_samples(self, samples:Tuple[int, int]):
+        self.__validate_samples(samples)
+        self.__samples = samples
+
+    def bands(self) -> Union[Tuple[int, int], List[int]]:
+        return self.__bands
+
+    def set_bands(self, bands:Union[Tuple[int, int], List[int]]):
+        self.__validate_bands(bands)
+        self.__bands = bands

@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
-    RegionOfInterest, OpenSpectraRegionTools
+    RegionOfInterest, OpenSpectraRegionTools, SubCubeTools
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
@@ -88,8 +88,20 @@ class WindowManager(QObject):
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
+        file_name = event.source_file_name()
         WindowManager.__LOG.debug("__handle_save_subcube for source file: {0}, with params: {1}".
-            format(event.source_file_name(), event.cube_params()))
+            format(file_name, event.cube_params()))
+
+        if file_name in self.__file_managers:
+            os_file = self.__file_managers[file_name].file()
+            sub_cube_tools = SubCubeTools(os_file, event.cube_params())
+            sub_cube_tools.create_sub_cube()
+            # TODO now what???
+            # TODO use sub_cube_tools to create, save and optionally open the new sub cube
+            # TODO handle save dialog and open dialogues here?
+        else:
+            # TODO show dialog
+            pass
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
@@ -144,6 +156,9 @@ class FileManager(QObject):
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
+
+    def file(self) -> OpenSpectraFile:
+        return self.__file
 
     def file_name(self) -> str:
         return self.__file.name()
