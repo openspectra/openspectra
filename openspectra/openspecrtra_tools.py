@@ -589,7 +589,10 @@ class SubCubeTools:
 
     __LOG:Logger = LogHelper.logger("SubCubeTools")
 
-    def __init__(self, source_file:OpenSpectraFile, new_cude_params:CubeParams=None):
+    def __init__(self, source_file:OpenSpectraFile, new_cube_params:CubeParams=None):
+        """Expects a source OpenSpectraFile and optionally new parameter for a new sub cube.
+        If new_cube_params is None the source_file full dimensions are initially set"""
+
         self.__source_file = source_file
         self.__source_header:OpenSpectraHeader = self.__source_file.header()
 
@@ -598,11 +601,16 @@ class SubCubeTools:
         self.__samples:Tuple[int, int] = None
         self.__bands:Union[Tuple[int, int], List[int]] = None
 
-        if new_cude_params is not None:
-            self.__interleave = new_cude_params.interleave()
-            self.__lines = new_cude_params.lines()
-            self.__samples = new_cude_params.samples()
-            self.__bands = new_cude_params.bands()
+        if new_cube_params is not None:
+            self.__interleave = new_cube_params.interleave()
+            self.__lines = new_cube_params.lines()
+            self.__samples = new_cube_params.samples()
+            self.__bands = new_cube_params.bands()
+        else:
+            self.__interleave = self.__source_header.interleave()
+            self.__lines = (0, self.__source_header.lines())
+            self.__samples = (0, self.__source_header.samples())
+            self.__bands = (0, self.__source_header.band_count())
 
         self.__sub_cube:np.ndarray = None
         self.__sub_cube_header:MutableOpenSpectraHeader = None
@@ -684,48 +692,52 @@ class SubCubeTools:
 
             if self.__interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
                 # BSQ axis order is (bands, lines, samples)
-                self.__sub_cube = self.__sub_cube.tranpose(1, 0, 2)
+                self.__sub_cube = self.__sub_cube.transpose(1, 0, 2)
 
             elif self.__interleave == OpenSpectraHeader.BIP_INTERLEAVE:
                 # BIP axis order is (line, sample, bands)
-                self.__sub_cube = self.__sub_cube.tranpose(0, 2, 1)
+                self.__sub_cube = self.__sub_cube.transpose(0, 2, 1)
 
             else:
-                pass
-                # TODO Shouldn't end up here, raise error??
+                SubCubeTools.__LOG.error(
+                    "Unexpected interleave value in __convert_interleave().  Value was: {}".
+                        format(self.__interleave))
 
         elif source_interleave == OpenSpectraHeader.BIP_INTERLEAVE:
             # BIP axis order is (line, sample, bands)
 
             if self.__interleave == OpenSpectraHeader.BIL_INTERLEAVE:
                 # BIL axis order is (lines, bands, samples)
-                self.__sub_cube = self.__sub_cube.tranpose(0, 2, 1)
+                self.__sub_cube = self.__sub_cube.transpose(0, 2, 1)
 
             elif self.__interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
                 # BSQ axis order is (bands, lines, samples)
-                self.__sub_cube = self.__sub_cube.tranpose(2, 0, 1)
+                self.__sub_cube = self.__sub_cube.transpose(2, 0, 1)
 
             else:
-                pass
-                # TODO Shouldn't end up here, raise error??
+                SubCubeTools.__LOG.error(
+                    "Unexpected interleave value in __convert_interleave().  Value was: {}".
+                        format(self.__interleave))
 
         elif source_interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
             # BSQ axis order is (bands, lines, samples)
 
             if self.__interleave == OpenSpectraHeader.BIL_INTERLEAVE:
                 # BIL axis order is (lines, bands, samples)
-                self.__sub_cube = self.__sub_cube.tranpose(1, 0, 2)
+                self.__sub_cube = self.__sub_cube.transpose(1, 0, 2)
 
             elif self.__interleave == OpenSpectraHeader.BIP_INTERLEAVE:
                 # BIP axis order is (line, sample, bands)
-                self.__sub_cube = self.__sub_cube.tranpose(1, 2, 0)
+                self.__sub_cube = self.__sub_cube.transpose(1, 2, 0)
 
             else:
-                pass
-                # TODO Shouldn't end up here, raise error??
+                SubCubeTools.__LOG.error(
+                    "Unexpected interleave value in __convert_interleave().  Value was: {}".
+                        format(self.__interleave))
         else:
-            pass
-            # TODO Shouldn't end up here, raise error??
+            SubCubeTools.__LOG.error(
+                "Unexpected interleave value in __convert_interleave().  Value was: {}".
+                    format(source_interleave))
 
     def __create_header(self):
         self.__sub_cube_header = MutableOpenSpectraHeader(os_header=self.__source_header)
@@ -747,7 +759,9 @@ class SubCubeTools:
 
         self.__sub_cube_header.set_bands(new_band_names, new_wavelengths, new_bad_bands)
 
-        # TODO description update?
+        # set header offset to 0, we don't support offsets in the data file
+        # at this time
+        self.__sub_cube_header.set_header_offset(0)
 
         # check to see if map info needs updating, it the original reference pixel
         # is not included in the sub cube
@@ -774,12 +788,13 @@ class SubCubeTools:
     def create_sub_cube(self):
         # validate params
         self.__validate()
-
         SubCubeTools.__LOG.debug("create_sub_cube validation passed...")
 
         # slice out the sub cube
         self.__sub_cube = self.__source_file.cube(self.__lines, self.__samples, self.__bands)
-        SubCubeTools.__LOG.debug("create_sub_cube sub cube created: {0}", self.__sub_cube)
+        self.__sub_cube = self.__sub_cube.astype(self.__source_header.data_type())
+        # SubCubeTools.__LOG.debug("create_sub_cube sub cube created: {0}", self.__sub_cube)
+        SubCubeTools.__LOG.debug("create_sub_cube sub cube created")
 
         # do the interleave conversion if needed
         self.__convert_interleave()
@@ -788,16 +803,20 @@ class SubCubeTools:
         self.__create_header()
         SubCubeTools.__LOG.debug("create_sub_cube header created: {0}", self.__sub_cube_header.dump())
 
-    # TODO??
     def save(self, file_name:str):
-        # TODO handle header offset???
-        # TODO data type???
         if self.__sub_cube  is not None and self.__sub_cube_header is not None:
-            pass
+            # TODO check name?  strip extensions?
 
-            # TODO write data file
+            # write data file
+            flat_iterator = self.__sub_cube.flat
+            with open(file_name, "wb") as out_file:
+                for item in flat_iterator:
+                    out_file.write(item)
 
-            # TODO write header
+                out_file.flush()
+
+            # write header
+            self.__sub_cube_header.save(file_name)
 
     # TODO??
     def get_file(self) -> OpenSpectraFile:

@@ -3,11 +3,12 @@
 #  Copyright (c) 2019. All rights reserved.
 import copy
 import logging
+import re
 from abc import ABC, abstractmethod
 from math import cos, sin
 from pathlib import Path
-import re
-from typing import List, Union, Tuple, Dict
+from typing import List, Union, Tuple, Dict, Callable
+
 import numpy as np
 
 from openspectra.utils import LogHelper, Logger
@@ -50,6 +51,9 @@ class PercentageStretch(LinearImageStretch):
     def __init__(self, percentage:Union[int, float]):
         self.__stretch = percentage
 
+    def __str__(self):
+        return "{0}% linear".format(self.__stretch)
+
     def percentage(self) -> Union[int, float]:
         return self.__stretch
 
@@ -65,6 +69,9 @@ class ValueStretch(LinearImageStretch):
     def __init__(self, low:Union[int, float], high:Union[int, float]):
         self.__low = low
         self.__high = high
+
+    def __str__(self):
+        return "{0} {1} linear".format(self.__low, self.__high)
 
     def percentage(self) -> Union[int, float]:
         raise NotImplementedError("Method not implemented on this sub-class")
@@ -84,7 +91,7 @@ class OpenSpectraHeader:
     _BAND_NAMES = "band names"
     _BANDS = "bands"
     __DATA_TYPE = "data type"
-    __HEADER_OFFSET = "header offset"
+    _HEADER_OFFSET = "header offset"
     _INTERLEAVE = "interleave"
     _LINES = "lines"
     __REFLECTANCE_SCALE_FACTOR = "reflectance scale factor"
@@ -99,18 +106,22 @@ class OpenSpectraHeader:
     __DATA_IGNORE_VALUE = "data ignore value"
     __DEFAULT_STRETCH = "default stretch"
     _BAD_BAND_LIST = "bbl"
+    __COORD_SYSTEM_STR = "coordinate system string"
 
-    __DATA_TYPE_DIC = {'1': np.uint8,
-                       '2': np.int16,
-                       '3': np.int32,
-                       '4': np.float32,
-                       '5': np.float64,
-                       '6': np.complex64,
-                       '9': np.complex128,
-                       '12': np.uint16,
-                       '13': np.uint32,
-                       '14': np.int64,
-                       '15': np.uint64}
+    __READ_AS_STRING = [__DESCRIPTION, __COORD_SYSTEM_STR]
+
+    _DATA_TYPE_DIC:Dict[str, type] = {
+                       "1": np.uint8,
+                       "2": np.int16,
+                       "3": np.int32,
+                       "4": np.float32,
+                       "5": np.float64,
+                       "6": np.complex64,
+                       "9": np.complex128,
+                       "12": np.uint16,
+                       "13": np.uint32,
+                       "14": np.int64,
+                       "15": np.uint64}
 
     BIL_INTERLEAVE:str = "bil"
     BSQ_INTERLEAVE:str = "bsq"
@@ -290,10 +301,20 @@ class OpenSpectraHeader:
         def rotation(self) -> float:
             return self.__rotation
 
-    def __init__(self, file_name:str):
-        self.__path = Path(file_name)
-        self.__props:Dict[str, Union[str, List[str]]] = dict()
+    def __init__(self, file_name:str=None, props:Dict[str, Union[str, List[str]]]=None):
+        if file_name is None and props is None:
+            raise OpenSpectraHeaderError(
+                "Creating a OpenSpectraHeader requires either a file name or dict of properties")
 
+        self.__path:Path = None
+        self.__props:Dict[str, Union[str, List[str]]] = None
+        if file_name is not None:
+            self.__path = Path(file_name)
+            self.__props = dict()
+        else:
+            self.__props = copy.deepcopy(props)
+
+        self.__byte_order:int = -1
         self.__interleave:str = None
         self.__samples:int = 0
         self.__lines:int = 0
@@ -302,26 +323,14 @@ class OpenSpectraHeader:
         self.__band_labels:List[Tuple[str, str]] = None
         self.__header_offset:int = 0
         # TODO use standard float instead?
-        self.__reflectance_scale_factor:np.float64 = np.float64(0.0)
+        self.__reflectance_scale_factor:np.float64 = None
         self.__map_info:OpenSpectraHeader.MapInfo = None
-        self.__description:str = None
         self.__data_ignore_value: Union[int, float] = None
         self.__default_stretch:LinearImageStretch = None
         self.__bad_band_list:List[bool] = None
 
-    def _copy_props(self) -> Dict[str, Union[str, List[str]]]:
-
-        OpenSpectraHeader.__LOG.debug("original props: ")
-        for key, value in self.__props.items():
-            OpenSpectraHeader.__LOG.debug("key: {0}, value: {1}", key, value)
-
-        props_copy = copy.deepcopy(self.__props)
-
-        OpenSpectraHeader.__LOG.debug("props copy: ")
-        for key, value in props_copy.items():
-            OpenSpectraHeader.__LOG.debug("key: {0}, value: {1}", key, value)
-
-        return props_copy
+    def _get_props(self) -> Dict[str, Union[str, List[str]]]:
+        return self.__props
 
     def _get_prop(self, key:str) -> Union[str, List[str]]:
         result = self.__props.get(key)
@@ -329,10 +338,6 @@ class OpenSpectraHeader:
             result = result[:]
 
         return result
-
-    def _set_props(self, props:Dict[str, Union[str, List[str]]]):
-        self.__props = props
-        self.__validate()
 
     def _update_prop(self, key:str, value:Union[int, str, List[str], np.ndarray], validate:bool=True):
         new_value = None
@@ -352,29 +357,34 @@ class OpenSpectraHeader:
         return "Props:\n" + str(self.__props)
 
     def load(self):
-        OpenSpectraHeader.__LOG.debug("File: {0} exists: {1}", self.__path.name, self.__path.exists())
+        if self.__path is not None:
+            if self.__path.exists() and self.__path.is_file():
+                OpenSpectraHeader.__LOG.info("Opening file {0} with mode {1}", self.__path.name, self.__path.stat().st_mode)
 
-        if self.__path.exists() and self.__path.is_file():
-            OpenSpectraHeader.__LOG.info("Opening file {0} with mode {1}", self.__path.name, self.__path.stat().st_mode)
+                with self.__path.open() as headerFile:
+                    for line in headerFile:
+                        line = line.rstrip()
+                        if re.search("=", line) is not None:
+                            line_pair:List[str] = re.split("=", line, 1)
+                            key = line_pair[0].strip()
+                            value = line_pair[1].lstrip()
 
-            with self.__path.open() as headerFile:
-                for line in headerFile:
-                    line = line.rstrip()
-                    if re.search("=", line) is not None:
-                        line_pair:List[str] = re.split("=", line, 1)
-                        key = line_pair[0].strip()
-                        value = line_pair[1].lstrip()
+                            if re.search("{", value):
+                                if key in OpenSpectraHeader.__READ_AS_STRING:
+                                    self.__read_bracket_str(key, value, headerFile)
+                                else:
+                                    self.__read_bracket_list(key, value, headerFile)
+                            else:
+                                self.__props[key] = value
+            else:
+                raise OpenSpectraHeaderError("File {0} not found".format(self.__path.name))
 
-                        if re.search("{", value):
-                            self.__read_bracket(key, value, headerFile)
-                        else:
-                            self.__props[key] = value
+        # else we must have been initialized with a set of props
+        # now verify what we read makes sense and do some conversion to data type we want
+        self.__validate()
 
-            # now verify what we read makes sense and do some conversion to data type we want
-            self.__validate()
-
-        else:
-            raise OpenSpectraHeaderError("File {0} not found".format(self.__path.name))
+    def byte_order(self) -> int:
+        return self.__byte_order
 
     def bad_band_list(self) -> List[bool]:
         """Return the bad band list that can be used to mask a numpy array
@@ -399,18 +409,21 @@ class OpenSpectraHeader:
         """Returns a list of strings of the band names"""
         return self.__props.get(OpenSpectraHeader._BAND_NAMES)
 
+    def coordinate_system_string(self) -> str:
+        return self.__props.get(OpenSpectraHeader.__COORD_SYSTEM_STR)
+
     def data_ignore_value(self) -> Union[int, float]:
         return self.__data_ignore_value
 
-    def data_type(self):
+    def data_type(self) -> np.dtype.type:
         data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
-        return self.__DATA_TYPE_DIC.get(data_type)
+        return self._DATA_TYPE_DIC.get(data_type)
 
     def default_stretch(self) -> LinearImageStretch:
         return self.__default_stretch
 
     def description(self) -> str:
-        return self.__description
+        return self.__props.get(self.__DESCRIPTION)
 
     def samples(self) -> int:
         return self.__samples
@@ -446,7 +459,25 @@ class OpenSpectraHeader:
     def map_info(self) -> MapInfo:
         return self.__map_info
 
-    def __read_bracket(self, key, value, header_file):
+    def __read_bracket_str(self, key, value, header_file):
+        str_val = value.strip("{").strip()
+
+        # check for closing } on same line
+        if re.search("}", str_val):
+            str_val = str_val.strip("}").strip()
+        else:
+            str_val += "\n"
+            for line in header_file:
+                str_val += line.rstrip()
+                if re.search("}", str_val):
+                    str_val = str_val.rstrip("}").rstrip()
+                    break
+                else:
+                    str_val += "\n"
+
+        self.__props[key] = str_val
+
+    def __read_bracket_list(self, key, value, header_file):
         done = False
         line = value.strip("{").strip()
         list_value = list()
@@ -476,6 +507,11 @@ class OpenSpectraHeader:
         self.__props[key] = list_value
 
     def __validate(self):
+        self.__byte_order = int(self.__props.get(OpenSpectraHeader.__BYTE_ORDER))
+        if self.__byte_order != 1 and self.__byte_order != 0:
+            raise OpenSpectraHeaderError("Valid values for byte order in header are '0' or '1'.  Value is: {0}".
+                format(self.__props.get(OpenSpectraHeader.__BYTE_ORDER)))
+
         interleave:str = self.__props.get(OpenSpectraHeader._INTERLEAVE).lower()
         if interleave == OpenSpectraHeader.BIP_INTERLEAVE:
             self.__interleave = OpenSpectraHeader.BIP_INTERLEAVE
@@ -487,9 +523,9 @@ class OpenSpectraHeader:
             raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {0}".
                 format(self.__props.get(OpenSpectraHeader._INTERLEAVE)))
 
-        self.__samples = int(self.__props[OpenSpectraHeader._SAMPLES])
-        self.__lines = int(self.__props[OpenSpectraHeader._LINES])
-        self.__band_count = int(self.__props[OpenSpectraHeader._BANDS])
+        self.__samples = int(self.__props.get(OpenSpectraHeader._SAMPLES))
+        self.__lines = int(self.__props.get(OpenSpectraHeader._LINES))
+        self.__band_count = int(self.__props.get(OpenSpectraHeader._BANDS))
 
         if self.__samples is None or self.__samples <= 0:
             raise OpenSpectraHeaderError("Value for 'samples' in header is not valid: {0}"
@@ -528,7 +564,7 @@ class OpenSpectraHeader:
         self.__wavelengths = np.array(wavelengths_str, np.float64)
         self.__band_labels = list(zip(band_names, wavelengths_str))
 
-        self.__header_offset = int(self.__props[OpenSpectraHeader.__HEADER_OFFSET])
+        self.__header_offset = int(self.__props.get(OpenSpectraHeader._HEADER_OFFSET))
         # TODO missing sometimes??
         if OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR in self.__props:
             self.__reflectance_scale_factor = np.float64(
@@ -540,10 +576,10 @@ class OpenSpectraHeader:
         if map_info_list is not None:
             self.__map_info:OpenSpectraHeader.MapInfo = OpenSpectraHeader.MapInfo(map_info_list)
         else:
-            OpenSpectraHeader.__LOG.info("Optional map info section not found")
+            OpenSpectraHeader.__LOG.debug("Optional map info section not found")
 
         data_type = self.__props.get(OpenSpectraHeader.__DATA_TYPE)
-        if data_type not in OpenSpectraHeader.__DATA_TYPE_DIC:
+        if data_type not in OpenSpectraHeader._DATA_TYPE_DIC:
             raise OpenSpectraHeaderError("Specified 'data type' not recognized, value was: {0}".format(data_type))
 
         interleave = self.__props.get(OpenSpectraHeader._INTERLEAVE)
@@ -551,10 +587,6 @@ class OpenSpectraHeader:
             interleave == OpenSpectraHeader.BIP_INTERLEAVE or
             interleave == OpenSpectraHeader.BSQ_INTERLEAVE):
             raise OpenSpectraHeaderError("Specified 'interleave' not recognized, value was: {0}".format(interleave))
-
-        description = self.__props.get(OpenSpectraHeader.__DESCRIPTION)
-        if len(description) > 0:
-            self.__description = " ".join(description)
 
         data_ignore_value = self.__props.get(OpenSpectraHeader.__DATA_IGNORE_VALUE)
         if data_ignore_value is not None:
@@ -596,9 +628,10 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
 
         if source_file_name is not None:
             super().__init__(source_file_name)
-            super().load()
         else:
-            self._set_props(os_header._copy_props())
+            super().__init__(props=os_header._get_props())
+
+        super().load()
 
     @staticmethod
     def __convert_bool_value(value:bool) -> str:
@@ -609,13 +642,58 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
         else:
             return "1"
 
+    @staticmethod
+    def __format_list(items:List, format_func:Callable) -> str:
+        return ", ".join([format_func(item) for item in items])
+
+    @staticmethod
+    def __convert_data_type(data_type:np.dtype) -> str:
+        for key, val in OpenSpectraHeader._DATA_TYPE_DIC.items():
+            if val == data_type:
+                return  key
+
     def load(self):
-        # prevent load from being called
+        # prevent parent's load from being called
         pass
 
-    def save(self):
-        # TODO implement writing file here??  Need new file name
-        pass
+    def save(self, base_file_name:str):
+        file_name = base_file_name + ".hdr"
+        with open(file_name, "wt") as out_file:
+            out_file.write("OpenSpectra\n")
+            out_file.write("description = {0}{1}{2}\n".format("{", self.description(), "}"))
+            out_file.write("samples = {0}\n".format(self.samples()))
+            out_file.write("lines = {0}\n".format(self.lines()))
+            out_file.write("bands = {0}\n".format(self.band_count()))
+            out_file.write("header offset = {0}\n".format(self.header_offset()))
+            out_file.write("file type = ENVI Standard\n")
+            out_file.write("data type = {0}\n".format(self.__convert_data_type(self.data_type())))
+            out_file.write("interleave = {0}\n".format(self.interleave()))
+            out_file.write("sensor type = {0}\n".format(self.sensor_type()))
+            out_file.write("byte order = {0}\n".format(self.byte_order()))
+            out_file.write("wavelength units = {0}\n".format(self.wavelength_units()))
+
+            if self.reflectance_scale_factor() != 0.0:
+                out_file.write("reflectance scale factor = {0}\n".format(self.reflectance_scale_factor()))
+
+            if self.map_info() is not None:
+                out_file.write("map info = ".format(str(self.map_info())))
+
+            if self.coordinate_system_string() is not None:
+                out_file.write("coordinate system string = {{0}}\n".format(self.coordinate_system_string()))
+
+            if self.data_ignore_value() is not None:
+                out_file.write("data ignore value = {0}\n".format(self.data_ignore_value()))
+
+            if self.default_stretch() is not None:
+                out_file.write("default stretch = {0}\n".format(self.default_stretch()))
+
+            out_file.write("band names = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.band_names(), "{}".format), "}"))
+            out_file.write("wavelength = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.wavelengths(), "{:.06f}".format), "}"))
+
+            if self.bad_band_list() is not None:
+                out_file.write("bbl = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.bad_band_list(), self.__convert_bool_value), "}"))
+
+            out_file.flush()
 
     def set_lines(self, lines:int):
         self._update_prop(self._LINES, lines)
@@ -639,6 +717,9 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
 
     def set_interleave(self, interleave:str):
         self._update_prop(self._INTERLEAVE, interleave)
+
+    def set_header_offset(self, offset:int):
+        self._update_prop(self._HEADER_OFFSET, offset)
 
     def set_x_reference(self, x_pixel:float, x_cooridinate:float):
         map_info = self.map_info()

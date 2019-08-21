@@ -33,11 +33,10 @@ class OpenSpectraHeaderTest(unittest.TestCase):
 
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/sample_header_1.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/sample_header_1hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
+            self.assertEqual(os_header.byte_order(), 0)
             self.assertEqual(os_header.samples(), 400)
             self.assertEqual(os_header.lines(), 350)
             band_count:int = os_header.band_count()
@@ -49,9 +48,10 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(os_header.sensor_type(), "Unknown")
             self.assertEqual(os_header.file_type(), "ENVI Standard")
             self.assertEqual(os_header.description(),
-                "1995 AVIRIS \"Effort\" Corrected ATREM [Thu Apr 25 00:52:03 1996] [Thu Mar  2912:49:46 2012]")
+                "\n  1995 AVIRIS \"Effort\" Corrected ATREM [Thu Apr 25 00:52:03 1996] [Thu Mar\n  2912:49:46 2012]")
             self.assertEqual(os_header.data_ignore_value(), -9999)
-
+            self.assertEqual(os_header.coordinate_system_string(),
+                "PROJCS[\"UTM_Zone_12N\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",500000.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",-111.0],PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]")
             default_stretch:LinearImageStretch = os_header.default_stretch()
             self.assertTrue(isinstance(default_stretch, ValueStretch))
             self.assertEqual(default_stretch.low(), 0.0)
@@ -60,10 +60,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             bbl = os_header.bad_band_list()
             self.assertEqual(len(bbl), band_count)
             self.assertEqual(bbl, expected_bbl)
-
-            # TODO
-            # byte order = 0
-            # coordinate system string = {PROJCS["UTM_Zone_12N",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",-111.0],PARAMETER["Scale_Factor",0.9996],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]}
 
             band_names:list = os_header.band_names()
             self.assertEqual(len(band_names), band_count)
@@ -108,8 +104,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
     def test_file_parse_sample_two(self):
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/sample_header_2.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/sample_header_2.hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
@@ -146,8 +140,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
     def test_file_parse_sample_three(self):
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
@@ -160,7 +152,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
 
     def test_map_info_string_no_rotation(self):
         test_file = "test/unit_tests/resources/sample_header_1.hdr"
-        # test_file = "../resources/sample_header_1.hdr"
         header = OpenSpectraHeader(test_file)
         header.load()
         expected_str = "{UTM, 1.000, 1.000, 50000.000, 4000000.000, 2.0000000000e+001, 2.0000000000e+001, 12, North, WGS-84, units=Meters}"
@@ -168,7 +159,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
 
     def test_map_info_string(self):
         test_file = "test/unit_tests/resources/sample_header_2.hdr"
-        # test_file = "../resources/sample_header_2.hdr"
         header = OpenSpectraHeader(test_file)
         header.load()
         expected_str = "{UTM, 1.000, 1.000, 50000.000, 4000000.000, 2.0000000000e+001, 2.0000000000e+001, 12, North, WGS-84, units=Meters, rotation=30.00000000}"
@@ -179,12 +169,10 @@ class MapInfoTest(unittest.TestCase):
 
     def setUp(self) -> None:
         test_file1 = "test/unit_tests/resources/sample_header_1.hdr"
-        # test_file1 = "../resources/sample_header_1.hdr"
         self.__header1 = OpenSpectraHeader(test_file1)
         self.__header1.load()
 
         test_file2 = "test/unit_tests/resources/sample_header_2.hdr"
-        # test_file2 = "../resources/sample_header_2.hdr"
         self.__header2 = OpenSpectraHeader(test_file2)
         self.__header2.load()
 
@@ -211,7 +199,6 @@ class OpenSpectraFileTest(unittest.TestCase):
 
     def test_os_file_slice(self):
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
 
         # confirm how image retrieval works with single index
@@ -271,7 +258,6 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_bands(self):
         """Verify the bands returned."""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
         os_header = os_file.header()
 
@@ -303,12 +289,10 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_offset_mapped_model(self):
         """Verify the byte offset feature works with the mapped model"""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
         self.assertEqual(os_file_base.header().header_offset(), 0)
 
         test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
-        # test_file = "../resources/cup95_eff_fixed_offset_1k"
         os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
         self.assertEqual(os_file_offset.header().header_offset(), 1024)
 
@@ -323,12 +307,10 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_offset_memory_model(self):
         """Verify the byte offset feature works with the memory model"""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
         self.assertEqual(os_file_base.header().header_offset(), 0)
 
         test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
-        # test_file = "../resources/cup95_eff_fixed_offset_1k"
         os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
         self.assertEqual(os_file_offset.header().header_offset(), 1024)
 
@@ -347,16 +329,20 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
 
     def setUp(self) -> None:
         test_file1 = "test/unit_tests/resources/sample_header_1.hdr"
-        # test_file1 = "../resources/sample_header_1.hdr"
         self.__source_header1 = OpenSpectraHeader(test_file1)
         self.__source_header1.load()
 
         test_file2 = "test/unit_tests/resources/sample_header_2.hdr"
-        # test_file2 = "../resources/sample_header_2.hdr"
         self.__source_header2 = OpenSpectraHeader(test_file2)
         self.__source_header2.load()
 
+        # this one has no map_info
+        test_file3 = "test/unit_tests/resources/cup95_eff_fixed.hdr"
+        self.__source_header3 = OpenSpectraHeader(test_file3)
+        self.__source_header3.load()
+
     def test_deep_copy(self):
+        orig_byte_order = self.__source_header1.byte_order()
         orig_lines = self.__source_header1.lines()
         orig_samples = self.__source_header1.samples()
         orig_interleave = self.__source_header1.interleave()
@@ -367,6 +353,7 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
         orig_map_info = self.__source_header1.map_info()
 
         mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
+        self.assertEqual(orig_byte_order, mutable_header.byte_order())
         self.assertEqual(orig_lines, mutable_header.lines())
         self.assertEqual(orig_samples, mutable_header.samples())
         self.assertEqual(orig_interleave, mutable_header.interleave())
@@ -417,6 +404,11 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
         self.assertListEqual(orig_bad_bands, self.__source_header1.bad_band_list())
 
         self.assertMapInfoEqual(orig_map_info, mutable_header.map_info())
+
+    def test_no_map_info(self):
+        self.assertIsNone(self.__source_header3.map_info())
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header3)
+        self.assertIsNone(mutable_header.map_info())
 
     def test_map_info(self):
         orig_map_info = self.__source_header2.map_info()

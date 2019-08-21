@@ -3,12 +3,15 @@
 #  Copyright (c) 2019. All rights reserved.
 import io
 import itertools
+import os
 import unittest
+from typing import List
 
 import numpy as np
 
 from openspectra.image import BandDescriptor
-from openspectra.openspecrtra_tools import RegionOfInterest, OpenSpectraBandTools, OpenSpectraRegionTools
+from openspectra.openspecrtra_tools import RegionOfInterest, OpenSpectraBandTools, OpenSpectraRegionTools, CubeParams, \
+    SubCubeTools
 from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory
 
 
@@ -80,7 +83,6 @@ class OpenSpectraRegionToolsTest(unittest.TestCase):
         map_info = OpenSpectraHeader.MapInfo(map_info_list)
 
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
         os_header = os_file.header()
         band_tools = OpenSpectraBandTools(os_file)
@@ -154,7 +156,6 @@ class OpenSpectraBandToolsTest(unittest.TestCase):
 
     def setUp(self) -> None:
         test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
-        # test_file = "../resources/cup95_eff_fixed_offset_1k"
         self.__test_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
         self.__band_tools = OpenSpectraBandTools(self.__test_file)
 
@@ -200,3 +201,157 @@ class OpenSpectraBandToolsTest(unittest.TestCase):
             else:
                 self.assertTrue(band_data[0, index] is not np.ma.masked)
                 self.assertEqual(band_data[0, index], raw_bands[0, index])
+
+
+class SubeCubeToolsTest(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.__test_file = "test/unit_tests/resources/cup95_eff_fixed"
+        self.__source_os_file = OpenSpectraFileFactory.create_open_spectra_file(self.__test_file)
+        self.__clean_up_list:List[str] = list()
+
+    def tearDown(self) -> None:
+        for file_name in self.__clean_up_list:
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+            if os.path.isfile(file_name + ".hdr"):
+                os.remove(file_name + ".hdr")
+
+    def testSubCubeData(self):
+        source_header = self.__source_os_file.header()
+        sub_cube_params = CubeParams(source_header.interleave(), (0, 200), (0, 200), (0, 10))
+        sub_cube_tool = SubCubeTools(self.__source_os_file, sub_cube_params)
+        sub_cube_tool.create_sub_cube()
+
+        sub_cube_file = self.__test_file + "_sub_test"
+        self.__clean_up_list.append(sub_cube_file)
+        sub_cube_tool.save(sub_cube_file)
+
+        os_sub_cube = OpenSpectraFileFactory.create_open_spectra_file(sub_cube_file)
+        sc_band = os_sub_cube.bands(10, 10)
+        self.assertEqual(10, sc_band.size)
+        self.assertEqual((1, 10), sc_band.shape)
+
+        source_band = self.__source_os_file.bands(10, 10)
+        self.assertTrue(np.array_equal(source_band[:, 0:10], sc_band))
+
+        sc_raw_image = os_sub_cube.raw_image(5)
+        self.assertEqual((200, 200), sc_raw_image.shape)
+
+        source_raw_image = self.__source_os_file.raw_image(5)
+        self.assertTrue(np.array_equal(source_raw_image[0:200, 0:200], sc_raw_image))
+
+        lines = (99, 212)
+        samples = (148, 251)
+        bands = (7, 13)
+        sub_cube_params = CubeParams(source_header.interleave(), lines, samples, bands)
+        sub_cube_tool = SubCubeTools(self.__source_os_file, sub_cube_params)
+        sub_cube_tool.create_sub_cube()
+        sub_cube_tool.save(sub_cube_file)
+
+        os_sub_cube = OpenSpectraFileFactory.create_open_spectra_file(sub_cube_file)
+        sc_band = os_sub_cube.bands(10, 10)
+        source_band = self.__source_os_file.bands(99 + 10, 148 + 10)
+        self.assertTrue(np.array_equal(source_band[:, 7:13], sc_band))
+
+    def testInterleaveConversion(self):
+        self.assertEqual(OpenSpectraHeader.BIL_INTERLEAVE, self.__source_os_file.header().interleave())
+
+        # First create a smaller copy of the original bil sample file so the tests will run a bit faster
+        lines = (0, 50)
+        samples = (0, 50)
+        bands = (0, 10)
+
+        bil_sc_tools = SubCubeTools(self.__source_os_file)
+        bil_sc_tools.set_lines(lines)
+        bil_sc_tools.set_samples(samples)
+        bil_sc_tools.set_bands(bands)
+        bil_sc_tools.create_sub_cube()
+
+        bil_file_name = self.__test_file + "_bil_test"
+        self.__clean_up_list.append(bil_file_name)
+        bil_sc_tools.save(bil_file_name)
+        bil_file = OpenSpectraFileFactory.create_open_spectra_file(bil_file_name)
+        self.assertEqual(OpenSpectraHeader.BIL_INTERLEAVE, bil_file.header().interleave())
+
+        # BIL to BIP
+        bil_sc_tools.set_interleave(OpenSpectraHeader.BIP_INTERLEAVE)
+        bil_sc_tools.create_sub_cube()
+        bil_bip_file_name = self.__test_file + "_bil_bip_test"
+        self.__clean_up_list.append(bil_bip_file_name)
+        bil_sc_tools.save(bil_bip_file_name)
+
+        bip_file = OpenSpectraFileFactory.create_open_spectra_file(bil_bip_file_name)
+        self.assertEqual(bip_file.header().interleave(), OpenSpectraHeader.BIP_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bip_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bip_file.raw_image(8)))
+
+        # BIL to BSQ
+        bil_sc_tools.set_interleave(OpenSpectraHeader.BSQ_INTERLEAVE)
+        bil_sc_tools.create_sub_cube()
+        bil_bsq_file_name = self.__test_file + "_bil_bsq_test"
+        self.__clean_up_list.append(bil_bsq_file_name)
+        bil_sc_tools.save(bil_bsq_file_name)
+
+        bsq_file = OpenSpectraFileFactory.create_open_spectra_file(bil_bsq_file_name)
+        self.assertEqual(bsq_file.header().interleave(), OpenSpectraHeader.BSQ_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bsq_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bsq_file.raw_image(8)))
+
+        bip_sc_tools = SubCubeTools(bip_file)
+        bip_sc_tools.set_lines(lines)
+        bip_sc_tools.set_samples(samples)
+        bip_sc_tools.set_bands(bands)
+
+        # BIP to BSQ
+        bip_sc_tools.set_interleave(OpenSpectraHeader.BSQ_INTERLEAVE)
+        bip_bsq_file_name = self.__test_file + "_bip_bsq_test"
+        self.__clean_up_list.append(bip_bsq_file_name)
+        bip_sc_tools.create_sub_cube()
+        bip_sc_tools.save(bip_bsq_file_name)
+
+        bip_bsq_file = OpenSpectraFileFactory.create_open_spectra_file(bip_bsq_file_name)
+        self.assertEqual(bip_bsq_file.header().interleave(), OpenSpectraHeader.BSQ_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bip_bsq_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bip_bsq_file.raw_image(8)))
+
+        # BIP to BIL
+        bip_sc_tools.set_interleave(OpenSpectraHeader.BIL_INTERLEAVE)
+        bip_bil_file_name = self.__test_file + "_bip_bil_test"
+        self.__clean_up_list.append(bip_bil_file_name)
+        bip_sc_tools.create_sub_cube()
+        bip_sc_tools.save(bip_bil_file_name)
+
+        bip_bil_file = OpenSpectraFileFactory.create_open_spectra_file(bip_bil_file_name)
+        self.assertEqual(bip_bil_file.header().interleave(), OpenSpectraHeader.BIL_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bip_bil_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bip_bil_file.raw_image(8)))
+
+        bsq_sc_tools = SubCubeTools(bsq_file)
+        bsq_sc_tools.set_lines(lines)
+        bsq_sc_tools.set_samples(samples)
+        bsq_sc_tools.set_bands(bands)
+
+        # BSQ to BIL
+        bsq_sc_tools.set_interleave(OpenSpectraHeader.BIL_INTERLEAVE)
+        bsq_bil_file_name = self.__test_file + "_bsq_bil_test"
+        self.__clean_up_list.append(bsq_bil_file_name)
+        bsq_sc_tools.create_sub_cube()
+        bsq_sc_tools.save(bsq_bil_file_name)
+
+        bsq_bil_file = OpenSpectraFileFactory.create_open_spectra_file(bsq_bil_file_name)
+        self.assertEqual(bsq_bil_file.header().interleave(), OpenSpectraHeader.BIL_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bsq_bil_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bsq_bil_file.raw_image(8)))
+
+        # BSQ to BIP
+        bsq_sc_tools.set_interleave(OpenSpectraHeader.BIP_INTERLEAVE)
+        bsq_bip_file_name = self.__test_file + "_bsq_bip_test"
+        self.__clean_up_list.append(bsq_bip_file_name)
+        bsq_sc_tools.create_sub_cube()
+        bsq_sc_tools.save(bsq_bip_file_name)
+
+        bsq_bip_file = OpenSpectraFileFactory.create_open_spectra_file(bsq_bip_file_name)
+        self.assertEqual(bsq_bip_file.header().interleave(), OpenSpectraHeader.BIP_INTERLEAVE)
+        self.assertTrue(np.array_equal(bil_file.bands(35, 21), bsq_bip_file.bands(35, 21)))
+        self.assertTrue(np.array_equal(bil_file.raw_image(8), bsq_bip_file.raw_image(8)))
