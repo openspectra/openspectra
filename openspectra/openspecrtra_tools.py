@@ -747,17 +747,31 @@ class SubCubeTools:
 
         if isinstance(self.__bands, list):
             band_slicer = self.__bands
+            band_count = len(band_slicer)
         else:
             band_slicer = slice(self.__bands[0], self.__bands[1])
+            band_count = max(self.__bands) - min(self.__bands)
 
         # update bands info
-        new_band_names = self.__source_header.band_names()[band_slicer]
+        new_band_names = self.__source_header.band_names()
+        if new_band_names is not None:
+            new_band_names = new_band_names[band_slicer]
         new_wavelengths = self.__source_header.wavelengths()[band_slicer]
         new_bad_bands = self.__source_header.bad_band_list()
         if new_bad_bands is not None:
             new_bad_bands = new_bad_bands[band_slicer]
 
-        self.__sub_cube_header.set_bands(new_band_names, new_wavelengths, new_bad_bands)
+        self.__sub_cube_header.set_bands(band_count, new_band_names, new_wavelengths, new_bad_bands)
+
+        # If there unsupported properties some might be band related so try to
+        # work the out here
+        unsupported_props = self.__source_header.unsupported_props()
+        for key, value in unsupported_props.items():
+            if isinstance(value, list) and len(value) == self.__source_header.band_count():
+                new_prop_value = value[band_slicer]
+                unsupported_props[key] = new_prop_value
+
+        self.__sub_cube_header.set_unsupported_props(unsupported_props)
 
         # set header offset to 0, we don't support offsets in the data file
         # at this time
@@ -817,11 +831,6 @@ class SubCubeTools:
 
             # write header
             self.__sub_cube_header.save(file_name)
-
-    # TODO??
-    def get_file(self) -> OpenSpectraFile:
-        if self.__sub_cube  is not None and self.__sub_cube_header is not None:
-            pass
 
     def interleave(self) -> str:
         return self.__interleave

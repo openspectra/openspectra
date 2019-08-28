@@ -203,7 +203,7 @@ class OpenSpectraBandToolsTest(unittest.TestCase):
                 self.assertEqual(band_data[0, index], raw_bands[0, index])
 
 
-class SubeCubeToolsTest(unittest.TestCase):
+class SubCubeToolsTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.__test_file = "test/unit_tests/resources/cup95_eff_fixed"

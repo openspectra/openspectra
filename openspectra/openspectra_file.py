@@ -109,6 +109,10 @@ class OpenSpectraHeader:
     __COORD_SYSTEM_STR = "coordinate system string"
 
     __READ_AS_STRING = [__DESCRIPTION, __COORD_SYSTEM_STR]
+    __SUPPORTED_FIELDS = [_BAND_NAMES, _BANDS, __DATA_TYPE, _HEADER_OFFSET, _INTERLEAVE, _LINES,
+                          __REFLECTANCE_SCALE_FACTOR, _SAMPLES, _WAVELENGTHS, __WAVELENGTH_UNITS,
+                          _MAP_INFO, __SENSOR_TYPE, __BYTE_ORDER, __FILE_TYPE, __DESCRIPTION,
+                          __DATA_IGNORE_VALUE, __DEFAULT_STRETCH, _BAD_BAND_LIST, __COORD_SYSTEM_STR]
 
     _DATA_TYPE_DIC:Dict[str, type] = {
                        "1": np.uint8,
@@ -301,18 +305,24 @@ class OpenSpectraHeader:
         def rotation(self) -> float:
             return self.__rotation
 
-    def __init__(self, file_name:str=None, props:Dict[str, Union[str, List[str]]]=None):
+    def __init__(self, file_name:str=None, props:Dict[str, Union[str, List[str]]]=None,
+                    unsupported_props:Dict[str, str]=None):
         if file_name is None and props is None:
             raise OpenSpectraHeaderError(
                 "Creating a OpenSpectraHeader requires either a file name or dict of properties")
 
         self.__path:Path = None
         self.__props:Dict[str, Union[str, List[str]]] = None
+        # Anything we don't support but don't want to loose when making a copy
+        self.__unsupported_props:Dict[str, Union[str, List[str]]] = None
+
         if file_name is not None:
             self.__path = Path(file_name)
             self.__props = dict()
+            self.__unsupported_props = dict()
         else:
             self.__props = copy.deepcopy(props)
+            self.__unsupported_props = copy.deepcopy(unsupported_props)
 
         self.__byte_order:int = -1
         self.__interleave:str = None
@@ -331,6 +341,12 @@ class OpenSpectraHeader:
 
     def _get_props(self) -> Dict[str, Union[str, List[str]]]:
         return self.__props
+
+    def _get_unsupported_props(self) -> Dict[str, Union[str, List[str]]]:
+        return self.__unsupported_props
+
+    def _set_unsupported_props(self, props:Dict[str, Union[str, List[str]]]):
+        self.__unsupported_props = props
 
     def _get_prop(self, key:str) -> Union[str, List[str]]:
         result = self.__props.get(key)
@@ -369,13 +385,22 @@ class OpenSpectraHeader:
                             key = line_pair[0].strip()
                             value = line_pair[1].lstrip()
 
-                            if re.search("{", value):
-                                if key in OpenSpectraHeader.__READ_AS_STRING:
-                                    self.__read_bracket_str(key, value, headerFile)
+                            if key in OpenSpectraHeader.__SUPPORTED_FIELDS:
+                                if re.search("{", value):
+                                    if key in OpenSpectraHeader.__READ_AS_STRING:
+                                        str_val = self.__read_bracket_str(value, headerFile)
+                                        self.__props[key] = str_val
+                                    else:
+                                        list_value = self.__read_bracket_list(value, headerFile)
+                                        self.__props[key] = list_value
                                 else:
-                                    self.__read_bracket_list(key, value, headerFile)
+                                    self.__props[key] = value
                             else:
-                                self.__props[key] = value
+                                if re.search("{", value):
+                                    list_value = self.__read_bracket_list(value, headerFile)
+                                    self.__unsupported_props[key] = list_value
+                                else:
+                                    self.__unsupported_props[key] = value
             else:
                 raise OpenSpectraHeaderError("File {0} not found".format(self.__path.name))
 
@@ -459,25 +484,34 @@ class OpenSpectraHeader:
     def map_info(self) -> MapInfo:
         return self.__map_info
 
-    def __read_bracket_str(self, key, value, header_file):
-        str_val = value.strip("{").strip()
+    def unsupported_props(self) -> Dict[str, str]:
+        return copy.deepcopy(self.__unsupported_props)
+
+    @staticmethod
+    def __read_bracket_str(value, header_file, strip_bracket:bool=True) -> str:
+        str_val = value
+        if strip_bracket:
+            str_val = value.strip("{").strip()
 
         # check for closing } on same line
         if re.search("}", str_val):
-            str_val = str_val.strip("}").strip()
+            if strip_bracket:
+                str_val = str_val.strip("}").strip()
         else:
             str_val += "\n"
             for line in header_file:
                 str_val += line.rstrip()
                 if re.search("}", str_val):
-                    str_val = str_val.rstrip("}").rstrip()
+                    if strip_bracket:
+                        str_val = str_val.rstrip("}").rstrip()
                     break
                 else:
                     str_val += "\n"
 
-        self.__props[key] = str_val
+        return str_val
 
-    def __read_bracket_list(self, key, value, header_file):
+    @staticmethod
+    def __read_bracket_list(value, header_file) -> List[str]:
         done = False
         line = value.strip("{").strip()
         list_value = list()
@@ -504,7 +538,7 @@ class OpenSpectraHeader:
             list_value += section.split(",")
 
         list_value = [str.strip(item) for item in list_value]
-        self.__props[key] = list_value
+        return list_value
 
     def __validate(self):
         self.__byte_order = int(self.__props.get(OpenSpectraHeader.__BYTE_ORDER))
@@ -629,7 +663,8 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
         if source_file_name is not None:
             super().__init__(source_file_name)
         else:
-            super().__init__(props=os_header._get_props())
+            super().__init__(props=os_header._get_props(),
+                unsupported_props=os_header._get_unsupported_props())
 
         super().load()
 
@@ -647,7 +682,7 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
         return ", ".join([format_func(item) for item in items])
 
     @staticmethod
-    def __convert_data_type(data_type:np.dtype) -> str:
+    def __convert_data_type(data_type:type) -> str:
         for key, val in OpenSpectraHeader._DATA_TYPE_DIC.items():
             if val == data_type:
                 return  key
@@ -665,21 +700,24 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
             out_file.write("lines = {0}\n".format(self.lines()))
             out_file.write("bands = {0}\n".format(self.band_count()))
             out_file.write("header offset = {0}\n".format(self.header_offset()))
-            out_file.write("file type = ENVI Standard\n")
+            out_file.write("file type = {0}\n".format(self.file_type()))
             out_file.write("data type = {0}\n".format(self.__convert_data_type(self.data_type())))
             out_file.write("interleave = {0}\n".format(self.interleave()))
-            out_file.write("sensor type = {0}\n".format(self.sensor_type()))
+
+            if self.sensor_type() is not None:
+                out_file.write("sensor type = {0}\n".format(self.sensor_type()))
+
             out_file.write("byte order = {0}\n".format(self.byte_order()))
             out_file.write("wavelength units = {0}\n".format(self.wavelength_units()))
 
-            if self.reflectance_scale_factor() != 0.0:
+            if self.reflectance_scale_factor() is not None:
                 out_file.write("reflectance scale factor = {0}\n".format(self.reflectance_scale_factor()))
 
             if self.map_info() is not None:
-                out_file.write("map info = ".format(str(self.map_info())))
+                out_file.write("map info = {0}\n".format(self.map_info()))
 
             if self.coordinate_system_string() is not None:
-                out_file.write("coordinate system string = {{0}}\n".format(self.coordinate_system_string()))
+                out_file.write("coordinate system string = {0}{1}{2}\n".format("{", self.coordinate_system_string(), "}"))
 
             if self.data_ignore_value() is not None:
                 out_file.write("data ignore value = {0}\n".format(self.data_ignore_value()))
@@ -687,11 +725,19 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
             if self.default_stretch() is not None:
                 out_file.write("default stretch = {0}\n".format(self.default_stretch()))
 
-            out_file.write("band names = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.band_names(), "{}".format), "}"))
+            if self.band_names() is not None:
+                out_file.write("band names = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.band_names(), "{}".format), "}"))
+
             out_file.write("wavelength = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.wavelengths(), "{:.06f}".format), "}"))
 
             if self.bad_band_list() is not None:
                 out_file.write("bbl = {0}{1}{2}\n".format("{\n  ", self.__format_list(self.bad_band_list(), self.__convert_bool_value), "}"))
+
+            for key, value in self._get_unsupported_props().items():
+                if isinstance(value, list):
+                    out_file.write("{0} = {1}{2}{3}\n".format(key, "{", ",".join(value), "}"))
+                else:
+                    out_file.write("{0} = {1}\n".format(key, value))
 
             out_file.flush()
 
@@ -701,14 +747,23 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
     def set_samples(self, samples:int):
         self._update_prop(self._SAMPLES, samples)
 
-    def set_bands(self, bands_names:List[str], wavelengths:np.ndarray, bad_bands:List[bool]=None):
+    def set_bands(self, band_count:int, bands_names:List[str], wavelengths:np.ndarray, bad_bands:List[bool]=None):
+        if bands_names is not None and len(bands_names) != band_count:
+            raise OpenSpectraHeaderError("Length of bands_names doesn't match band_count")
+
         if len(wavelengths.shape) != 1:
             raise OpenSpectraHeaderError("wave_lengths should be one dimensional")
 
-        band_count = len(bands_names)
+        if wavelengths.size != band_count:
+            raise OpenSpectraHeaderError("Length of wavelengths doesn't match band_count")
+
+        if bad_bands is not None and len(bad_bands) != band_count:
+            raise OpenSpectraHeaderError("Length of bad_bands doesn't match band_count")
 
         self._update_prop(self._BANDS, band_count, False)
-        self._update_prop(self._BAND_NAMES, bands_names, False)
+        if bands_names is not None:
+            self._update_prop(self._BAND_NAMES, bands_names, False)
+
         if bad_bands is not None:
             self._update_prop(self._BAD_BAND_LIST,
                 [MutableOpenSpectraHeader.__convert_bool_value(bad_band) for bad_band in bad_bands],
@@ -736,6 +791,9 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
             map_info_list[2] = str(y_pixel)
             map_info_list[4] = str(y_cooridinate)
             self._update_prop(self._MAP_INFO, map_info_list)
+
+    def set_unsupported_props(self, props:Dict[str, Union[str, List[str]]]):
+        self._set_unsupported_props(props)
 
 
 class Shape:

@@ -23,6 +23,42 @@ from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionSta
 from openspectra.utils import LogHelper, Logger
 
 
+class SaveManager(QObject):
+
+    __LOG:Logger = LogHelper.logger("SaveManager")
+
+    def __init__(self, default_dir: os.PathLike, caption:str, filter_str:str, extension:str):
+        # TODO make save location configurable some how?
+        super().__init__()
+        self.__save_dir_default = default_dir
+        self.__caption = caption
+        self.__filter_str = filter_str
+        self.__extension = extension
+
+    def save_dialog(self, default_name:str) -> str:
+        # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
+        # seems to be releated to the text field where you would type a file name not getting cleaned up which
+        # may explain why it only seems to impact the save dialog.
+        # TODO |QFileDialog.ShowDirsOnly only good with native dialog
+
+        default_save_name = os.path.join(self.__save_dir_default, default_name)
+        SaveManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
+        dialog_result = QFileDialog.getSaveFileName(caption=self.__caption, directory=default_save_name,
+            filter=self.__filter_str, options=QFileDialog.DontUseNativeDialog)
+
+        file_name:str = dialog_result[0]
+        if file_name:
+            if not file_name.endswith(self.__extension):
+                file_name = file_name + self.__extension
+
+        # save the last save location, default there next time
+        split_path = os.path.split(file_name)
+        if split_path[0]:
+            self.__save_dir_default = split_path[0]
+
+        return file_name
+
+
 class WindowManager(QObject):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
@@ -45,6 +81,9 @@ class WindowManager(QObject):
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
+
+        self.__save_manager = SaveManager(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation),
+                                "Save Data", "", "")
 
     def add_file(self, file:OpenSpectraFile):
         file_manager = FileManager(file, self)
@@ -83,8 +122,11 @@ class WindowManager(QObject):
             save_window.save.connect(self.__handle_save_subcube)
             save_window.show()
         else:
-            # TODO show dialog
-            pass
+            dialog = QMessageBox()
+            dialog.setIcon(QMessageBox.Critical)
+            dialog.setText("You must have at least one file open to save a sub-cube")
+            dialog.addButton(QMessageBox.Ok)
+            dialog.exec()
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
@@ -96,12 +138,21 @@ class WindowManager(QObject):
             os_file = self.__file_managers[file_name].file()
             sub_cube_tools = SubCubeTools(os_file, event.cube_params())
             sub_cube_tools.create_sub_cube()
-            # TODO now what???
-            # TODO use sub_cube_tools to create, save and optionally open the new sub cube
-            # TODO handle save dialog and open dialogues here?
+            default_name = "{}_{}_{}_{}".format(file_name,
+                max(sub_cube_tools.lines()) - min(sub_cube_tools.lines()),
+                max(sub_cube_tools.samples()) - min(sub_cube_tools.samples()),
+                max(sub_cube_tools.bands()) - min(sub_cube_tools.bands()))
+            new_file_name = self.__save_manager.save_dialog(default_name)
+            if new_file_name:
+                sub_cube_tools.save(new_file_name)
+            else:
+                WindowManager.__LOG.debug("Sub cube save canceled")
         else:
-            # TODO show dialog
-            pass
+            dialog = QMessageBox()
+            dialog.setIcon(QMessageBox.Critical)
+            dialog.setText("An internal error occurred.  Requested source cube, {}, does not appear to be open")
+            dialog.addButton(QMessageBox.Ok)
+            dialog.exec()
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
@@ -539,10 +590,9 @@ class RegionOfInterestManager(QObject):
 
             self.__region_display_items:Dict[RegionOfInterest, RegionOfInterestManager.__RegionSet] = dict()
             self.__counter = 1
-
-            self.__save_dir_default = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
             self.__include_bands_default = Qt.Unchecked
-
+            self.__save_manager = SaveManager(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation),
+                                    "Save Region", "CSV files (*.csv)", ".csv")
             # the single instance
             RegionOfInterestManager.__instance = self
 
@@ -574,32 +624,9 @@ class RegionOfInterestManager(QObject):
                 region_item = self.__region_display_items[region]
                 region_tools = OpenSpectraRegionTools(region, region_item.window_set().band_tools())
                 self.__include_bands_default = Qt.Checked if include_bands else Qt.Unchecked
-
-                # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
-                # TODO seems to be releated to the text field where you would type a file name not getting cleaned up which
-                # TODO explain why it only seems to impact the save dialog.
-
-                # TODO make save location configurable some how
-                # TODO |QFileDialog.ShowDirsOnly only good with native dialog
-
-                default_save_name = os.path.join(self.__save_dir_default, region.display_name())
-                RegionOfInterestManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
-                dialog_result = QFileDialog.getSaveFileName(caption="Save region", directory=default_save_name,
-                    filter="CSV files (*.csv)", options=QFileDialog.DontUseNativeDialog)
-                file_name:str = dialog_result[0]
+                file_name = self.__save_manager.save_dialog(region.display_name())
 
                 if file_name:
-                    if not file_name.endswith(".csv"):
-                        file_name = file_name + ".csv"
-
-                    # save the last save location, default there next time
-                    split_path = os.path.split(file_name)
-                    if split_path[0]:
-                        self.__save_dir_default = split_path[0]
-
-                    RegionOfInterestManager.__LOG.debug("Region file name: {0}, dialog: {1}, split path: {2}".
-                        format(file_name, dialog_result, split_path))
-
                     region_tools.save_region(file_name, include_bands=include_bands)
                     region_item.set_saved(True)
                 else:

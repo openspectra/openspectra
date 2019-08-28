@@ -1,6 +1,7 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 2/2/19 6:12 PM.
 #  Last modified 2/2/19 6:12 PM
 #  Copyright (c) 2019. All rights reserved.
+import os
 import unittest
 from typing import List, Tuple
 
@@ -341,6 +342,17 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
         self.__source_header3 = OpenSpectraHeader(test_file3)
         self.__source_header3.load()
 
+        test_file4 = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
+        self.__source_header4 = OpenSpectraHeader(test_file4)
+        self.__source_header4.load()
+
+        self.__clean_up_list = list()
+
+    def tearDown(self) -> None:
+        for file_name in self.__clean_up_list:
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
     def test_deep_copy(self):
         orig_byte_order = self.__source_header1.byte_order()
         orig_lines = self.__source_header1.lines()
@@ -393,7 +405,7 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
         self.assertEqual(new_band_count, len(new_wavelengths))
         self.assertEqual(new_band_count, len(new_bad_bands))
 
-        mutable_header.set_bands(new_band_names, new_wavelengths, new_bad_bands)
+        mutable_header.set_bands(new_band_count, new_band_names, new_wavelengths, new_bad_bands)
         self.assertListEqual(new_band_names, mutable_header.band_names())
         self.assertListEqual(orig_band_names, self.__source_header1.band_names())
 
@@ -448,29 +460,111 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
         mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
         mutable_header.load()
 
+    def test_save1(self):
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
+        test_file_name = "test/unit_tests/resources/sample_header_1_copy"
+        mutable_header.save(test_file_name)
+        header_copy = OpenSpectraHeader(test_file_name + ".hdr")
+        header_copy.load()
+        self.assertHeadersMatch(self.__source_header1, header_copy)
+        self.__clean_up_list.append(test_file_name + ".hdr")
+
+    def test_save2(self):
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header4)
+        test_file_name = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho_copy"
+        mutable_header.save(test_file_name)
+        header_copy = OpenSpectraHeader(test_file_name + ".hdr")
+        header_copy.load()
+        self.assertHeadersMatch(self.__source_header4, header_copy)
+        self.__clean_up_list.append(test_file_name + ".hdr")
+
+    def assertHeadersMatch(self, first:OpenSpectraHeader, second:OpenSpectraHeader):
+        self.assertEqual(first.description(), second.description())
+        self.assertEqual(first.samples(), second.samples())
+        self.assertEqual(first.lines(), second.lines())
+        self.assertEqual(first.band_count(), second.band_count())
+        self.assertEqual(first.header_offset(), second.header_offset())
+        self.assertEqual(first.file_type(), second.file_type())
+        self.assertEqual(first.data_type(), second.data_type())
+        self.assertEqual(first.interleave(), second.interleave())
+        self.assertEqual(first.sensor_type(), second.sensor_type())
+        self.assertEqual(first.byte_order(), second.byte_order())
+        self.assertEqual(first.wavelength_units(), second.wavelength_units())
+        self.assertEqual(first.reflectance_scale_factor(), second.reflectance_scale_factor())
+        self.assertMapInfoEqual(first.map_info(), second.map_info())
+        self.assertEqual(first.coordinate_system_string(), second.coordinate_system_string())
+        self.assertStretchEqual(first.default_stretch(), second.default_stretch())
+
+        if first.band_names() is None:
+            self.assertIsNone(second.band_names())
+        else:
+            self.assertListEqual(first.band_names(), second.band_names())
+        self.assertTrue(np.array_equal(first.wavelengths(), second.wavelengths()))
+
+        if first.bad_band_list() is None:
+            self.assertIsNone(second.bad_band_list())
+        else:
+            self.assertListEqual(first.bad_band_list(), second.bad_band_list())
+
+        self.assertUnsupportedPropsMatch(first, second)
+
+    def assertUnsupportedPropsMatch(self, first:OpenSpectraHeader, second:OpenSpectraHeader):
+        self.assertEqual(len(first.unsupported_props()), len(second.unsupported_props()))
+        self.assertSetEqual(set(first.unsupported_props().keys()), set(second.unsupported_props().keys()))
+        for key, value in first.unsupported_props().items():
+            if isinstance(value, list):
+                if len(value) == first.band_count():
+                    self.assertEqual(second.band_count(), len(value))
+                else:
+                    self.assertListEqual(list(first.unsupported_props().values()),
+                        list(second.unsupported_props().values()))
+            else:
+                self.assertEqual(first.unsupported_props().get(key), value)
+
+    def assertStretchEqual(self, first:LinearImageStretch, second:LinearImageStretch):
+        if first is None:
+            self.assertIsNone(second)
+        elif isinstance(first, PercentageStretch) and isinstance(second, PercentageStretch):
+            self.assertEqual(first.percentage(), second.percentage())
+            with self.assertRaises(NotImplementedError):
+                first.low()
+            with self.assertRaises(NotImplementedError):
+                first.high()
+        elif isinstance(first, ValueStretch) and isinstance(second, ValueStretch):
+            self.assertEqual(first.low(), second.low())
+            self.assertEqual(first.high(), second.high())
+            with self.assertRaises(NotImplementedError):
+                first.percentage()
+        else:
+            self.fail("assertStretchEqual expects both values to have the same type")
+
     def assertMapInfoEqual(self, first:OpenSpectraHeader.MapInfo, second:OpenSpectraHeader.MapInfo):
-        self.assertEqual(first.projection_name(), second.projection_name())
-        self.assertEqual(first.x_reference_pixel(), second.x_reference_pixel())
-        self.assertEqual(first.y_reference_pixel(), second.y_reference_pixel())
-        self.assertEqual(first.x_zero_coordinate(), second.x_zero_coordinate())
-        self.assertEqual(first.y_zero_coordinate(), second.y_zero_coordinate())
-        self.assertEqual(first.x_pixel_size(), second.x_pixel_size())
-        self.assertEqual(first.y_pixel_size(), second.y_pixel_size())
-        self.assertEqual(first.projection_zone(), second.projection_zone())
-        self.assertEqual(first.projection_area(), second.projection_area())
-        self.assertEqual(first.datum(), second.datum())
-        self.assertEqual(first.units(), second.units())
-        self.assertEqual(first.rotation(), second.rotation())
+        if first is None:
+            self.assertIsNone(second)
+        else:
+            self.assertEqual(first.projection_name(), second.projection_name())
+            self.assertEqual(first.x_reference_pixel(), second.x_reference_pixel())
+            self.assertEqual(first.y_reference_pixel(), second.y_reference_pixel())
+            self.assertEqual(first.x_zero_coordinate(), second.x_zero_coordinate())
+            self.assertEqual(first.y_zero_coordinate(), second.y_zero_coordinate())
+            self.assertEqual(first.x_pixel_size(), second.x_pixel_size())
+            self.assertEqual(first.projection_zone(), second.projection_zone())
+            self.assertEqual(first.projection_area(), second.projection_area())
+            self.assertEqual(first.datum(), second.datum())
+            self.assertEqual(first.units(), second.units())
+            self.assertEqual(first.rotation(), second.rotation())
 
     def assertMapInfoOtherEqual(self, first:OpenSpectraHeader.MapInfo, second:OpenSpectraHeader.MapInfo):
-        self.assertEqual(first.projection_name(), second.projection_name())
-        self.assertEqual(first.x_pixel_size(), second.x_pixel_size())
-        self.assertEqual(first.y_pixel_size(), second.y_pixel_size())
-        self.assertEqual(first.projection_zone(), second.projection_zone())
-        self.assertEqual(first.projection_area(), second.projection_area())
-        self.assertEqual(first.datum(), second.datum())
-        self.assertEqual(first.units(), second.units())
-        self.assertEqual(first.rotation(), second.rotation())
+        if first is None:
+            self.assertIsNone(second)
+        else:
+            self.assertEqual(first.projection_name(), second.projection_name())
+            self.assertEqual(first.y_pixel_size(), second.y_pixel_size())
+            self.assertEqual(first.projection_zone(), second.projection_zone())
+            self.assertEqual(first.projection_area(), second.projection_area())
+            self.assertEqual(first.datum(), second.datum())
+            self.assertEqual(first.units(), second.units())
+            self.assertEqual(first.rotation(), second.rotation())
 
 
 class ImageStretchTest(unittest.TestCase):
