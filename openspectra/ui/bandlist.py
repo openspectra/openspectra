@@ -141,8 +141,8 @@ class BandList(QWidget):
         self.__treeWidget.move(0, 0)
 
         # table item selection
-        self.__treeWidget.itemDoubleClicked.connect(self.__on_double_click)
-        self.__treeWidget.itemClicked.connect(self.__on_click)
+        self.__treeWidget.itemDoubleClicked.connect(self.__handle_item_double_click)
+        self.__treeWidget.currentItemChanged.connect(self.__handle_current_item_changed)
 
         # Add box layout, add table to box layout and add box layout to widget
         self.__layout = QVBoxLayout()
@@ -157,6 +157,7 @@ class BandList(QWidget):
         parent_item = QTreeWidgetItem()
         parent_item.setText(0, file_name)
 
+        # add the band information for the file
         for band_index in range(band_count):
             child = QTreeWidgetItem(parent_item)
             band_descriptor = band_tools.band_descriptor(band_index)
@@ -167,9 +168,14 @@ class BandList(QWidget):
             child.setText(0, band_descriptor.band_label())
             child.setData(0, Qt.UserRole, band_descriptor)
 
+        # unselected any selected items from another file
+        [item.setSelected(False) for item in self.__treeWidget.selectedItems()]
+
+        # collapse any other file band lists that are expanded
         for index in range(0, self.__treeWidget.topLevelItemCount()):
             self.__treeWidget.topLevelItem(index).setExpanded(False)
 
+        # add the new file with bands and expand the tree
         self.__treeWidget.addTopLevelItem(parent_item)
         parent_item.setExpanded(True)
         self.__parent_items.append(parent_item)
@@ -177,7 +183,11 @@ class BandList(QWidget):
 
     @pyqtSlot()
     def __handle_greyscale_selected(self):
-        self.__treeWidget.selectionModel().clearSelection()
+        selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
+        for item in selected_items:
+            if item.parent() is not None:
+                item.setSelected(False)
+
         self.__treeWidget.setSelectionMode(QAbstractItemView.SingleSelection)
 
     @pyqtSlot()
@@ -185,23 +195,46 @@ class BandList(QWidget):
         self.__treeWidget.setSelectionMode(QAbstractItemView.MultiSelection)
 
     @pyqtSlot(QTreeWidgetItem)
-    def __on_double_click(self, item:QTreeWidgetItem):
+    def __handle_item_double_click(self, item:QTreeWidgetItem):
         if self.__type_selector.is_greyscale_selected() and item.parent() is not None:
+            item.setSelected(False)
             self.__open_item(item)
 
-    @pyqtSlot(QTreeWidgetItem)
-    def __on_click(self, item:QTreeWidgetItem):
+    @pyqtSlot(QTreeWidgetItem, QTreeWidgetItem)
+    def __handle_current_item_changed(self, current_item:QTreeWidgetItem, previous_item:QTreeWidgetItem):
+        BandList.__LOG.debug("__handle_current_item_changed called...")
+        # control what combinations can be selected together and how many when in rgb mode
         if self.__type_selector.is_rgb_selected():
-            indexes = self.__treeWidget.selectionModel().selectedIndexes()
-            if len(indexes) > 3:
-                self.__treeWidget.selectionModel().select(indexes[0],
-                    QItemSelectionModel.Deselect)
+            # Note, at this point current_item is not in selected_items
+            selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
+            BandList.__LOG.debug("selected size: {}, is current in selected: {}",
+                len(selected_items), current_item in selected_items)
 
-            if len(indexes) >= 3:
+            if current_item.parent() is None:
+                # A file item was selected
+                for selected_item in selected_items:
+                    if selected_item != current_item:
+                        selected_item.setSelected(False)
+            else:
+                # A band item was selected
+                for selected_item in selected_items:
+                    if selected_item.parent() is None:
+                        selected_item.setSelected(False)
+                    elif selected_item.parent() != current_item.parent():
+                        selected_item.setSelected(False)
+
+                selected_items = self.__treeWidget.selectedItems()
+                if len(selected_items) > 2:
+                    selected_items[0].setSelected(False)
+
+            # Now see what we're left with
+            selected_items = self.__treeWidget.selectedItems()
+            if len(selected_items) == 2:
                 self.__type_selector.open_enabled(True)
             else:
                 self.__type_selector.open_enabled(False)
 
+    @pyqtSlot()
     def __handle_open_clicked(self):
         if self.__type_selector.is_rgb_selected():
             items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
@@ -224,11 +257,13 @@ class BandList(QWidget):
                             break
 
                 if result == QMessageBox.Yes:
+                    [item.setSelected(False) for item in items]
                     selected = RGBSelectedBands(items[0].parent(), items[0], items[1], items[2])
                     self.rgbSelected.emit(selected)
 
         if self.__type_selector.is_greyscale_selected():
             item:QTreeWidgetItem = self.__treeWidget.selectedItems()[0]
+            item.setSelected(False)
             self.__open_item(item)
 
     def __open_item(self, item:QTreeWidgetItem):
