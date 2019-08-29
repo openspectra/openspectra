@@ -6,7 +6,7 @@ from typing import List
 
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QModelIndex, Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
-    QHBoxLayout, QPushButton, QMessageBox, QCheckBox
+    QHBoxLayout, QPushButton, QMessageBox, QCheckBox, QTreeWidgetItemIterator
 
 from openspectra.openspecrtra_tools import OpenSpectraBandTools
 from openspectra.image import BandDescriptor
@@ -166,6 +166,9 @@ class BandList(QWidget):
 
             child.setText(0, band_descriptor.band_label())
             child.setData(0, Qt.UserRole, band_descriptor)
+
+        for index in range(0, self.__treeWidget.topLevelItemCount()):
+            self.__treeWidget.topLevelItem(index).setExpanded(False)
 
         self.__treeWidget.addTopLevelItem(parent_item)
         parent_item.setExpanded(True)
