@@ -142,7 +142,7 @@ class BandList(QWidget):
 
         # table item selection
         self.__treeWidget.itemDoubleClicked.connect(self.__handle_item_double_click)
-        self.__treeWidget.currentItemChanged.connect(self.__handle_current_item_changed)
+        self.__treeWidget.itemSelectionChanged.connect(self.__handle_item_selection_changed)
 
         # Add box layout, add table to box layout and add box layout to widget
         self.__layout = QVBoxLayout()
@@ -200,36 +200,43 @@ class BandList(QWidget):
             item.setSelected(False)
             self.__open_item(item)
 
-    @pyqtSlot(QTreeWidgetItem, QTreeWidgetItem)
-    def __handle_current_item_changed(self, current_item:QTreeWidgetItem, previous_item:QTreeWidgetItem):
-        BandList.__LOG.debug("__handle_current_item_changed called...")
-        # control what combinations can be selected together and how many when in rgb mode
-        if self.__type_selector.is_rgb_selected():
-            # Note, at this point current_item is not in selected_items
-            selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
-            BandList.__LOG.debug("selected size: {}, is current in selected: {}",
-                len(selected_items), current_item in selected_items)
+    @pyqtSlot()
+    def __handle_item_selection_changed(self):
+        selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
+        BandList.__LOG.debug("start __handle_item_selection_changed, selected size: {}, selected items: {}, state: {}",
+            len(selected_items), str(selected_items), self.__treeWidget.state())
 
-            if current_item.parent() is None:
+        # When clicking or dragging down then list items are appended to the end of the
+        # selected_items list so selected_items[len(selected_items) - 1] is last selected
+        # However when dragging up the list the order is reversed!
+        if self.__type_selector.is_rgb_selected() and len(selected_items) > 0:
+            last_selected = selected_items[len(selected_items) - 1]
+            if last_selected.parent() is None:
                 # A file item was selected
                 for selected_item in selected_items:
-                    if selected_item != current_item:
+                    if selected_item != last_selected:
                         selected_item.setSelected(False)
             else:
                 # A band item was selected
                 for selected_item in selected_items:
                     if selected_item.parent() is None:
+                        # if we previously had a file selected, unselect it
                         selected_item.setSelected(False)
-                    elif selected_item.parent() != current_item.parent():
+                    elif selected_item.parent() != last_selected.parent():
+                        # otherwise check to make sure all selected bands are from
+                        # the same file
                         selected_item.setSelected(False)
 
                 selected_items = self.__treeWidget.selectedItems()
-                if len(selected_items) > 2:
+                if len(selected_items) > 3:
+                    BandList.__LOG.debug("unselecting item: {}", selected_items[0])
                     selected_items[0].setSelected(False)
 
             # Now see what we're left with
             selected_items = self.__treeWidget.selectedItems()
-            if len(selected_items) == 2:
+            BandList.__LOG.debug("end __handle_item_selection_changed, selected size: {}, selected items: {}",
+                len(selected_items), str(selected_items))
+            if len(selected_items) == 3:
                 self.__type_selector.open_enabled(True)
             else:
                 self.__type_selector.open_enabled(False)
