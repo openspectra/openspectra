@@ -99,6 +99,12 @@ class WindowManager(QObject):
         if WindowManager.__LOG.isEnabledFor(logging.DEBUG):
             WindowManager.__LOG.debug("{0}", file.header().dump())
 
+    def close_file(self, file_name:str):
+        if file_name is not None and file_name in self.__file_managers:
+            self.__band_list.remove_file(file_name)
+            del self.__file_managers[file_name]
+            WindowManager.__LOG.debug("File {} closed", file_name)
+
     def screen_geometry(self) -> QRect:
         return self.__screen_geometry
 

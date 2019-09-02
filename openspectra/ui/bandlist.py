@@ -181,6 +181,18 @@ class BandList(QWidget):
         self.__parent_items.append(parent_item)
         return parent_item
 
+    def remove_file(self, file_name:str):
+        items = self.__treeWidget.findItems(file_name, Qt.MatchExactly)
+        if len(items) == 1:
+            index = self.__treeWidget.indexOfTopLevelItem(items[0])
+            self.__treeWidget.takeTopLevelItem(index)
+        else:
+            dialog = QMessageBox()
+            dialog.setIcon(QMessageBox.Critical)
+            dialog.setText("An internal error occurred, file '{}' doesn't appear to be open".format(file_name))
+            dialog.addButton(QMessageBox.Ok)
+            dialog.exec()
+
     def selected_file(self) -> str:
         selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
         selected_file:str = None

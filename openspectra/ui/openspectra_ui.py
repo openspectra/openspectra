@@ -49,6 +49,11 @@ class OpenSpectraUI(QMainWindow):
         save_action.setStatusTip("Save sub-cube")
         save_action.triggered.connect(self.__save)
 
+        close_action = QAction(QIcon("close.png"), "&Close", self)
+        close_action.setShortcut("Ctrl+C")
+        close_action.setStatusTip("Close file")
+        close_action.triggered.connect(self.__close)
+
         plot_action = QAction(QIcon('plot.png'), '&Plot', self)
         plot_action.setShortcut('Ctrl+P')
         plot_action.setStatusTip('Plot stuff')
@@ -66,6 +71,7 @@ class OpenSpectraUI(QMainWindow):
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
+        file_menu.addAction(close_action)
         # fileMenu.addAction(exitAct)
 
         plot_menu = menu_bar.addMenu("&Plot")
@@ -104,6 +110,9 @@ class OpenSpectraUI(QMainWindow):
 
     def __save(self):
         self.__window_manager.open_save_subcube(self.__band_list.selected_file())
+
+    def __close(self):
+        self.__window_manager.close_file(self.__band_list.selected_file())
 
     def __plot(self):
         pass
