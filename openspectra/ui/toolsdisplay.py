@@ -393,13 +393,19 @@ class SubCubeControl(QWidget):
     def __init__(self, files:Dict[str, FileSubCubeParams], parent=None):
         super().__init__(parent)
         self.__files = files
+        num_files = len(self.__files)
 
         layout = QVBoxLayout()
         form_layout = QFormLayout()
 
         self.__file_list = QComboBox(self)
-        self.__file_list.insertItem(0, "Select origin file...")
-        self.__file_list.insertItems(1, self.__files.keys())
+
+        if num_files > 1:
+            self.__file_list.insertItem(0, "Select origin file...")
+            self.__file_list.insertItems(1, self.__files.keys())
+        else:
+            self.__file_list.insertItems(0, self.__files.keys())
+
         self.__file_list.currentIndexChanged.connect(self.__handle_file_select)
         form_layout.addRow("Original File:", self.__file_list)
 
@@ -440,9 +446,11 @@ class SubCubeControl(QWidget):
         layout.addLayout(button_layout)
         self.setLayout(layout)
 
+        self.__handle_file_select(0)
+
     @pyqtSlot(int)
     def __handle_file_select(self, index:int):
-        if index == 0:
+        if index == 0 and len(self.__files) > 1:
             self.__save_button.setDisabled(True)
             self.__line_range.clear()
             self.__sample_range.clear()

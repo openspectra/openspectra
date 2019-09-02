@@ -181,6 +181,17 @@ class BandList(QWidget):
         self.__parent_items.append(parent_item)
         return parent_item
 
+    def selected_file(self) -> str:
+        selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
+        selected_file:str = None
+        if len(selected_items) > 0:
+            if selected_items[0].parent() is None:
+                selected_file = selected_items[0].text(0)
+            else:
+                selected_file = selected_items[0].parent().text(0)
+
+        return selected_file
+
     @pyqtSlot()
     def __handle_greyscale_selected(self):
         selected_items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()

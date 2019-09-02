@@ -103,10 +103,7 @@ class OpenSpectraUI(QMainWindow):
             OpenSpectraUI.__LOG.debug("File open canceled...")
 
     def __save(self):
-        self.__window_manager.open_save()
-
-    def __save(self):
-        self.__window_manager.open_save_subcube()
+        self.__window_manager.open_save_subcube(self.__band_list.selected_file())
 
     def __plot(self):
         pass

@@ -108,16 +108,30 @@ class WindowManager(QObject):
     def parent_window(self) -> QMainWindow:
         return self.__parent_window
 
-    def open_save_subcube(self):
+    def open_save_subcube(self, file_name:str):
         if len(self.__file_managers) > 0:
-            open_files = dict()
-            for file_name, manager in self.__file_managers.items():
-                header:OpenSpectraHeader = manager.header()
-                params = FileSubCubeParams(file_name, header.lines(), header.samples(),
-                    header.band_count(), header.interleave())
-                open_files[file_name] = params
+            files:Dict[str, FileSubCubeParams] = dict()
+            if file_name is not None:
+                manager = self.__file_managers.get(file_name)
+                if manager is not None:
+                    header: OpenSpectraHeader = manager.header()
+                    params = FileSubCubeParams(file_name, header.lines(), header.samples(),
+                        header.band_count(), header.interleave())
+                    files[file_name] = params
+                else:
+                    dialog = QMessageBox()
+                    dialog.setIcon(QMessageBox.Critical)
+                    dialog.setText("An internal error occurred, file '{}' doesn't appear to be open".format(file_name))
+                    dialog.addButton(QMessageBox.Ok)
+                    dialog.exec()
+            else:
+                for file_name, manager in self.__file_managers.items():
+                    header:OpenSpectraHeader = manager.header()
+                    params = FileSubCubeParams(file_name, header.lines(), header.samples(),
+                        header.band_count(), header.interleave())
+                    files[file_name] = params
 
-            save_window = SubCubeWindow(open_files, self.parent_window())
+            save_window = SubCubeWindow(files, self.parent_window())
             save_window.setAttribute(Qt.WA_DeleteOnClose, True)
             save_window.save.connect(self.__handle_save_subcube)
             save_window.show()
