@@ -101,8 +101,11 @@ class WindowManager(QObject):
 
     def close_file(self, file_name:str):
         if file_name is not None and file_name in self.__file_managers:
+            manager = self.__file_managers.pop(file_name, None)
+            if manager is not None:
+                manager.close()
+
             self.__band_list.remove_file(file_name)
-            del self.__file_managers[file_name]
             WindowManager.__LOG.debug("File {} closed", file_name)
 
     def screen_geometry(self) -> QRect:
@@ -243,6 +246,11 @@ class FileManager(QObject):
     def window_manager(self) -> WindowManager:
         return self.__window_manager
 
+    def close(self):
+        while len(self.__window_sets) > 0:
+            window_set = self.__window_sets.pop()
+            window_set.close()
+
     def __create_window_set(self, image:Image):
         title = image.label()
         window_set = WindowSet(image, title, self)
@@ -262,9 +270,11 @@ class FileManager(QObject):
     @pyqtSlot(QChildEvent)
     def __handle_windowset_closed(self, event:QChildEvent):
         window_set = event.child()
-        self.__window_sets.remove(window_set)
-        FileManager.__LOG.debug("WindowSets open {0}", len(self.__window_sets))
-        del window_set
+        # if the file was closed the window_set will have been closed already
+        if window_set in self.__window_sets:
+            self.__window_sets.remove(window_set)
+            FileManager.__LOG.debug("WindowSets open {0}", len(self.__window_sets))
+            del window_set
 
 
 class WindowSet(QObject):
@@ -383,8 +393,17 @@ class WindowSet(QObject):
             self.__spec_plot_window.show()
 
     @pyqtSlot(WindowCloseEvent)
-    def __handle_image_closed(self, event:WindowCloseEvent):
-        if event.target() == self.__main_image_window:
+    def __handle_image_closed(self, event:WindowCloseEvent=None):
+        if event is None:
+            WindowSet.__LOG.debug("__handle_image_closed both windows")
+            # disconnect so we don't get a second event
+            self.__main_image_window.closed.disconnect(self.__handle_image_closed)
+            self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
+            self.__zoom_image_window.close()
+            self.__zoom_image_window = None
+            self.__main_image_window.close()
+            self.__main_image_window = None
+        elif event.target() == self.__main_image_window:
             WindowSet.__LOG.debug("__handle_image_closed main window")
             # disconnect so we don't get a second event
             self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
@@ -506,6 +525,9 @@ class WindowSet(QObject):
 
     def file_manager(self) -> FileManager:
         return self.__file_manager
+
+    def close(self):
+        self.__handle_image_closed()
 
     @pyqtSlot(RegionStatsEvent)
     def handle_region_stats(self, event:RegionStatsEvent):
