@@ -3,7 +3,7 @@
 An open source tool for viewing hyperspectral image data.
 
 ## Warning!!
-At this time this application is still under development.  It's been made available here for pre-release preview to help facilate the development of a workshop built around it and other tools.  We hope to have version 1.0 ready in the next couple months.  In the meantime please be aware the code may change signifigantly and you may run into issues we haven't had a chance to address yet.  Test coverage and documentation is very sparse.  Thank you for your patients and we hope you enjoy.
+At this time this application is still under development.  It's been made available here for pre-release preview to help facilate the development of a workshop built around it and other tools.  We hope to have version 1.0 ready in the next couple months.  In the meantime please be aware the code may change signifigantly and you may run into issues we haven't had a chance to address yet.  Test coverage and documentation is very sparse.  Thank you for your patience and we hope you enjoy.
 
 ### Setup notes
 At this point the application is available only via this Github repo.  We plan to create an installer in the future for easier setup.

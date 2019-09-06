@@ -1,13 +1,15 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 2/2/19 6:12 PM.
 #  Last modified 2/2/19 6:12 PM
 #  Copyright (c) 2019. All rights reserved.
+import os
 import unittest
 from typing import List, Tuple
 
 import numpy as np
 
-from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory, PercentageStretch, LinearImageStretch, \
-    ValueStretch, OpenSpectraHeaderError
+from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory, PercentageStretch, \
+    LinearImageStretch, \
+    ValueStretch, OpenSpectraHeaderError, MutableOpenSpectraHeader
 
 
 class OpenSpectraHeaderTest(unittest.TestCase):
@@ -32,11 +34,10 @@ class OpenSpectraHeaderTest(unittest.TestCase):
 
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/sample_header_1.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/sample_header_1hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
+            self.assertEqual(os_header.byte_order(), 0)
             self.assertEqual(os_header.samples(), 400)
             self.assertEqual(os_header.lines(), 350)
             band_count:int = os_header.band_count()
@@ -48,9 +49,10 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(os_header.sensor_type(), "Unknown")
             self.assertEqual(os_header.file_type(), "ENVI Standard")
             self.assertEqual(os_header.description(),
-                "1995 AVIRIS \"Effort\" Corrected ATREM [Thu Apr 25 00:52:03 1996] [Thu Mar  2912:49:46 2012]")
+                "\n  1995 AVIRIS \"Effort\" Corrected ATREM [Thu Apr 25 00:52:03 1996] [Thu Mar\n  2912:49:46 2012]")
             self.assertEqual(os_header.data_ignore_value(), -9999)
-
+            self.assertEqual(os_header.coordinate_system_string(),
+                "PROJCS[\"UTM_Zone_12N\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"False_Easting\",500000.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",-111.0],PARAMETER[\"Scale_Factor\",0.9996],PARAMETER[\"Latitude_Of_Origin\",0.0],UNIT[\"Meter\",1.0]]")
             default_stretch:LinearImageStretch = os_header.default_stretch()
             self.assertTrue(isinstance(default_stretch, ValueStretch))
             self.assertEqual(default_stretch.low(), 0.0)
@@ -59,10 +61,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             bbl = os_header.bad_band_list()
             self.assertEqual(len(bbl), band_count)
             self.assertEqual(bbl, expected_bbl)
-
-            # TODO
-            # byte order = 0
-            # coordinate system string = {PROJCS["UTM_Zone_12N",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",-111.0],PARAMETER["Scale_Factor",0.9996],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]}
 
             band_names:list = os_header.band_names()
             self.assertEqual(len(band_names), band_count)
@@ -107,8 +105,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
     def test_file_parse_sample_two(self):
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/sample_header_2.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/sample_header_2.hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
@@ -145,8 +141,6 @@ class OpenSpectraHeaderTest(unittest.TestCase):
     def test_file_parse_sample_three(self):
         with self.assertLogs("openSpectra.OpenSpectraHeader", level='INFO') as log:
             test_file = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
-            # To run in IDE use this path
-            # test_file = "../resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
             os_header = OpenSpectraHeader(test_file)
             self.assertIsNotNone(os_header)
             os_header.load()
@@ -157,12 +151,55 @@ class OpenSpectraHeaderTest(unittest.TestCase):
         for message in log.output:
             self.assertFalse(message.startswith("WARNING"))
 
+    def test_map_info_string_no_rotation(self):
+        test_file = "test/unit_tests/resources/sample_header_1.hdr"
+        header = OpenSpectraHeader(test_file)
+        header.load()
+        expected_str = "{UTM, 1.000, 1.000, 50000.000, 4000000.000, 2.0000000000e+001, 2.0000000000e+001, 12, North, WGS-84, units=Meters}"
+        self.assertEqual(expected_str, str(header.map_info()))
+
+    def test_map_info_string(self):
+        test_file = "test/unit_tests/resources/sample_header_2.hdr"
+        header = OpenSpectraHeader(test_file)
+        header.load()
+        expected_str = "{UTM, 1.000, 1.000, 50000.000, 4000000.000, 2.0000000000e+001, 2.0000000000e+001, 12, North, WGS-84, units=Meters, rotation=30.00000000}"
+        self.assertEqual(expected_str, str(header.map_info()))
+
+
+class MapInfoTest(unittest.TestCase):
+
+    def setUp(self) -> None:
+        test_file1 = "test/unit_tests/resources/sample_header_1.hdr"
+        self.__header1 = OpenSpectraHeader(test_file1)
+        self.__header1.load()
+
+        test_file2 = "test/unit_tests/resources/sample_header_2.hdr"
+        self.__header2 = OpenSpectraHeader(test_file2)
+        self.__header2.load()
+
+    def test_calculate_single_pixels(self):
+        # TODO test needs work doesn't actaully verify the calculation is correct!
+        coords_int = self.__header1.map_info().calculate_coordinates(5, 5)
+        # print("calculated coords: {}, {}".format(coords_int[0], coords_int[1]))
+
+        coords_float = self.__header1.map_info().calculate_coordinates(5.0, 5.0)
+        # print("calculated coords: {}, {}".format(coords_float[0], coords_float[1]))
+        self.assertEqual(coords_int[0], coords_float[0])
+        self.assertEqual(coords_int[1], coords_float[1])
+
+        coords_int = self.__header2.map_info().calculate_coordinates(5, 5)
+        # print("calculated coords: {}, {}".format(coords_int[0], coords_int[1]))
+
+        coords_float = self.__header2.map_info().calculate_coordinates(5.0, 5.0)
+        # print("calculated coords: {}, {}".format(coords_float[0], coords_float[1]))
+        self.assertEqual(coords_int[0], coords_float[0])
+        self.assertEqual(coords_int[1], coords_float[1])
+
 
 class OpenSpectraFileTest(unittest.TestCase):
 
     def test_os_file_slice(self):
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
 
         # confirm how image retrieval works with single index
@@ -222,7 +259,6 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_bands(self):
         """Verify the bands returned."""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file = OpenSpectraFileFactory.create_open_spectra_file(test_file)
         os_header = os_file.header()
 
@@ -254,12 +290,10 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_offset_mapped_model(self):
         """Verify the byte offset feature works with the mapped model"""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
         self.assertEqual(os_file_base.header().header_offset(), 0)
 
         test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
-        # test_file = "../resources/cup95_eff_fixed_offset_1k"
         os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MAPPED_MODEL)
         self.assertEqual(os_file_offset.header().header_offset(), 1024)
 
@@ -274,12 +308,10 @@ class OpenSpectraFileTest(unittest.TestCase):
     def test_offset_memory_model(self):
         """Verify the byte offset feature works with the memory model"""
         test_file = "test/unit_tests/resources/cup95_eff_fixed"
-        # test_file = "../resources/cup95_eff_fixed"
         os_file_base = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
         self.assertEqual(os_file_base.header().header_offset(), 0)
 
         test_file = "test/unit_tests/resources/cup95_eff_fixed_offset_1k"
-        # test_file = "../resources/cup95_eff_fixed_offset_1k"
         os_file_offset = OpenSpectraFileFactory.create_open_spectra_file(test_file, OpenSpectraFileFactory.MEMORY_MODEL)
         self.assertEqual(os_file_offset.header().header_offset(), 1024)
 
@@ -292,6 +324,247 @@ class OpenSpectraFileTest(unittest.TestCase):
         self.assertTrue(np.array_equal(image_base, image_offset))
 
 # TODO validate OpenSpectraFileFactory switches work...
+
+
+class MutableOpenSpectraHeaderTest(unittest.TestCase):
+
+    def setUp(self) -> None:
+        test_file1 = "test/unit_tests/resources/sample_header_1.hdr"
+        self.__source_header1 = OpenSpectraHeader(test_file1)
+        self.__source_header1.load()
+
+        test_file2 = "test/unit_tests/resources/sample_header_2.hdr"
+        self.__source_header2 = OpenSpectraHeader(test_file2)
+        self.__source_header2.load()
+
+        # this one has no map_info
+        test_file3 = "test/unit_tests/resources/cup95_eff_fixed.hdr"
+        self.__source_header3 = OpenSpectraHeader(test_file3)
+        self.__source_header3.load()
+
+        test_file4 = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho.hdr"
+        self.__source_header4 = OpenSpectraHeader(test_file4)
+        self.__source_header4.load()
+
+        self.__clean_up_list = list()
+
+    def tearDown(self) -> None:
+        for file_name in self.__clean_up_list:
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
+    def test_deep_copy(self):
+        orig_byte_order = self.__source_header1.byte_order()
+        orig_lines = self.__source_header1.lines()
+        orig_samples = self.__source_header1.samples()
+        orig_interleave = self.__source_header1.interleave()
+        orig_band_count = self.__source_header1.band_count()
+        orig_band_names = self.__source_header1.band_names()
+        orig_wavelengths = self.__source_header1.wavelengths()
+        orig_bad_bands = self.__source_header1.bad_band_list()
+        orig_map_info = self.__source_header1.map_info()
+
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
+        self.assertEqual(orig_byte_order, mutable_header.byte_order())
+        self.assertEqual(orig_lines, mutable_header.lines())
+        self.assertEqual(orig_samples, mutable_header.samples())
+        self.assertEqual(orig_interleave, mutable_header.interleave())
+        self.assertEqual(orig_band_count, mutable_header.band_count())
+        self.assertListEqual(orig_band_names, mutable_header.band_names())
+        self.assertTrue(np.array_equal(orig_wavelengths, mutable_header.wavelengths()))
+        self.assertListEqual(orig_bad_bands, mutable_header.bad_band_list())
+        self.assertMapInfoEqual(orig_map_info, mutable_header.map_info())
+
+        new_lines = 100
+        self.assertNotEqual(orig_lines, new_lines)
+        mutable_header.set_lines(new_lines)
+        self.assertEqual(new_lines, mutable_header.lines())
+        self.assertEqual(orig_lines, self.__source_header1.lines())
+
+        new_samples = 100
+        self.assertNotEqual(orig_samples, new_samples)
+        mutable_header.set_samples(new_samples)
+        self.assertEqual(new_samples, mutable_header.samples())
+        self.assertEqual(orig_samples, self.__source_header1.samples())
+
+        new_interleave = OpenSpectraHeader.BSQ_INTERLEAVE
+        self.assertNotEqual(orig_interleave, new_interleave)
+        mutable_header.set_interleave(new_interleave)
+        self.assertEqual(new_interleave, mutable_header.interleave())
+        self.assertEqual(orig_interleave, self.__source_header1.interleave())
+
+        self.assertEqual(50, orig_band_count)
+        band_slice = slice(5, 32)
+        new_band_names = orig_band_names[band_slice]
+        new_band_count = len(new_band_names)
+        new_wavelengths = orig_wavelengths[band_slice]
+        new_bad_bands = orig_bad_bands[band_slice]
+
+        self.assertEqual(27, new_band_count)
+        self.assertEqual(new_band_count, len(new_band_names))
+        self.assertEqual(new_band_count, len(new_wavelengths))
+        self.assertEqual(new_band_count, len(new_bad_bands))
+
+        mutable_header.set_bands(new_band_count, new_band_names, new_wavelengths, new_bad_bands)
+        self.assertListEqual(new_band_names, mutable_header.band_names())
+        self.assertListEqual(orig_band_names, self.__source_header1.band_names())
+
+        self.assertTrue(np.array_equal(new_wavelengths, mutable_header.wavelengths()))
+        self.assertTrue(np.array_equal(orig_wavelengths, self.__source_header1.wavelengths()))
+
+        self.assertListEqual(new_bad_bands, mutable_header.bad_band_list())
+        self.assertListEqual(orig_bad_bands, self.__source_header1.bad_band_list())
+
+        self.assertMapInfoEqual(orig_map_info, mutable_header.map_info())
+
+    def test_no_map_info(self):
+        self.assertIsNone(self.__source_header3.map_info())
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header3)
+        self.assertIsNone(mutable_header.map_info())
+
+    def test_map_info(self):
+        orig_map_info = self.__source_header2.map_info()
+        self.assertEqual(1.0, orig_map_info.x_reference_pixel())
+        self.assertEqual(50000.0, orig_map_info.x_zero_coordinate())
+        self.assertEqual(1.0, orig_map_info.y_reference_pixel())
+        self.assertEqual(4000000.0, orig_map_info.y_zero_coordinate())
+
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header2)
+        self.assertMapInfoEqual(orig_map_info, mutable_header.map_info())
+
+        self.assertNotEqual(3.0, orig_map_info.x_reference_pixel())
+        self.assertNotEqual(55000.0, orig_map_info.x_zero_coordinate())
+        mutable_header.set_x_reference(3.0, 55000.0)
+        self.assertMapInfoOtherEqual(orig_map_info, mutable_header.map_info())
+        self.assertEqual(3.0, mutable_header.map_info().x_reference_pixel())
+        self.assertEqual(55000.0, mutable_header.map_info().x_zero_coordinate())
+        self.assertEqual(orig_map_info.y_reference_pixel(), mutable_header.map_info().y_reference_pixel())
+        self.assertEqual(orig_map_info.y_zero_coordinate(), mutable_header.map_info().y_zero_coordinate())
+
+        self.assertNotEqual(4.0, orig_map_info.y_reference_pixel())
+        self.assertNotEqual(4007000.0, orig_map_info.y_zero_coordinate())
+        mutable_header.set_y_reference(4.0, 4007000.0)
+        self.assertMapInfoOtherEqual(orig_map_info, mutable_header.map_info())
+        self.assertEqual(3.0, mutable_header.map_info().x_reference_pixel())
+        self.assertEqual(55000.0, mutable_header.map_info().x_zero_coordinate())
+        self.assertEqual(4.0, mutable_header.map_info().y_reference_pixel())
+        self.assertEqual(4007000.0, mutable_header.map_info().y_zero_coordinate())
+
+        self.assertEqual(1.0, orig_map_info.x_reference_pixel())
+        self.assertEqual(50000.0, orig_map_info.x_zero_coordinate())
+        self.assertEqual(1.0, orig_map_info.y_reference_pixel())
+        self.assertEqual(4000000.0, orig_map_info.y_zero_coordinate())
+
+    def test_load(self):
+        # Just making sure MutableOpenSpectraHeader.load() doesn't blow up
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
+        mutable_header.load()
+
+    def test_save1(self):
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header1)
+        test_file_name = "test/unit_tests/resources/sample_header_1_copy"
+        mutable_header.save(test_file_name)
+        header_copy = OpenSpectraHeader(test_file_name + ".hdr")
+        header_copy.load()
+        self.assertHeadersMatch(self.__source_header1, header_copy)
+        self.__clean_up_list.append(test_file_name + ".hdr")
+
+    def test_save2(self):
+        mutable_header = MutableOpenSpectraHeader(os_header=self.__source_header4)
+        test_file_name = "test/unit_tests/resources/ang20160928t135411_rfl_v1nx_nonortho_copy"
+        mutable_header.save(test_file_name)
+        header_copy = OpenSpectraHeader(test_file_name + ".hdr")
+        header_copy.load()
+        self.assertHeadersMatch(self.__source_header4, header_copy)
+        self.__clean_up_list.append(test_file_name + ".hdr")
+
+    def assertHeadersMatch(self, first:OpenSpectraHeader, second:OpenSpectraHeader):
+        self.assertEqual(first.description(), second.description())
+        self.assertEqual(first.samples(), second.samples())
+        self.assertEqual(first.lines(), second.lines())
+        self.assertEqual(first.band_count(), second.band_count())
+        self.assertEqual(first.header_offset(), second.header_offset())
+        self.assertEqual(first.file_type(), second.file_type())
+        self.assertEqual(first.data_type(), second.data_type())
+        self.assertEqual(first.interleave(), second.interleave())
+        self.assertEqual(first.sensor_type(), second.sensor_type())
+        self.assertEqual(first.byte_order(), second.byte_order())
+        self.assertEqual(first.wavelength_units(), second.wavelength_units())
+        self.assertEqual(first.reflectance_scale_factor(), second.reflectance_scale_factor())
+        self.assertMapInfoEqual(first.map_info(), second.map_info())
+        self.assertEqual(first.coordinate_system_string(), second.coordinate_system_string())
+        self.assertStretchEqual(first.default_stretch(), second.default_stretch())
+
+        if first.band_names() is None:
+            self.assertIsNone(second.band_names())
+        else:
+            self.assertListEqual(first.band_names(), second.band_names())
+        self.assertTrue(np.array_equal(first.wavelengths(), second.wavelengths()))
+
+        if first.bad_band_list() is None:
+            self.assertIsNone(second.bad_band_list())
+        else:
+            self.assertListEqual(first.bad_band_list(), second.bad_band_list())
+
+        self.assertUnsupportedPropsMatch(first, second)
+
+    def assertUnsupportedPropsMatch(self, first:OpenSpectraHeader, second:OpenSpectraHeader):
+        self.assertEqual(len(first.unsupported_props()), len(second.unsupported_props()))
+        self.assertSetEqual(set(first.unsupported_props().keys()), set(second.unsupported_props().keys()))
+        for key, value in first.unsupported_props().items():
+            if isinstance(value, list):
+                if len(value) == first.band_count():
+                    self.assertEqual(second.band_count(), len(value))
+                else:
+                    self.assertListEqual(list(first.unsupported_props().values()),
+                        list(second.unsupported_props().values()))
+            else:
+                self.assertEqual(first.unsupported_props().get(key), value)
+
+    def assertStretchEqual(self, first:LinearImageStretch, second:LinearImageStretch):
+        if first is None:
+            self.assertIsNone(second)
+        elif isinstance(first, PercentageStretch) and isinstance(second, PercentageStretch):
+            self.assertEqual(first.percentage(), second.percentage())
+            with self.assertRaises(NotImplementedError):
+                first.low()
+            with self.assertRaises(NotImplementedError):
+                first.high()
+        elif isinstance(first, ValueStretch) and isinstance(second, ValueStretch):
+            self.assertEqual(first.low(), second.low())
+            self.assertEqual(first.high(), second.high())
+            with self.assertRaises(NotImplementedError):
+                first.percentage()
+        else:
+            self.fail("assertStretchEqual expects both values to have the same type")
+
+    def assertMapInfoEqual(self, first:OpenSpectraHeader.MapInfo, second:OpenSpectraHeader.MapInfo):
+        if first is None:
+            self.assertIsNone(second)
+        else:
+            self.assertEqual(first.projection_name(), second.projection_name())
+            self.assertEqual(first.x_reference_pixel(), second.x_reference_pixel())
+            self.assertEqual(first.y_reference_pixel(), second.y_reference_pixel())
+            self.assertEqual(first.x_zero_coordinate(), second.x_zero_coordinate())
+            self.assertEqual(first.y_zero_coordinate(), second.y_zero_coordinate())
+            self.assertEqual(first.x_pixel_size(), second.x_pixel_size())
+            self.assertEqual(first.projection_zone(), second.projection_zone())
+            self.assertEqual(first.projection_area(), second.projection_area())
+            self.assertEqual(first.datum(), second.datum())
+            self.assertEqual(first.units(), second.units())
+            self.assertEqual(first.rotation(), second.rotation())
+
+    def assertMapInfoOtherEqual(self, first:OpenSpectraHeader.MapInfo, second:OpenSpectraHeader.MapInfo):
+        if first is None:
+            self.assertIsNone(second)
+        else:
+            self.assertEqual(first.projection_name(), second.projection_name())
+            self.assertEqual(first.y_pixel_size(), second.y_pixel_size())
+            self.assertEqual(first.projection_zone(), second.projection_zone())
+            self.assertEqual(first.projection_area(), second.projection_area())
+            self.assertEqual(first.datum(), second.datum())
+            self.assertEqual(first.units(), second.units())
+            self.assertEqual(first.rotation(), second.rotation())
 
 
 class ImageStretchTest(unittest.TestCase):

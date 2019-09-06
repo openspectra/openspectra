@@ -2,6 +2,7 @@
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
 import os
+from math import floor
 
 from PyQt5.QtCore import QStandardPaths
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox
@@ -38,13 +39,22 @@ class OpenSpectraUI(QMainWindow):
         # exitAct.setStatusTip('Exit application')
         # exitAct.triggered.connect(qApp.quit)
 
-        # TODO figure out/get icons
-        open_action = QAction(QIcon('open.png'), '&Open', self)
+        open_action = QAction('&Open', self)
         open_action.setShortcut('Ctrl+O')
         open_action.setStatusTip('Open file')
         open_action.triggered.connect(self.__open)
 
-        plot_action = QAction(QIcon('plot.png'), '&Plot', self)
+        save_action = QAction("&Save", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.setStatusTip("Save sub-cube")
+        save_action.triggered.connect(self.__save)
+
+        close_action = QAction("&Close", self)
+        close_action.setShortcut("Ctrl+C")
+        close_action.setStatusTip("Close file")
+        close_action.triggered.connect(self.__close)
+
+        plot_action = QAction('&Plot', self)
         plot_action.setShortcut('Ctrl+P')
         plot_action.setStatusTip('Plot stuff')
         plot_action.triggered.connect(self.__plot)
@@ -60,20 +70,21 @@ class OpenSpectraUI(QMainWindow):
 
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(open_action)
+        file_menu.addAction(save_action)
+        file_menu.addAction(close_action)
         # fileMenu.addAction(exitAct)
 
         plot_menu = menu_bar.addMenu("&Plot")
         plot_menu.addAction(plot_action)
 
         self.__band_list = BandList(self)
-
-        # TODO ummmm need to think this through
         self.setCentralWidget(self.__band_list)
 
         self.__window_manager = WindowManager(self, self.__band_list)
+        available_geometry = self.__window_manager.available_geometry()
 
         self.statusBar().showMessage('Ready')
-        self.setGeometry(10, 25, 270, 700)
+        self.setGeometry(2, 25, 270, floor(available_geometry.bottom() * 0.90))
         self.show()
 
     def __open(self):
@@ -95,6 +106,12 @@ class OpenSpectraUI(QMainWindow):
                 self.__file_not_found_prompt(file_name)
         else:
             OpenSpectraUI.__LOG.debug("File open canceled...")
+
+    def __save(self):
+        self.__window_manager.open_save_subcube(self.__band_list.selected_file())
+
+    def __close(self):
+        self.__window_manager.close_file(self.__band_list.selected_file())
 
     def __plot(self):
         pass
