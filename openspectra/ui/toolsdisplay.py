@@ -425,7 +425,7 @@ class SubCubeControl(QWidget):
 
         self.__file_type = QComboBox(self)
         self.__format_map = {OpenSpectraHeader.BIL_INTERLEAVE : "BIL - Band Interleaved by Line",
-                             OpenSpectraHeader.BSQ_INTERLEAVE : "BQS - Band Sequential",
+                             OpenSpectraHeader.BSQ_INTERLEAVE : "BSQ - Band Sequential",
                              OpenSpectraHeader.BIP_INTERLEAVE : "BIP - Band Interleaved by Pixel"}
         self.__file_type.insertItem(0, "")
         self.__file_type.insertItems(1, self.__format_map.values())
