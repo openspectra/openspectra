@@ -818,9 +818,8 @@ class SubCubeTools:
         SubCubeTools.__LOG.debug("create_sub_cube header created: {0}", self.__sub_cube_header.dump())
 
     def save(self, file_name:str):
+        SubCubeTools.__LOG.debug("save sub cube called for: {}", file_name)
         if self.__sub_cube  is not None and self.__sub_cube_header is not None:
-            # TODO check name?  strip extensions?
-
             # write data file
             flat_iterator = self.__sub_cube.flat
             with open(file_name, "wb") as out_file:

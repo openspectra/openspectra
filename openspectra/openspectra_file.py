@@ -693,6 +693,7 @@ class MutableOpenSpectraHeader(OpenSpectraHeader):
 
     def save(self, base_file_name:str):
         file_name = base_file_name + ".hdr"
+        MutableOpenSpectraHeader.__LOG.debug("saving header file: {}", file_name)
         with open(file_name, "wt") as out_file:
             out_file.write("OpenSpectra\n")
             out_file.write("description = {0}{1}{2}\n".format("{", self.description(), "}"))
