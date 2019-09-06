@@ -163,14 +163,25 @@ class RegionOfInterestControl(QWidget):
         self.__regions.clear()
         self.__rows = 0
 
+    def remove_item(self, region:RegionOfInterest):
+        RegionOfInterestControl.__LOG.debug("remove_item called for region: {}", region)
+        try:
+            index = self.__regions.index(region)
+            self.__remove_item_at(index)
+        except ValueError:
+            RegionOfInterestControl.__LOG.error("Tried to remove RegionOfInterest item not in list")
+
     def remove(self, event:RegionCloseEvent):
         row = event.row()
         region = self.__regions[row]
         if region is not None:
-            self.__table.removeRow(row)
-            del self.__regions[row]
-            self.__rows -= 1
-            self.__selected_row = None
+            self.__remove_item_at(row)
+
+    def __remove_item_at(self, index:int):
+        self.__table.removeRow(index)
+        del self.__regions[index]
+        self.__rows -= 1
+        self.__selected_row = None
 
     def __adjust_width(self):
         self.__table.resizeColumnsToContents()
@@ -255,6 +266,9 @@ class RegionOfInterestDisplayWindow(QMainWindow):
 
     def remove_all(self):
         self.__region_control.remove_all()
+
+    def remove_item(self, region:RegionOfInterest):
+        self.__region_control.remove_item(region)
 
     def remove(self, event:RegionCloseEvent):
         self.__region_control.remove(event)
