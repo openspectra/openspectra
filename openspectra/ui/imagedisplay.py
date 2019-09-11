@@ -1075,7 +1075,8 @@ class ImageDisplay(QScrollArea):
         pix_map = QPixmap.fromImage(self.__qimage)
         if factor != 1.0:
             new_size = self.__image_size * factor
-            pix_map = pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # Use Qt.FastTransformation so pixels can be distinguished when zoomed in
+            pix_map = pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.FastTransformation)
 
         self.__pix_map = pix_map
         self.__set_pixmap()
@@ -1084,7 +1085,9 @@ class ImageDisplay(QScrollArea):
         """Scale the image to the given size maintaining aspect ratio. See http://doc.qt.io/qt-5/qpixmap.html#scaled
         for information about how the aspect ratio is handled using Qt.KeepAspectRatio
         Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
-        self.__pix_map = self.__pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        # Use Qt.FastTransformation so pixels can be distinguished when zoomed in
+        self.__pix_map = self.__pix_map.scaled(new_size, Qt.KeepAspectRatio, Qt.FastTransformation)
         ImageDisplay.__LOG.debug("scaling to size: {0}", new_size)
         self.__set_pixmap()
 
@@ -1095,14 +1098,17 @@ class ImageDisplay(QScrollArea):
         if self.__image_label.has_locator():
             ImageDisplay.__LOG.debug("scale_to_height locator size: {0}, pos: {1}", self.__image_label.locator_size(), self.__image_label.locator_position())
 
-        self.__pix_map = self.__pix_map.scaledToHeight(height, Qt.SmoothTransformation)
+        # Use Qt.FastTransformation so pixels can be distinguished when zoomed in
+        self.__pix_map = self.__pix_map.scaledToHeight(height, Qt.FastTransformation)
         ImageDisplay.__LOG.debug("scaling to height: {0}", height)
         self.__set_pixmap()
 
     def scale_to_width(self, width:int):
         """Scale the image to the given width maintaining aspect ratio.
         Do not call repeatedly without a call to reset_size as image will blur with repeated scaling"""
-        self.__pix_map = self.__pix_map.scaledToWidth(width, Qt.SmoothTransformation)
+
+        # Use Qt.FastTransformation so pixels can be distinguished when zoomed in
+        self.__pix_map = self.__pix_map.scaledToWidth(width, Qt.FastTransformation)
         ImageDisplay.__LOG.debug("scaling to width: {0}", width)
         self.__set_pixmap()
 
