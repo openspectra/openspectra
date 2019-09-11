@@ -524,8 +524,12 @@ class OpenSpectraHistogramTools:
     def __get_hist_data(data:np.ndarray) -> HistogramPlotData:
         type = data.dtype
         if type in OpenSpectraDataTypes.Ints:
-            x_range = (data.min(), data.max())
             bins = data.max() - data.min()
+            if bins == 0:
+                bins = 255
+                x_range = (0, 255)
+            else:
+                x_range = (data.min(), data.max())
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         elif type in OpenSpectraDataTypes.Floats:
             x_range = (data.min(), data.max())

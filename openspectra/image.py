@@ -153,33 +153,37 @@ class BandImageAdjuster(ImageAdjuster):
             BandImageAdjuster.__LOG.debug("low cutoff: {0}, high cutoff: {1}, data ignore value: {2}",
                 self.low_cutoff(), self.high_cutoff(), self.__data_ignore_vale)
 
-            ignore_mask = None
-            if self.__data_ignore_vale is not None:
-                ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
-                # BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
+            if self.low_cutoff() != self.high_cutoff():
+                ignore_mask = None
+                if self.__data_ignore_vale is not None:
+                    ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
+                    # BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
 
-            # TODO <= or <, looks like <=, with < I get strange dots on the image
-            low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
+                # TODO <= or <, looks like <=, with < I get strange dots on the image
+                low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
 
-            # TODO >= or <, looks like >=, with < I get strange dots on the image
-            high_mask = np.ma.getmask(np.ma.masked_where(self.__band >= self.__high_cutoff, self.__band, False))
+                # TODO >= or <, looks like >=, with < I get strange dots on the image
+                high_mask = np.ma.getmask(np.ma.masked_where(self.__band >= self.__high_cutoff, self.__band, False))
 
-            full_mask = low_mask | high_mask
-            masked_band = np.ma.masked_where(full_mask, self.__band, True)
+                full_mask = low_mask | high_mask
+                masked_band = np.ma.masked_where(full_mask, self.__band, True)
 
-            # 0 and 256 assumes 8-bit images, the pixel value limits
-            # TODO why didn't 255 work?
-            A, B = 0, 256
-            masked_band = ((masked_band - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
+                # 0 and 256 assumes 8-bit images, the pixel value limits
+                # TODO why didn't 255 work?
+                A, B = 0, 256
+                masked_band = ((masked_band - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
 
-            # Set the low and high masked values to white and black
-            masked_band[low_mask] = 0
-            masked_band[high_mask] = 255
+                # Set the low and high masked values to white and black
+                masked_band[low_mask] = 0
+                masked_band[high_mask] = 255
 
-            # Set ignored values to black
-            if ignore_mask is not None and np.ma.is_mask(ignore_mask):
-                # BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
-                masked_band[ignore_mask] = 0
+                # Set ignored values to black
+                if ignore_mask is not None and np.ma.is_mask(ignore_mask):
+                    # BandImageAdjuster.__LOG.debug("Applied ignore value mask: {0}".format(ignore_mask))
+                    masked_band[ignore_mask] = 0
+            else:
+                masked_band = np.ma.masked_not_equal(self.__band, 0)
+                masked_band[masked_band.mask] = 0
 
             self.__image_data = masked_band.astype("uint8")
             self.__updated = False
