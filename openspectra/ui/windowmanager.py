@@ -16,7 +16,7 @@ from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectr
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
-    ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent
+    ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent, ImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
     RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent
@@ -150,6 +150,10 @@ class WindowManager(QObject):
             dialog.setText("You must have at least one file open to save a sub-cube")
             dialog.addButton(QMessageBox.Ok)
             dialog.exec()
+
+    def link_windows(self, start_window:ImageDisplayWindow):
+        pass
+        # TODO offer a list of other open windows? with the same size image
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
