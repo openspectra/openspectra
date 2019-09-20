@@ -13,7 +13,8 @@ from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
 from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
     RegionOfInterest, OpenSpectraRegionTools, SubCubeTools
-from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader
+from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, OpenSpectraFileFactory, \
+    OpenSpectraFileError
 from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent, ImageDisplayWindow
@@ -82,8 +83,29 @@ class WindowManager(QObject):
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
 
+        self.__default_open_dir = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
         self.__save_manager = SaveManager(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation),
                                 "Save Data", "", "")
+
+    def open_file(self):
+        file_dialog = QFileDialog.getOpenFileName(self.__parent_window, "Open file", self.__default_open_dir)
+        file_name = file_dialog[0]
+
+        if len(file_name) > 0:
+            try:
+                file = OpenSpectraFileFactory.create_open_spectra_file(file_name)
+                self.add_file(file)
+
+                # save the last save location, default there next time
+                split_path = os.path.split(file_name)
+                if split_path[0]:
+                    self.__default_open_dir = split_path[0]
+
+            except OpenSpectraFileError as e:
+                WindowManager.__LOG.error("Failed to open file with error: {0}".format(e))
+                self.__file_not_found_prompt(file_name)
+        else:
+            WindowManager.__LOG.debug("File open canceled...")
 
     def add_file(self, file:OpenSpectraFile):
         file_manager = FileManager(file, self)
@@ -152,7 +174,7 @@ class WindowManager(QObject):
             dialog.exec()
 
     def link_windows(self, start_window:ImageDisplayWindow):
-        pass
+        WindowManager.__LOG.debug("link_windows called...")
         # TODO offer a list of other open windows? with the same size image
 
     @pyqtSlot(SaveSubCubeEvent)
@@ -205,6 +227,14 @@ class WindowManager(QObject):
         else:
             # TODO report or log?
             pass
+
+    @staticmethod
+    def __file_not_found_prompt(file_name:str):
+        dialog = QMessageBox()
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText("File named '{0}' not found!".format(file_name))
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()
 
 
 class FileManager(QObject):
