@@ -56,8 +56,9 @@ class TypeSelector(QWidget):
     def __init__(self, parent:QWidget):
         super().__init__(parent)
 
-        self.__open_button = QPushButton("Open", self)
+        self.__open_button = QPushButton("Show Image", self)
         self.__open_button.clicked.connect(self.__handle_open_clicked)
+        self.__open_button.setDisabled(True)
 
         h_layout = QHBoxLayout()
 
@@ -94,7 +95,6 @@ class TypeSelector(QWidget):
     @pyqtSlot(bool)
     def __handle_greyscale_toggle(self, checked:bool):
         if checked:
-            self.__open_button.setDisabled(False)
             self.greyscale_selected.emit()
 
     @pyqtSlot(bool)
@@ -263,11 +263,17 @@ class BandList(QWidget):
                 self.__type_selector.open_enabled(True)
             else:
                 self.__type_selector.open_enabled(False)
+        else:
+            # grey scale is selected
+            if len(selected_items) == 1 and selected_items[0].parent() is not None:
+                self.__type_selector.open_enabled(True)
+            else:
+                self.__type_selector.open_enabled(False)
 
     @pyqtSlot()
     def __handle_open_clicked(self):
+        items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
         if self.__type_selector.is_rgb_selected():
-            items:List[QTreeWidgetItem] = self.__treeWidget.selectedItems()
             if len(items) == 3:
 
                 if items[0].parent() is None or items[1].parent() is None or items[2].parent() is None:
@@ -292,9 +298,10 @@ class BandList(QWidget):
                     self.rgbSelected.emit(selected)
 
         if self.__type_selector.is_greyscale_selected():
-            item:QTreeWidgetItem = self.__treeWidget.selectedItems()[0]
-            item.setSelected(False)
-            self.__open_item(item)
+            if len(items) == 1:
+                item:QTreeWidgetItem = items[0]
+                item.setSelected(False)
+                self.__open_item(item)
 
     def __open_item(self, item:QTreeWidgetItem):
         parent_item = item.parent()
