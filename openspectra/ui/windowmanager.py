@@ -24,6 +24,27 @@ from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionSta
 from openspectra.utils import LogHelper, Logger
 
 
+class MenuEvent(QObject):
+
+    OPEN_EVENT:int = 0
+    CLOSE_EVENT:int = 1
+    SAVE_EVENT:int = 2
+    LINK_EVENT:int = 3
+    HIST_PLOT_EVENT:int = 4
+    SPEC_PLOT_EVENT:int = 5
+
+    def __init__(self, event_type:int, window:QMainWindow):
+        super().__init__()
+        self.__event_type = event_type
+        self.__window = window
+
+    def event_type(self) -> int:
+        return self.__event_type
+
+    def window(self) -> QMainWindow:
+        return self.__window
+
+
 class SaveManager(QObject):
 
     __LOG:Logger = LogHelper.logger("SaveManager")
@@ -63,6 +84,8 @@ class SaveManager(QObject):
 class WindowManager(QObject):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
+
+    image_closed = pyqtSignal(WindowCloseEvent)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -176,6 +199,41 @@ class WindowManager(QObject):
     def link_windows(self, start_window:ImageDisplayWindow):
         WindowManager.__LOG.debug("link_windows called...")
         # TODO offer a list of other open windows? with the same size image
+
+    @pyqtSlot(MenuEvent)
+    def menu_event_handler(self, event:MenuEvent):
+        event_type = event.event_type()
+        target_window = event.window()
+        WindowManager.__LOG.debug("Received menu event type: {}, for window: {}", event_type, target_window)
+
+        if event_type == MenuEvent.OPEN_EVENT:
+            self.open_file()
+
+        elif event_type == MenuEvent.SAVE_EVENT:
+            if target_window == self.__parent_window:
+                self.open_save_subcube(self.__band_list.selected_file())
+            elif isinstance(target_window, ImageDisplayWindow):
+                # TODO will do a save image eventually
+                pass
+
+        elif event_type == MenuEvent.CLOSE_EVENT:
+            if target_window == self.__parent_window:
+                self.close_file(self.__band_list.selected_file())
+            elif isinstance(target_window, ImageDisplayWindow):
+                # notify the window sets they'll decide if it applies
+                self.image_closed.emit(WindowCloseEvent(target_window))
+
+        elif event_type == MenuEvent.LINK_EVENT:
+            pass
+
+        elif event_type == MenuEvent.HIST_PLOT_EVENT:
+            pass
+
+        elif event_type == MenuEvent.SPEC_PLOT_EVENT:
+            pass
+
+        else:
+            WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
@@ -307,8 +365,9 @@ class FileManager(QObject):
         # if the file was closed the window_set will have been closed already
         if window_set in self.__window_sets:
             self.__window_sets.remove(window_set)
-            FileManager.__LOG.debug("WindowSets open {0}", len(self.__window_sets))
             del window_set
+
+        FileManager.__LOG.debug("WindowSets open {0}", len(self.__window_sets))
 
 
 class WindowSet(QObject):
@@ -367,7 +426,11 @@ class WindowSet(QObject):
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
         self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
 
+        # Register for close events coming from the menu system
+        self.__file_manager.window_manager().image_closed.connect(self.__handle_image_closed)
+
     def __init_plot_windows(self):
+        # TODO may need to handle close events from these
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
@@ -427,47 +490,36 @@ class WindowSet(QObject):
             self.__spec_plot_window.show()
 
     @pyqtSlot(WindowCloseEvent)
-    def __handle_image_closed(self, event:WindowCloseEvent=None):
-        if event is None:
-            WindowSet.__LOG.debug("__handle_image_closed both windows")
-            # disconnect so we don't get a second event
-            self.__main_image_window.closed.disconnect(self.__handle_image_closed)
-            self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
-            self.__zoom_image_window.close()
-            self.__zoom_image_window = None
-            self.__main_image_window.close()
-            self.__main_image_window = None
-        elif event.target() == self.__main_image_window:
-            WindowSet.__LOG.debug("__handle_image_closed main window")
-            # disconnect so we don't get a second event
-            self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
-            self.__zoom_image_window.close()
-            self.__zoom_image_window = None
-            self.__main_image_window = None
-        elif event.target() == self.__zoom_image_window:
-            WindowSet.__LOG.debug("__handle_image_closed zoom window")
-            # disconnect so we don't get a second event
-            self.__main_image_window.closed.disconnect(self.__handle_image_closed)
-            self.__main_image_window.close()
-            self.__main_image_window = None
-            self.__zoom_image_window = None
-        else:
-            WindowSet.__LOG.error("Received WindowCloseEvent but target was not in this WindowSet")
+    def __handle_image_closed(self, event:WindowCloseEvent):
+        target_window = event.target()
+        if target_window == self.__main_image_window or target_window == self.__zoom_image_window:
+            WindowSet.__LOG.debug("__handle_image_closed target: {}", target_window)
+            if self.__zoom_image_window is not None:
+                # disconnect so we don't get a second event
+                self.__zoom_image_window.closed.disconnect(self.__handle_image_closed)
+                self.__zoom_image_window.close()
+                self.__zoom_image_window = None
 
-        if self.__histogram_window is not None:
-            self.__histogram_window.close()
-            self.__histogram_window = None
+            if self.__main_image_window is not None:
+                # disconnect so we don't get a second event
+                self.__main_image_window.closed.disconnect(self.__handle_image_closed)
+                self.__main_image_window.close()
+                self.__main_image_window = None
 
-        if self.__spec_plot_window is not None:
-            # It should have been closed when the main window, it's parent closed
-            self.__spec_plot_window.close()
-            self.__spec_plot_window = None
+            if self.__histogram_window is not None:
+                self.__histogram_window.close()
+                self.__histogram_window = None
 
-        while len(self.__band_stats_windows) > 0:
-            key, window = self.__band_stats_windows.popitem()
-            window.close()
+            if self.__spec_plot_window is not None:
+                # It should have been closed when the main window, it's parent closed
+                self.__spec_plot_window.close()
+                self.__spec_plot_window = None
 
-        self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
+            while len(self.__band_stats_windows) > 0:
+                key, window = self.__band_stats_windows.popitem()
+                window.close()
+
+            self.closed.emit(QChildEvent(QChildEvent.ChildRemoved, self))
 
     @pyqtSlot()
     def __handle_region_window_close(self):
@@ -560,8 +612,13 @@ class WindowSet(QObject):
     def file_manager(self) -> FileManager:
         return self.__file_manager
 
-    def close(self):
-        self.__handle_image_closed()
+    def close(self, target_window:QMainWindow=None):
+        if target_window is not None:
+            if isinstance(target_window, ImageDisplayWindow) and \
+                    (target_window == self.__main_image_window or target_window == self.__zoom_image_window):
+                self.__handle_image_closed(WindowCloseEvent(target_window))
+        else:
+            self.__handle_image_closed(WindowCloseEvent(self.__main_image_window))
 
     @pyqtSlot(RegionStatsEvent)
     def handle_region_stats(self, event:RegionStatsEvent):

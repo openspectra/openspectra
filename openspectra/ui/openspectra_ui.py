@@ -4,18 +4,20 @@
 from math import floor
 
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QAction, QMessageBox, QApplication, QWidget
 
 from openspectra.ui.bandlist import BandList
 from openspectra.ui.imagedisplay import ImageDisplayWindow
-from openspectra.ui.windowmanager import WindowManager
+from openspectra.ui.windowmanager import WindowManager, MenuEvent
 from openspectra.utils import Logger, LogHelper
 
 
 class OpenSpectraUI(QMainWindow):
 
     __LOG:Logger = LogHelper.logger("OpenSpectraUI")
+
+    menu_event = pyqtSignal(MenuEvent)
 
     def __init__(self):
         super().__init__()
@@ -99,6 +101,7 @@ class OpenSpectraUI(QMainWindow):
         self.setCentralWidget(self.__band_list)
 
         self.__window_manager = WindowManager(self, self.__band_list)
+        self.menu_event.connect(self.__window_manager.menu_event_handler)
         available_geometry = self.__window_manager.available_geometry()
 
         self.statusBar().showMessage('Ready')
@@ -106,13 +109,17 @@ class OpenSpectraUI(QMainWindow):
         self.show()
 
     def __open(self):
-        self.__window_manager.open_file()
+        self.__fire_menu_event(MenuEvent.OPEN_EVENT)
 
     def __save(self):
-        self.__window_manager.open_save_subcube(self.__band_list.selected_file())
+        self.__fire_menu_event(MenuEvent.SAVE_EVENT)
 
     def __close(self):
-        self.__window_manager.close_file(self.__band_list.selected_file())
+        self.__fire_menu_event(MenuEvent.CLOSE_EVENT)
+
+    def __plot(self):
+        # TODO open plots
+        pass
 
     def __link_displays(self):
         current_window:QWidget = QApplication.activeWindow()
@@ -130,6 +137,11 @@ class OpenSpectraUI(QMainWindow):
             dialog.addButton(QMessageBox.Ok)
             dialog.exec()
 
+    def __fire_menu_event(self, event_type:int):
+        current_window:QWidget = QApplication.activeWindow()
+        if current_window is not None:
+            self.menu_event.emit(MenuEvent(event_type, current_window))
+
     @pyqtSlot("QWidget*", "QWidget*")
     def __handle_focus_changed(self, old:QWidget, new:QWidget):
         current_window = QApplication.activeWindow()
@@ -145,10 +157,3 @@ class OpenSpectraUI(QMainWindow):
             self.__link_action.setDisabled(True)
             self.__spectrum_plot_action.setDisabled(True)
             self.__histogram_plot_action.setDisabled(True)
-
-    def __plot(self):
-        # TODO open plots
-        pass
-
-
-
