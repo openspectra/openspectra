@@ -86,6 +86,8 @@ class WindowManager(QObject):
     __LOG:Logger = LogHelper.logger("WindowManager")
 
     image_closed = pyqtSignal(WindowCloseEvent)
+    plot_closed = pyqtSignal(WindowCloseEvent)
+    plot_opened = pyqtSignal(MenuEvent)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -222,15 +224,14 @@ class WindowManager(QObject):
             elif isinstance(target_window, ImageDisplayWindow):
                 # notify the window sets they'll decide if it applies
                 self.image_closed.emit(WindowCloseEvent(target_window))
+            elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window, HistogramDisplayWindow):
+                # notify the window sets they'll decide if it applies
+                self.plot_closed.emit(WindowCloseEvent(target_window))
 
-        elif event_type == MenuEvent.LINK_EVENT:
-            pass
-
-        elif event_type == MenuEvent.HIST_PLOT_EVENT:
-            pass
-
-        elif event_type == MenuEvent.SPEC_PLOT_EVENT:
-            pass
+        elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
+            isinstance(target_window, ImageDisplayWindow):
+            # notify the window sets they'll decide if it applies
+            self.plot_opened.emit(event)
 
         else:
             WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
@@ -428,6 +429,8 @@ class WindowSet(QObject):
 
         # Register for close events coming from the menu system
         self.__file_manager.window_manager().image_closed.connect(self.__handle_image_closed)
+        self.__file_manager.window_manager().plot_closed.connect(self.__handle_plot_closed)
+        self.__file_manager.window_manager().plot_opened.connect(self.__handle_plot_open)
 
     def __init_plot_windows(self):
         # TODO may need to handle close events from these
@@ -471,6 +474,25 @@ class WindowSet(QObject):
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
         self.__histogram_window.show()
 
+    @pyqtSlot(MenuEvent)
+    def __handle_plot_open(self, event:MenuEvent):
+        target_window = event.window()
+        if target_window == self.__main_image_window or target_window == self.__zoom_image_window:
+            WindowSet.__LOG.debug("__handle_plot type: {}, target: {}", event.event_type(), target_window)
+            event_type = event.event_type()
+
+            if event_type == MenuEvent.HIST_PLOT_EVENT and not self.__histogram_window.isVisible():
+                # TODO need some sort of layout manager?
+                rect = self.__main_image_window.geometry()
+                self.__init_histogram(rect.x(), rect.y())
+            elif event_type == MenuEvent.SPEC_PLOT_EVENT and not self.__spec_plot_window.isVisible():
+                # TODO need some sort of layout manager?
+                rect = self.__main_image_window.geometry()
+                self.__spec_plot_window.setGeometry(rect.x() + 100, rect.y() + 100, 500, 400)
+                self.__spec_plot_window.show()
+            else:
+                WindowSet.__LOG.warning("Unknown menu plot event type: {}", event_type)
+
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_pixel_click(self, event:AdjustedMouseEvent):
         if self.__spec_plot_window.isVisible():
@@ -480,14 +502,22 @@ class WindowSet(QObject):
 
     @pyqtSlot(AdjustedMouseEvent)
     def __handle_mouse_move(self, event:AdjustedMouseEvent):
-        plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
-        self.__spec_plot_window.plot(plot_data)
+        if self.__spec_plot_window.isVisible():
+            plot_data = self.__band_tools.spectral_plot(event.pixel_y(), event.pixel_x())
+            self.__spec_plot_window.plot(plot_data)
 
-        if not self.__spec_plot_window.isVisible():
-            # TODO need some sort of layout manager?
-            rect = self.__histogram_window.geometry()
-            self.__spec_plot_window.setGeometry(rect.x() + 50, rect.y() + 50, 500, 400)
-            self.__spec_plot_window.show()
+    @pyqtSlot(WindowCloseEvent)
+    def __handle_plot_closed(self, event:WindowCloseEvent):
+        target_window = event.target()
+        if target_window == self.__spec_plot_window:
+            self.__spec_plot_window.close()
+            self.__spec_plot_window = None
+        elif target_window == self.__histogram_window:
+            self.__histogram_window.close()
+            self.__histogram_window = None
+        else:
+            self.__handle_band_stats_closed(target_window)
+            target_window.close()
 
     @pyqtSlot(WindowCloseEvent)
     def __handle_image_closed(self, event:WindowCloseEvent):
@@ -600,8 +630,6 @@ class WindowSet(QObject):
 
         self.__zoom_image_window.move(x + 50, y + 50)
         self.__zoom_image_window.show()
-
-        self.__init_histogram(x, y)
 
     def get_image_window_geometry(self):
         return self.__main_image_window.geometry()
@@ -803,7 +831,7 @@ class RegionOfInterestManager(QObject):
         else:
             super().__init__()
             # TODO figure out how to position the window??
-            # Region of interest window, note we intentially don't set Qt.WA_DeleteOnClose
+            # Region of interest window, note we intentionally don't set Qt.WA_DeleteOnClose
             # because we can reuse it easily.
             self.__region_window = RegionOfInterestDisplayWindow()
             self.__region_window.region_saved.connect(self.__handle_region_saved)
@@ -833,6 +861,11 @@ class RegionOfInterestManager(QObject):
 
         if not self.__region_window.isVisible():
             self.__region_window.show()
+
+    @pyqtSlot(MenuEvent)
+    def handle_menu_close(self, event:MenuEvent):
+        if event.window() == self.__region_window:
+            self.__region_window.close()
 
     @pyqtSlot(RegionSaveEvent)
     def __handle_region_saved(self, event:RegionSaveEvent):
@@ -905,6 +938,7 @@ class RegionOfInterestManager(QObject):
 
     @pyqtSlot()
     def __handle_window_closed(self):
+        RegionOfInterestManager.__LOG.debug("__handle_window_closed called...")
         self.__region_window.remove_all()
         self.__region_set_manager.clear_all()
         self.window_closed.emit()

@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QMainWindow, QAction, QMessageBox, QApplication, QWi
 
 from openspectra.ui.bandlist import BandList
 from openspectra.ui.imagedisplay import ImageDisplayWindow
-from openspectra.ui.windowmanager import WindowManager, MenuEvent
+from openspectra.ui.windowmanager import WindowManager, MenuEvent, RegionOfInterestManager
 from openspectra.utils import Logger, LogHelper
 
 
@@ -63,13 +63,13 @@ class OpenSpectraUI(QMainWindow):
         self.__spectrum_plot_action = QAction('&Spectrum', self)
         self.__spectrum_plot_action.setShortcut('Ctrl+P')
         self.__spectrum_plot_action.setStatusTip('Open spectrum plot for current window')
-        self.__spectrum_plot_action.triggered.connect(self.__plot)
+        self.__spectrum_plot_action.triggered.connect(self.__plot_spec)
         self.__spectrum_plot_action.setDisabled(True)
 
         self.__histogram_plot_action = QAction('&Histogram', self)
         self.__histogram_plot_action.setShortcut('Ctrl+G')
         self.__histogram_plot_action.setStatusTip('Open histogram for current window')
-        self.__histogram_plot_action.triggered.connect(self.__plot)
+        self.__histogram_plot_action.triggered.connect(self.__plot_hist)
         self.__histogram_plot_action.setDisabled(True)
 
         self.__link_action = QAction('&Link', self)
@@ -102,24 +102,34 @@ class OpenSpectraUI(QMainWindow):
 
         self.__window_manager = WindowManager(self, self.__band_list)
         self.menu_event.connect(self.__window_manager.menu_event_handler)
+        roi_manager = RegionOfInterestManager.get_instance()
+        self.menu_event.connect(roi_manager.handle_menu_close)
+
         available_geometry = self.__window_manager.available_geometry()
 
         self.statusBar().showMessage('Ready')
         self.setGeometry(2, 25, 270, floor(available_geometry.bottom() * 0.90))
         self.show()
 
+    @pyqtSlot()
     def __open(self):
         self.__fire_menu_event(MenuEvent.OPEN_EVENT)
 
+    @pyqtSlot()
     def __save(self):
         self.__fire_menu_event(MenuEvent.SAVE_EVENT)
 
+    @pyqtSlot()
     def __close(self):
         self.__fire_menu_event(MenuEvent.CLOSE_EVENT)
 
-    def __plot(self):
-        # TODO open plots
-        pass
+    @pyqtSlot()
+    def __plot_spec(self):
+        self.__fire_menu_event(MenuEvent.SPEC_PLOT_EVENT)
+
+    @pyqtSlot()
+    def __plot_hist(self):
+        self.__fire_menu_event(MenuEvent.HIST_PLOT_EVENT)
 
     def __link_displays(self):
         current_window:QWidget = QApplication.activeWindow()
