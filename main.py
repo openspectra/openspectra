@@ -3,6 +3,8 @@
 #  Copyright (c) 2019. All rights reserved.
 
 import sys
+import traceback
+
 from PyQt5.QtWidgets import QApplication
 from openspectra.ui.openspectra_ui import OpenSpectraUI
 
@@ -13,7 +15,9 @@ if __name__ == '__main__':
         os = OpenSpectraUI()
         return_val = app.exec_()
     except:
-        print("Uncaught exception {0}".format(sys.exc_info()[0]))
+        info = sys.exc_info()
+        print("Uncaught exception:\n{0}: {1}".format(info[0], info[1]))
+        traceback.print_tb(info[2], file=sys.stdout)
     finally:
         print("Terminating with value {0}".format(return_val))
         sys.exit(return_val)

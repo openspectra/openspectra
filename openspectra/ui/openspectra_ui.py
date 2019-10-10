@@ -1,16 +1,15 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 1/21/19 6:29 PM.
 #  Last modified 1/21/19 6:29 PM
 #  Copyright (c) 2019. All rights reserved.
-import os
 from math import floor
 
-from PyQt5.QtCore import QStandardPaths
-from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox
-from PyQt5.QtGui import QIcon
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSlot, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QAction, QMessageBox, QApplication, QWidget
 
-from openspectra.openspectra_file import OpenSpectraFileFactory, OpenSpectraFileError
 from openspectra.ui.bandlist import BandList
-from openspectra.ui.windowmanager import WindowManager
+from openspectra.ui.imagedisplay import ImageDisplayWindow
+from openspectra.ui.windowmanager import WindowManager, MenuEvent, RegionOfInterestManager
 from openspectra.utils import Logger, LogHelper
 
 
@@ -18,10 +17,15 @@ class OpenSpectraUI(QMainWindow):
 
     __LOG:Logger = LogHelper.logger("OpenSpectraUI")
 
-    def __init__(self):
-        super(OpenSpectraUI, self).__init__(None)
+    menu_event = pyqtSignal(MenuEvent)
 
-        self.__save_dir_default = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
+    def __init__(self):
+        super().__init__()
+
+        # listen for focus change events so we can control which menu items are available
+        qApp = QtWidgets.qApp
+        qApp.focusChanged.connect(self.__handle_focus_changed)
+
         self.__init_ui()
 
         # TODO QMainWindow can store the state of its layout with saveState(); it can later be retrieved
@@ -39,25 +43,40 @@ class OpenSpectraUI(QMainWindow):
         # exitAct.setStatusTip('Exit application')
         # exitAct.triggered.connect(qApp.quit)
 
-        open_action = QAction('&Open', self)
-        open_action.setShortcut('Ctrl+O')
-        open_action.setStatusTip('Open file')
-        open_action.triggered.connect(self.__open)
+        self.__open_action = QAction('&Open', self)
+        self.__open_action.setShortcut('Ctrl+O')
+        self.__open_action.setStatusTip('Open file')
+        self.__open_action.triggered.connect(self.__open)
 
-        save_action = QAction("&Save", self)
-        save_action.setShortcut("Ctrl+S")
-        save_action.setStatusTip("Save sub-cube")
-        save_action.triggered.connect(self.__save)
+        self.__save_action = QAction("&Save", self)
+        self.__save_action.setShortcut("Ctrl+S")
+        self.__save_action.setStatusTip("Save sub-cube")
+        self.__save_action.triggered.connect(self.__save)
+        # TODO probably init to disabled until file opened?
 
-        close_action = QAction("&Close", self)
-        close_action.setShortcut("Ctrl+C")
-        close_action.setStatusTip("Close file")
-        close_action.triggered.connect(self.__close)
+        self.__close_action = QAction("&Close", self)
+        self.__close_action.setShortcut("Ctrl+C")
+        self.__close_action.setStatusTip("Close file")
+        self.__close_action.triggered.connect(self.__close)
+        # TODO probably init to disabled until file opened?
 
-        plot_action = QAction('&Plot', self)
-        plot_action.setShortcut('Ctrl+P')
-        plot_action.setStatusTip('Plot stuff')
-        plot_action.triggered.connect(self.__plot)
+        self.__spectrum_plot_action = QAction('&Spectrum', self)
+        self.__spectrum_plot_action.setShortcut('Ctrl+P')
+        self.__spectrum_plot_action.setStatusTip('Open spectrum plot for current window')
+        self.__spectrum_plot_action.triggered.connect(self.__plot_spec)
+        self.__spectrum_plot_action.setDisabled(True)
+
+        self.__histogram_plot_action = QAction('&Histogram', self)
+        self.__histogram_plot_action.setShortcut('Ctrl+G')
+        self.__histogram_plot_action.setStatusTip('Open histogram for current window')
+        self.__histogram_plot_action.triggered.connect(self.__plot_hist)
+        self.__histogram_plot_action.setDisabled(True)
+
+        self.__link_action = QAction('&Link', self)
+        self.__link_action.setShortcut('Ctrl+L')
+        self.__link_action.setStatusTip('Link displays')
+        self.__link_action.triggered.connect(self.__link_displays)
+        self.__link_action.setDisabled(True)
 
         # TODO??
         # self.toolbar = self.addToolBar('Open')
@@ -65,63 +84,86 @@ class OpenSpectraUI(QMainWindow):
 
         menu_bar = self.menuBar()
 
-        # TODO turn off native menus for Mac?? Probably not, rather do paltform specific mods
-        # menubar.setNativeMenuBar(False)
-
         file_menu = menu_bar.addMenu('&File')
-        file_menu.addAction(open_action)
-        file_menu.addAction(save_action)
-        file_menu.addAction(close_action)
+        file_menu.addAction(self.__open_action)
+        file_menu.addAction(self.__save_action)
+        file_menu.addAction(self.__close_action)
         # fileMenu.addAction(exitAct)
 
         plot_menu = menu_bar.addMenu("&Plot")
-        plot_menu.addAction(plot_action)
+        plot_menu.addAction(self.__spectrum_plot_action)
+        plot_menu.addAction(self.__histogram_plot_action)
+
+        plot_menu = menu_bar.addMenu("&Windows")
+        plot_menu.addAction(self.__link_action)
 
         self.__band_list = BandList(self)
         self.setCentralWidget(self.__band_list)
 
         self.__window_manager = WindowManager(self, self.__band_list)
+        self.menu_event.connect(self.__window_manager.menu_event_handler)
+        roi_manager = RegionOfInterestManager.get_instance()
+        self.menu_event.connect(roi_manager.handle_menu_close)
+
         available_geometry = self.__window_manager.available_geometry()
 
         self.statusBar().showMessage('Ready')
         self.setGeometry(2, 25, 270, floor(available_geometry.bottom() * 0.90))
         self.show()
 
+    @pyqtSlot()
     def __open(self):
-        file_dialog = QFileDialog.getOpenFileName(self, "Open file", self.__save_dir_default)
-        file_name = file_dialog[0]
+        self.__fire_menu_event(MenuEvent.OPEN_EVENT)
 
-        if len(file_name) > 0:
-            try:
-                file = OpenSpectraFileFactory.create_open_spectra_file(file_name)
-                self.__window_manager.add_file(file)
-
-                # save the last save location, default there next time
-                split_path = os.path.split(file_name)
-                if split_path[0]:
-                    self.__save_dir_default = split_path[0]
-
-            except OpenSpectraFileError as e:
-                OpenSpectraUI.__LOG.error("Failed to open file with error: {0}".format(e))
-                self.__file_not_found_prompt(file_name)
-        else:
-            OpenSpectraUI.__LOG.debug("File open canceled...")
-
+    @pyqtSlot()
     def __save(self):
-        self.__window_manager.open_save_subcube(self.__band_list.selected_file())
+        self.__fire_menu_event(MenuEvent.SAVE_EVENT)
 
+    @pyqtSlot()
     def __close(self):
-        self.__window_manager.close_file(self.__band_list.selected_file())
+        self.__fire_menu_event(MenuEvent.CLOSE_EVENT)
 
-    def __plot(self):
-        pass
+    @pyqtSlot()
+    def __plot_spec(self):
+        self.__fire_menu_event(MenuEvent.SPEC_PLOT_EVENT)
 
-    def __file_not_found_prompt(self, file_name:str):
-        dialog = QMessageBox(self)
-        dialog.setIcon(QMessageBox.Critical)
-        dialog.setText("File named '{0}' not found!".format(file_name))
-        dialog.addButton(QMessageBox.Ok)
-        dialog.exec()
+    @pyqtSlot()
+    def __plot_hist(self):
+        self.__fire_menu_event(MenuEvent.HIST_PLOT_EVENT)
 
+    def __link_displays(self):
+        current_window:QWidget = QApplication.activeWindow()
+        if current_window is not None and isinstance(current_window, ImageDisplayWindow):
+            OpenSpectraUI.__LOG.debug("Found current window with title: {}", current_window.windowTitle())
+            self.__window_manager.link_windows(current_window)
+        else:
+            # this shouldn't happen if __handle_focus_changed is working correctly
+            OpenSpectraUI.__LOG.error(
+                "Internal error, __link_displays called without focus on an image window.  Focus was on: {}",
+                current_window)
+            dialog = QMessageBox()
+            dialog.setIcon(QMessageBox.Critical)
+            dialog.setText("You must select an image window to start linking.")
+            dialog.addButton(QMessageBox.Ok)
+            dialog.exec()
 
+    def __fire_menu_event(self, event_type:int):
+        current_window:QWidget = QApplication.activeWindow()
+        if current_window is not None:
+            self.menu_event.emit(MenuEvent(event_type, current_window))
 
+    @pyqtSlot("QWidget*", "QWidget*")
+    def __handle_focus_changed(self, old:QWidget, new:QWidget):
+        current_window = QApplication.activeWindow()
+        OpenSpectraUI.__LOG.debug("__handle_focus_changed called old: {}, new: {}, active window: {}",
+            old, new, current_window)
+
+        # TODO control which menus are available based on which window is active
+        if current_window is not None and isinstance(current_window, ImageDisplayWindow):
+            self.__link_action.setDisabled(False)
+            self.__spectrum_plot_action.setDisabled(False)
+            self.__histogram_plot_action.setDisabled(False)
+        else:
+            self.__link_action.setDisabled(True)
+            self.__spectrum_plot_action.setDisabled(True)
+            self.__histogram_plot_action.setDisabled(True)
