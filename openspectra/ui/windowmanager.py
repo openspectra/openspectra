@@ -433,10 +433,10 @@ class WindowSet(QObject):
         self.__file_manager.window_manager().plot_opened.connect(self.__handle_plot_open)
 
     def __init_plot_windows(self):
-        # TODO may need to handle close events from these
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
 
         self.__histogram_window = HistogramDisplayWindow(self.__main_image_window)
+        self.__histogram_init = False
         self.__histogram_window.limit_changed.connect(self.__handle_hist_limit_change)
         self.__histogram_window.limits_reset.connect(self.__handle_hist_limits_reset)
 
@@ -452,23 +452,25 @@ class WindowSet(QObject):
         self.__band_stats_windows:Dict[str, LinePlotDisplayWindow] = dict()
 
     def __init_histogram(self, x:int, y:int):
-        if isinstance(self.__image, GreyscaleImage):
-            raw_hist = self.__histogram_tools.raw_histogram()
-            image_hist = self.__histogram_tools.adjusted_histogram()
-            self.__histogram_window.create_plot_control(raw_hist, image_hist, Band.GREY)
-        elif isinstance(self.__image, RGBImage):
-            self.__histogram_window.create_plot_control(
-                self.__histogram_tools.raw_histogram(Band.RED),
-                self.__histogram_tools.adjusted_histogram(Band.RED), Band.RED)
-            self.__histogram_window.create_plot_control(
-                self.__histogram_tools.raw_histogram(Band.GREEN),
-                self.__histogram_tools.adjusted_histogram(Band.GREEN), Band.GREEN)
-            self.__histogram_window.create_plot_control(
-                self.__histogram_tools.raw_histogram(Band.BLUE),
-                self.__histogram_tools.adjusted_histogram(Band.BLUE), Band.BLUE)
-        else:
-            # TODO this shouldn't happen, throw something?
-            WindowSet.__LOG.error("Window set has unknown image type")
+        if not self.__histogram_init:
+            if isinstance(self.__image, GreyscaleImage):
+                raw_hist = self.__histogram_tools.raw_histogram()
+                image_hist = self.__histogram_tools.adjusted_histogram()
+                self.__histogram_window.create_plot_control(raw_hist, image_hist, Band.GREY)
+                self.__histogram_init = True
+            elif isinstance(self.__image, RGBImage):
+                self.__histogram_window.create_plot_control(
+                    self.__histogram_tools.raw_histogram(Band.RED),
+                    self.__histogram_tools.adjusted_histogram(Band.RED), Band.RED)
+                self.__histogram_window.create_plot_control(
+                    self.__histogram_tools.raw_histogram(Band.GREEN),
+                    self.__histogram_tools.adjusted_histogram(Band.GREEN), Band.GREEN)
+                self.__histogram_window.create_plot_control(
+                    self.__histogram_tools.raw_histogram(Band.BLUE),
+                    self.__histogram_tools.adjusted_histogram(Band.BLUE), Band.BLUE)
+                self.__histogram_init = True
+            else:
+                WindowSet.__LOG.error("Window set has unknown image type")
 
         # TODO need some sort of layout manager?
         self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
@@ -511,13 +513,10 @@ class WindowSet(QObject):
         target_window = event.target()
         if target_window == self.__spec_plot_window:
             self.__spec_plot_window.close()
-            self.__spec_plot_window = None
         elif target_window == self.__histogram_window:
             self.__histogram_window.close()
-            self.__histogram_window = None
         else:
             self.__handle_band_stats_closed(target_window)
-            target_window.close()
 
     @pyqtSlot(WindowCloseEvent)
     def __handle_image_closed(self, event:WindowCloseEvent):
@@ -614,14 +613,23 @@ class WindowSet(QObject):
         self.__roi_manager.add_region(region, event.display_item(), self)
 
     @pyqtSlot(QMainWindow)
-    def __handle_band_stats_closed(self, target:LinePlotDisplayWindow):
+    def __handle_band_stats_closed(self, target_window:LinePlotDisplayWindow):
         delete_key = None
         for key, value in self.__band_stats_windows.items():
-            if value == target:
+            if value == target_window:
                 delete_key = key
                 break
         if delete_key is not None:
+            # Disconnect close listener in case we're closing from the menu
+            # and the close below actually does close it so we don't get called again
+            target_window.closed.disconnect(self.__handle_band_stats_closed)
+
+            # if it's already been closed by window decorator this should harm anything
+            target_window.close()
+
+            # now finally remove our reference
             del self.__band_stats_windows[delete_key]
+        WindowSet.__LOG.debug("Dummy statement")
 
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
