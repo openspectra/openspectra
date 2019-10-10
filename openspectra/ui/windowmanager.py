@@ -451,7 +451,7 @@ class WindowSet(QObject):
         # a dictionary to keep track of the band stats windows
         self.__band_stats_windows:Dict[str, LinePlotDisplayWindow] = dict()
 
-    def __init_histogram(self, x:int, y:int):
+    def __init_histogram(self):
         if not self.__histogram_init:
             if isinstance(self.__image, GreyscaleImage):
                 raw_hist = self.__histogram_tools.raw_histogram()
@@ -473,7 +473,8 @@ class WindowSet(QObject):
                 WindowSet.__LOG.error("Window set has unknown image type")
 
         # TODO need some sort of layout manager?
-        self.__histogram_window.setGeometry(x, y + self.get_image_window_geometry().height() + 50, 800, 400)
+        window_rect = self.get_image_window_geometry()
+        self.__histogram_window.setGeometry(window_rect.x(), window_rect.y() + window_rect.height() + 50, 800, 400)
         self.__histogram_window.show()
 
     @pyqtSlot(MenuEvent)
@@ -484,13 +485,11 @@ class WindowSet(QObject):
             event_type = event.event_type()
 
             if event_type == MenuEvent.HIST_PLOT_EVENT and not self.__histogram_window.isVisible():
-                # TODO need some sort of layout manager?
-                rect = self.__main_image_window.geometry()
-                self.__init_histogram(rect.x(), rect.y())
+                self.__init_histogram()
             elif event_type == MenuEvent.SPEC_PLOT_EVENT and not self.__spec_plot_window.isVisible():
                 # TODO need some sort of layout manager?
-                rect = self.__main_image_window.geometry()
-                self.__spec_plot_window.setGeometry(rect.x() + 100, rect.y() + 100, 500, 400)
+                window_rect = self.get_image_window_geometry()
+                self.__spec_plot_window.setGeometry(window_rect.x() + 150, window_rect.y() + window_rect.height() + 50, 500, 400)
                 self.__spec_plot_window.show()
             else:
                 WindowSet.__LOG.warning("Unknown menu plot event type: {}", event_type)
