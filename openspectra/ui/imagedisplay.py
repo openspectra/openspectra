@@ -416,6 +416,9 @@ class ImageLabel(QLabel):
 
         self.__current_action = ImageLabel.Action.Nothing
 
+        self.__overlay_pixmap:QPixmap = None
+        self.__overlay_image:QImage = None
+
     def has_locator(self) -> bool:
         return self.__locator_rect is not None
 
@@ -482,6 +485,9 @@ class ImageLabel(QLabel):
             ImageLabel.__LOG.debug("setting image size: {0}, scale factor w: {1}, h: {2}",
                 size, self.__width_scale_factor, self.__height_scale_factor)
 
+        # scale and set overlay image if there is one
+        self.__set_scaled_overlay()
+
         # reset locator if we have one
         if self.has_locator():
             self.set_locator_size(locator_size)
@@ -495,6 +501,26 @@ class ImageLabel(QLabel):
 
         self.setMinimumSize(size)
         self.setMaximumSize(size)
+
+    def set_overlay_image(self, image:QImage):
+        """The passed pixmap should be at 1 to 1 scale and the same size
+        as this label's display image"""
+        # Verify size match
+        if image.size() != self.__initial_size:
+            raise ValueError("Images must be the same size")
+
+        self.__overlay_image = image
+        self.__set_scaled_overlay()
+        self.update()
+
+    def __set_scaled_overlay(self):
+        if self.__overlay_image is not None:
+            self.__overlay_pixmap = QPixmap.fromImage(self.__overlay_image)
+
+            # scale is correctly based on our scaling
+            if self.__overlay_pixmap.size() != self.pixmap().size():
+                self.__overlay_pixmap = self.__overlay_pixmap.scaled(self.pixmap().size(),
+                    Qt.KeepAspectRatio, Qt.FastTransformation)
 
     def changeEvent(self, event:QEvent):
         ImageLabel.__LOG.debug("ImageLabel.changeEvent called...")
@@ -651,6 +677,15 @@ class ImageLabel(QLabel):
                         painter.drawPoints(point)
 
                 painter.resetTransform()
+
+        # TODO location will be mouse driven,
+        #  TODO size will default to 25% of image and be adjustable via menu
+        if self.__overlay_pixmap is not None:
+            x = 100 * self.__height_scale_factor
+            y = 250 * self.__width_scale_factor
+            painter.drawPixmap(x, y, self.__overlay_pixmap, x, y,
+                floor(self.__initial_size.width() * self.__width_scale_factor * .25),
+                floor(self.__initial_size.height() * self.__height_scale_factor * .25))
 
     def __scale_point(self, point:QPoint) -> QPoint:
         new_point:QPoint = QPoint(point)
@@ -1025,6 +1060,13 @@ class ImageDisplay(QScrollArea):
             self.verticalScrollBar().setPageStep(new_vert_step)
             self.verticalScrollBar().setMaximum(new_max_height)
 
+    def get_image(self) -> QImage:
+        """Return a copy of our image"""
+        return QImage(self.__qimage)
+
+    def set_overlay_image(self, image:QImage):
+        self.__image_label.set_overlay_image(image)
+
     def get_view_center(self) -> QPoint:
         # x is horizontal scroll bar, y is vertical scroll bar
         x = floor(self.horizontalScrollBar().pageStep()/2) + self.horizontalScrollBar().value()
@@ -1227,6 +1269,12 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_widget.setWidget(self._mouse_viewer)
         self.addDockWidget(Qt.BottomDockWidgetArea, self._mouse_widget)
 
+    def __get_image(self) -> QImage:
+        return self._image_display.get_image()
+
+    def __set_overlay_image(self, image:QImage):
+        self._image_display.set_overlay_image(image)
+
     def image_label(self) -> str:
         return self.__image_label
 
@@ -1234,6 +1282,22 @@ class ImageDisplayWindow(QMainWindow):
     def handle_region_selected(self, event:AreaSelectedEvent):
         """Handle area select events from another associated window"""
         self._image_display.add_selected_area(event)
+
+    # TODO add arg type hint when 3.6 support is done
+    def link_window(self, window):
+        """window should be an ImageDisplayWindow"""
+        if isinstance(window, ImageDisplayWindow) and window != self:
+            ImageDisplayWindow.__LOG.debug("Linking window {}, to window {}", self, window)
+            # basically we need to exchange images
+            self.__set_overlay_image(window.__get_image())
+            window.__set_overlay_image(self.__get_image())
+
+            # TODO need to be able to update it in response to an image adjustment
+
+        elif window == self:
+            ImageDisplayWindow.__LOG.error("Cannot link a window to itself")
+        else:
+            ImageDisplayWindow.__LOG.error("Window to link must an ImageDisplayWindow")
 
     def remove_all_regions(self):
         self._image_display.remove_all_regions()

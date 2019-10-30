@@ -104,6 +104,7 @@ class WindowManager(QObject):
 
         self.__parent_window = parent_window
         self.__file_managers:Dict[str, FileManager] = dict()
+        self.__link_manager = LinkManager(self.__file_managers)
         self.__band_list = band_list
         self.__band_list.bandSelected.connect(self.__handle_band_select)
         self.__band_list.rgbSelected.connect(self.__handle_rgb_select)
@@ -198,10 +199,6 @@ class WindowManager(QObject):
             dialog.addButton(QMessageBox.Ok)
             dialog.exec()
 
-    def link_windows(self, start_window:ImageDisplayWindow):
-        WindowManager.__LOG.debug("link_windows called...")
-        # TODO offer a list of other open windows? with the same size image
-
     @pyqtSlot(MenuEvent)
     def menu_event_handler(self, event:MenuEvent):
         event_type = event.event_type()
@@ -232,6 +229,10 @@ class WindowManager(QObject):
             isinstance(target_window, ImageDisplayWindow):
             # notify the window sets they'll decide if it applies
             self.plot_opened.emit(event)
+
+        elif event_type == MenuEvent.LINK_EVENT and isinstance(target_window, ImageDisplayWindow):
+            # target_window here is the one that was selected when the link menu command was issued
+            self.__link_manager.link_to_window(target_window)
 
         else:
             WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
@@ -306,7 +307,7 @@ class FileManager(QObject):
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
         self.__image_tools = OpenSpectraImageTools(self.__file)
-        self.__window_sets = list()
+        self.__window_sets:List[WindowSet] = list()
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
         FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
@@ -332,6 +333,32 @@ class FileManager(QObject):
 
     def band_tools(self) -> OpenSpectraBandTools:
         return self.__band_tools
+
+    # TODO add return type hint when 3.6 support is done
+    def has_image_window(self, window:ImageDisplayWindow):
+        result:WindowSet = None
+        for window_set in self.__window_sets:
+            if window_set.has_image_window(window):
+                result = window_set
+                break
+
+        return result
+
+    # TODO add arg type hints when 3.6 support is done
+    def link_windows(self, source, target=None):
+        """source and target should be  WindowSets"""
+        # TODO only allow target to be None for now
+        # TODO not sure of target arg type, might be ImageDisplayWindow might be str
+
+        # TODO for now simply grab the first window_set found that is not the owner of source
+        target:WindowSet = None
+        for window_set in self.__window_sets:
+            if not window_set.has_image_window(source):
+                target = window_set
+
+        if target is not None:
+            # then link them up
+            target.link_windows(source)
 
     def image_tools(self) -> OpenSpectraImageTools:
         return self.__image_tools
@@ -630,6 +657,13 @@ class WindowSet(QObject):
             del self.__band_stats_windows[delete_key]
         WindowSet.__LOG.debug("Dummy statement")
 
+    def _link_windows(self, main_window:MainImageDisplayWindow, zoom_window:ZoomImageDisplayWindow):
+        if main_window != self.__main_image_window and zoom_window != self.__zoom_image_window:
+            self.__main_image_window.link_window(main_window)
+            self.__zoom_image_window.link_window(zoom_window)
+        else:
+            WindowSet.__LOG.error("Linking window to themselves is not supported.")
+
     def init_position(self, x:int, y:int):
         # TODO need some sort of layout manager?
         self.__main_image_window.move(x, y)
@@ -646,6 +680,13 @@ class WindowSet(QObject):
 
     def file_manager(self) -> FileManager:
         return self.__file_manager
+
+    def has_image_window(self, window:ImageDisplayWindow) -> bool:
+        return window == self.__main_image_window or window == self.__zoom_image_window
+
+    # TODO add arg type hint when 3.6 support is done
+    def link_windows(self, window_set):
+        window_set._link_windows(self.__main_image_window, self.__zoom_image_window)
 
     def close(self, target_window:QMainWindow=None):
         if target_window is not None:
@@ -700,6 +741,27 @@ class WindowSet(QObject):
         if region in self.__band_stats_windows:
             self.__band_stats_windows[region]. \
                 set_plot_title("Region: {0}".format(region.display_name()))
+
+
+class LinkManager(QObject):
+
+    __LOG:Logger = LogHelper.logger("LinkManager")
+
+    def __init__(self, file_managers:Dict[str, FileManager]):
+        self.__file_managers:Dict[str, FileManager] = file_managers
+
+    def link_to_window(self, source_window:ImageDisplayWindow):
+        # TODO find which FileManager owns the source_window
+        # TODO get it's image size (lines and samples)
+        # TODO find other files (limit to ones with open windows?) with
+        # TODO same size including the owner of the source_window
+        # TODO open dialog with this list and get link target from user
+
+        # TODO but in the meantime, just look for the first open window from the same file.
+        for file_manager in self.__file_managers.values():
+            window_set = file_manager.has_image_window(source_window)
+            if window_set is not None:
+                file_manager.link_windows(window_set)
 
 
 class RegionSet:

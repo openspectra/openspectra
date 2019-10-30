@@ -132,20 +132,7 @@ class OpenSpectraUI(QMainWindow):
         self.__fire_menu_event(MenuEvent.HIST_PLOT_EVENT)
 
     def __link_displays(self):
-        current_window:QWidget = QApplication.activeWindow()
-        if current_window is not None and isinstance(current_window, ImageDisplayWindow):
-            OpenSpectraUI.__LOG.debug("Found current window with title: {}", current_window.windowTitle())
-            self.__window_manager.link_windows(current_window)
-        else:
-            # this shouldn't happen if __handle_focus_changed is working correctly
-            OpenSpectraUI.__LOG.error(
-                "Internal error, __link_displays called without focus on an image window.  Focus was on: {}",
-                current_window)
-            dialog = QMessageBox()
-            dialog.setIcon(QMessageBox.Critical)
-            dialog.setText("You must select an image window to start linking.")
-            dialog.addButton(QMessageBox.Ok)
-            dialog.exec()
+        self.__fire_menu_event(MenuEvent.LINK_EVENT)
 
     def __fire_menu_event(self, event_type:int):
         current_window:QWidget = QApplication.activeWindow()
