@@ -679,7 +679,7 @@ class ImageLabel(QLabel):
                 painter.resetTransform()
 
         # TODO location will be mouse driven,
-        #  TODO size will default to 25% of image and be adjustable via menu
+        # TODO size will default to 25% of image and be adjustable via menu
         if self.__overlay_pixmap is not None:
             x = 100 * self.__height_scale_factor
             y = 250 * self.__width_scale_factor
@@ -1221,6 +1221,7 @@ class ImageDisplayWindow(QMainWindow):
     mouse_moved = pyqtSignal(AdjustedMouseEvent)
     area_selected = pyqtSignal(AreaSelectedEvent)
     closed = pyqtSignal(WindowCloseEvent)
+    resized = pyqtSignal(QResizeEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
                 screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
@@ -1275,6 +1276,11 @@ class ImageDisplayWindow(QMainWindow):
     def __set_overlay_image(self, image:QImage):
         self._image_display.set_overlay_image(image)
 
+    @pyqtSlot(QResizeEvent)
+    def __handle_resize(self, event:QResizeEvent):
+        ImageDisplayWindow.__LOG.debug("Window {} got linked resize event to size {}", self, event.size())
+        self.resize(event.size())
+
     def image_label(self) -> str:
         return self.__image_label
 
@@ -1292,12 +1298,20 @@ class ImageDisplayWindow(QMainWindow):
             self.__set_overlay_image(window.__get_image())
             window.__set_overlay_image(self.__get_image())
 
-            # TODO need to be able to update it in response to an image adjustment
+            self._do_link(window)
+            window._do_link(self)
 
         elif window == self:
             ImageDisplayWindow.__LOG.error("Cannot link a window to itself")
         else:
             ImageDisplayWindow.__LOG.error("Window to link must an ImageDisplayWindow")
+
+    # TODO add arg type hint when 3.6 support is done
+    def _do_link(self, window):
+        ImageDisplayWindow.__LOG.debug("_do_link called for {}", self)
+        # link here for window resize
+        window.resized.connect(self.__handle_resize)
+        # TODO link scroll bar move?
 
     def remove_all_regions(self):
         self._image_display.remove_all_regions()
@@ -1306,16 +1320,14 @@ class ImageDisplayWindow(QMainWindow):
         self._image_display.refresh_image()
 
     def closeEvent(self, event:QCloseEvent):
-        MainImageDisplayWindow.__LOG.debug("About to emit closed...")
+        ImageDisplayWindow.__LOG.debug("About to emit closed...")
         self.closed.emit(WindowCloseEvent(self))
         # accepting hides the window
         event.accept()
 
-    # TODO remove if not needed
-    # def resizeEvent(self, event:QResizeEvent):
-        # size = event.size()
-        # size -= QSize(10, 20)
-        # self.__image_display.resize(size)
+    def resizeEvent(self, event:QResizeEvent):
+        ImageDisplayWindow.__LOG.debug("Resize window {} to {}", self, event.size())
+        self.resized.emit(event)
 
 
 class ZoomImageDisplayWindow(ImageDisplayWindow):
@@ -1341,9 +1353,9 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
         self.__zoom_factor = 1.0
         self.__zoom_widget = ZoomWidget(self, self.__zoom_factor)
-        self.__zoom_widget.zoom_in.connect(self.__handle_zoom_in)
-        self.__zoom_widget.zoom_out.connect(self.__handle_zoom_out)
-        self.__zoom_widget.reset_zoom.connect(self.__handle_zoom_reset)
+        self.__zoom_widget.zoom_in.connect(self._handle_zoom_in)
+        self.__zoom_widget.zoom_out.connect(self._handle_zoom_out)
+        self.__zoom_widget.reset_zoom.connect(self._handle_zoom_reset)
 
         self.__zoom_dock_widget = QDockWidget("Mouse", self)
         self.__zoom_dock_widget.setTitleBarWidget(QWidget(None))
@@ -1364,14 +1376,14 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         ZoomImageDisplayWindow.__LOG.debug("zoom widget height: {0}", self.__dock_height)
 
     @pyqtSlot()
-    def __handle_zoom_in(self):
+    def _handle_zoom_in(self):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1.5
         self.__set_zoom()
 
     @pyqtSlot()
-    def __handle_zoom_out(self):
+    def _handle_zoom_out(self):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1/1.5
@@ -1381,7 +1393,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.__set_zoom()
 
     @pyqtSlot()
-    def __handle_zoom_reset(self):
+    def _handle_zoom_reset(self):
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor = 1.0
         self.__set_zoom()
@@ -1420,38 +1432,15 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self._image_display.scale_image(self.__zoom_factor)
         self.__zoom_widget.set_zoom_label(self.__zoom_factor)
 
-    # TODO this didn't quite work, height was off by 7 pixels, fix or remove
-    # TODO perhaps there's a better way to choose an initial size???
-    # def __size_for_viewport_size(self, size:QSize):
-    #     ZoomImageDisplayWindow.__LOG.debug("sizing for viewport size: {0}", size)
-    #     new_width = size.width() + self._frame_width * 2 + self._margin_width * 2
-    #     if self._image_display.image_width() > size.width():
-    #         new_width += self._scroll_bar_width
-    #
-    #     new_height = size.height() + self._title_bar_height + self.__dock_height + \
-    #                  self._margin_height * 2 + self._frame_width * 2
-    #     if self._image_display.height() > size.height():
-    #         new_height += self._scroll_bar_width
-    #
-    #     if new_width > self._screen_geometry.width():
-    #         # TODO then what? adjust it
-    #         pass
-    #
-    #     if new_width > self.__minimum_size.width():
-    #         # TODO then what? adjust it
-    #         pass
-    #
-    #     if new_height > self._screen_geometry.height():
-    #         # TODO then what??  adjust it
-    #         pass
-    #
-    #     if new_height > self.__minimum_size.height():
-    #         # TODO then what??  adjust it
-    #         pass
-    #
-    #     new_size = QSize(new_width, new_height)
-    #     ZoomImageDisplayWindow.__LOG.debug("window size needed: {0}", new_size)
-    #     self.resize(new_size)
+    # TODO add arg type hint when 3.6 support is done
+    def _do_link(self, window):
+        ZoomImageDisplayWindow.__LOG.debug("_do_link called for {}", self)
+        super()._do_link(window)
+
+        # link for zooming
+        self.__zoom_widget.zoom_in.connect(window._handle_zoom_in)
+        self.__zoom_widget.zoom_out.connect(window._handle_zoom_out)
+        self.__zoom_widget.reset_zoom.connect(window._handle_zoom_reset)
 
     def __center_in_viewport(self, center:QPoint):
         # TODO Logging here is huge overkill
@@ -1462,10 +1451,6 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     def handle_location_changed(self, event:ViewLocationChangeEvent):
         # Handles when the locator is moved in the main window
         self.__center_in_viewport(event.center() * self.__zoom_factor)
-
-    # TODO for testing only, remove if not used otherwise
-    def resizeEvent(self, event:QResizeEvent):
-        ZoomImageDisplayWindow.__LOG.debug("Resize to {0}", event.size())
 
 
 class MainImageDisplayWindow(ImageDisplayWindow):
@@ -1592,13 +1577,13 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         self._image_display.set_locator_size(event.size())
         self._image_display.set_locator_position(event.center())
 
+    # TODO add arg type hint when 3.6 support is done
+    def _do_link(self, window):
+        MainImageDisplayWindow.__LOG.debug("_do_link called for {}", self)
+        super()._do_link(window)
+
     def connect_zoom_window(self, window:ZoomImageDisplayWindow):
         window.zoom_changed.connect(self.__handle_zoom_changed)
         window.location_changed.connect(self.__handle_zoom_window_location_changed)
         window.view_changed.connect(self.__handle_view_changed)
         self.view_location_changed.connect(window.handle_location_changed)
-
-    # TODO don't need?
-    def resizeEvent(self, event:QResizeEvent):
-        size = event.size()
-        # MainImageDisplayWindow.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
