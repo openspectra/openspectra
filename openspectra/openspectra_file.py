@@ -3,6 +3,7 @@
 #  Copyright (c) 2019. All rights reserved.
 import copy
 import logging
+import math
 import re
 from abc import ABC, abstractmethod
 from math import cos, sin
@@ -166,6 +167,7 @@ class OpenSpectraHeader:
             self.__datum:str = None
             self.__units:str = None
             self.__rotation:float = None
+            self.__rotation_deg:float = None
 
             index = 7
             if self.__projection_name == "UTM":
@@ -190,7 +192,10 @@ class OpenSpectraHeader:
                         self.__units:str = value
                     elif name == "rotation":
                         # TODO validate in range?
-                        self.__rotation:float = float(value)
+                        # convert rotation angle to radians for compatibility
+                        # with the math cos and sin functions
+                        self.__rotation_deg = float(value)
+                        self.__rotation:float = math.radians(self.__rotation_deg)
                     else:
                         OpenSpectraHeader.MapInfo.__LOG.warning(
                             "Ignoring unexpected map info item with name: {0}, value: {1}".format(name, value))
@@ -210,6 +215,7 @@ class OpenSpectraHeader:
             self.__projection_area = map_info.projection_area()
             self.__datum = map_info.datum()
             self.__units = map_info.units()
+            self.__rotation_deg = map_info.rotation_deg()
             self.__rotation = map_info.rotation()
 
         def __str__(self) -> str:
@@ -227,7 +233,7 @@ class OpenSpectraHeader:
                 "units={}".format(self.__units)]
 
             if self.__rotation is not None:
-                param_list.append("rotation={:.08f}".format(self.__rotation))
+                param_list.append("rotation={:.08f}".format(self.__rotation_deg))
 
             return "{" + ", ".join(param_list) + "}"
 
@@ -248,7 +254,6 @@ class OpenSpectraHeader:
 
             return val_str
 
-        # TODO verify correctness
         def calculate_coordinates(self, x_pixels:Union[int, float, np.ndarray],
                 y_pixels:Union[int, float, np.ndarray]) ->\
                 Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
@@ -259,10 +264,9 @@ class OpenSpectraHeader:
             x_coords_rot = x_coords
             y_coords_rot = y_coords
             if self.__rotation is not None:
-                # TODO figure out if rotation specified is clockwise or counterclockwise
                 # This implementation is for counterclockwise rotation
-                x_coords_rot = x_coords * cos(self.__rotation) - y_coords * sin(self.__rotation)
-                y_coords_rot = x_coords * sin(self.__rotation) + y_coords * cos(self.__rotation)
+                x_coords_rot = x_coords * cos(self.__rotation) + y_coords * sin(self.__rotation)
+                y_coords_rot = -x_coords * sin(self.__rotation) + y_coords * cos(self.__rotation)
 
             x_coords = x_coords_rot + self.__x_zero_coordinate
             y_coords = self.__y_zero_coordinate - y_coords_rot
@@ -304,6 +308,9 @@ class OpenSpectraHeader:
 
         def rotation(self) -> float:
             return self.__rotation
+
+        def rotation_deg(self) -> float:
+            return self.__rotation_deg
 
     def __init__(self, file_name:str=None, props:Dict[str, Union[str, List[str]]]=None,
                     unsupported_props:Dict[str, str]=None):
