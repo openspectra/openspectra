@@ -1,6 +1,7 @@
 #  Developed by Joseph M. Conti and Joseph W. Boardman on 2/2/19 6:12 PM.
 #  Last modified 2/2/19 6:12 PM
 #  Copyright (c) 2019. All rights reserved.
+import math
 import os
 import unittest
 from typing import List, Tuple
@@ -98,6 +99,7 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(map_info.datum(), "WGS-84")
             self.assertEqual(map_info.units(), "Meters")
             self.assertIsNone(map_info.rotation())
+            self.assertIsNone(map_info.rotation_deg())
 
         # for message in log.output:
         #     self.assertFalse(message.startswith("WARNING"))
@@ -133,7 +135,8 @@ class OpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(map_info.projection_area(), "North")
             self.assertEqual(map_info.datum(), "WGS-84")
             self.assertEqual(map_info.units(), "Meters")
-            self.assertEqual(map_info.rotation(), 30.0)
+            self.assertEqual(map_info.rotation(), math.radians(30.0))
+            self.assertEqual(map_info.rotation_deg(), 30.0)
 
         # for message in log.output:
         #     self.assertFalse(message.startswith("WARNING"), "Expected failure, header support is incomplete")
@@ -553,6 +556,7 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(first.datum(), second.datum())
             self.assertEqual(first.units(), second.units())
             self.assertEqual(first.rotation(), second.rotation())
+            self.assertEqual(first.rotation_deg(), second.rotation_deg())
 
     def assertMapInfoOtherEqual(self, first:OpenSpectraHeader.MapInfo, second:OpenSpectraHeader.MapInfo):
         if first is None:
@@ -565,6 +569,7 @@ class MutableOpenSpectraHeaderTest(unittest.TestCase):
             self.assertEqual(first.datum(), second.datum())
             self.assertEqual(first.units(), second.units())
             self.assertEqual(first.rotation(), second.rotation())
+            self.assertEqual(first.rotation_deg(), second.rotation_deg())
 
 
 class ImageStretchTest(unittest.TestCase):
