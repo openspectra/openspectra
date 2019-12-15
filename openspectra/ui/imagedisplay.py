@@ -216,21 +216,6 @@ class ZoomWidget(QWidget):
     def __init__(self, parent=None, initial_zoom:float=1.0):
         super().__init__(parent)
 
-        self.__zoom_in_button = QPushButton("+")
-        self.__zoom_in_button.setFixedHeight(15)
-        self.__zoom_in_button.setFixedWidth(15)
-        self.__zoom_in_button.clicked.connect(self.zoom_in)
-
-        self.__zoom_reset_button = QPushButton("1")
-        self.__zoom_reset_button.setFixedHeight(15)
-        self.__zoom_reset_button.setFixedWidth(15)
-        self.__zoom_reset_button.clicked.connect(self.reset_zoom)
-
-        self.__zoom_out_button = QPushButton("-")
-        self.__zoom_out_button.setFixedHeight(15)
-        self.__zoom_out_button.setFixedWidth(15)
-        self.__zoom_out_button.clicked.connect(self.zoom_out)
-
         self.__factor_label = QLabel()
         self.__factor_label.setFixedHeight(12)
         self.__factor_label.setFixedWidth(40)
@@ -238,9 +223,7 @@ class ZoomWidget(QWidget):
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.__zoom_in_button)
-        layout.addWidget(self.__zoom_reset_button)
-        layout.addWidget(self.__zoom_out_button)
+        layout.setAlignment(Qt.AlignRight)
         layout.addWidget(self.__factor_label)
         self.setLayout(layout)
 
@@ -1184,9 +1167,6 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
         self.__zoom_factor = 1.0
         self.__zoom_widget = ZoomWidget(self, self.__zoom_factor)
-        self.__zoom_widget.zoom_in.connect(self.__handle_zoom_in)
-        self.__zoom_widget.zoom_out.connect(self.__handle_zoom_out)
-        self.__zoom_widget.reset_zoom.connect(self.__handle_zoom_reset)
 
         self.__zoom_dock_widget = QDockWidget("Mouse", self)
         self.__zoom_dock_widget.setTitleBarWidget(QWidget(None))
@@ -1201,20 +1181,15 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.__nom_size = QSize(400, 350)
         self.resize(self.__nom_size)
 
-        self.__zoom_widget.setFixedHeight(17)
-        # forcing to above 17 makes it looks better but now viewport is off by 7 but it looks like its 17
-        self.__dock_height = self.__zoom_widget.height()
-        ZoomImageDisplayWindow.__LOG.debug("zoom widget height: {0}", self.__dock_height)
-
     @pyqtSlot()
-    def __handle_zoom_in(self):
+    def handle_zoom_in(self):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1.5
         self.__set_zoom()
 
     @pyqtSlot()
-    def __handle_zoom_out(self):
+    def handle_zoom_out(self):
         # TODO multiplier should be settable
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor *= 1/1.5
@@ -1224,7 +1199,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.__set_zoom()
 
     @pyqtSlot()
-    def __handle_zoom_reset(self):
+    def handle_zoom_reset(self):
         self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
         self.__zoom_factor = 1.0
         self.__set_zoom()

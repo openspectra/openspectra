@@ -31,6 +31,9 @@ class MenuEvent(QObject):
     SAVE_EVENT:int = 2
     HIST_PLOT_EVENT:int = 3
     SPEC_PLOT_EVENT:int = 4
+    ZOOM_IN:int = 5
+    ZOOM_OUT:int = 6
+    ZOOM_RESET:int = 7
 
     def __init__(self, event_type:int, window:QMainWindow):
         super().__init__()
@@ -86,6 +89,9 @@ class WindowManager(QObject):
     image_closed = pyqtSignal(WindowCloseEvent)
     plot_closed = pyqtSignal(WindowCloseEvent)
     plot_opened = pyqtSignal(MenuEvent)
+    zoom_in = pyqtSignal(MenuEvent)
+    zoom_out = pyqtSignal(MenuEvent)
+    zoom_reset = pyqtSignal(MenuEvent)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -226,6 +232,15 @@ class WindowManager(QObject):
             isinstance(target_window, ImageDisplayWindow):
             # notify the window sets they'll decide if it applies
             self.plot_opened.emit(event)
+
+        elif event_type == MenuEvent.ZOOM_IN and isinstance(target_window, ZoomImageDisplayWindow):
+            self.zoom_in.emit(event)
+
+        elif event_type == MenuEvent.ZOOM_OUT and isinstance(target_window, ZoomImageDisplayWindow):
+            self.zoom_out.emit(event)
+
+        elif event_type == MenuEvent.ZOOM_RESET and isinstance(target_window, ZoomImageDisplayWindow):
+            self.zoom_reset.emit(event)
 
         else:
             WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
@@ -425,6 +440,9 @@ class WindowSet(QObject):
         self.__file_manager.window_manager().image_closed.connect(self.__handle_image_closed)
         self.__file_manager.window_manager().plot_closed.connect(self.__handle_plot_closed)
         self.__file_manager.window_manager().plot_opened.connect(self.__handle_plot_open)
+        self.__file_manager.window_manager().zoom_in.connect(self.__handle_zoom_in)
+        self.__file_manager.window_manager().zoom_out.connect(self.__handle_zoom_out)
+        self.__file_manager.window_manager().zoom_reset.connect(self.__handle_zoom_reset)
 
     def __init_plot_windows(self):
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
@@ -470,6 +488,21 @@ class WindowSet(QObject):
         window_rect = self.get_image_window_geometry()
         self.__histogram_window.setGeometry(window_rect.x(), window_rect.y() + window_rect.height() + 50, 800, 400)
         self.__histogram_window.show()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_reset(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_reset()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_in(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_in()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_out(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_out()
 
     @pyqtSlot(MenuEvent)
     def __handle_plot_open(self, event:MenuEvent):
