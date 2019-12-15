@@ -159,10 +159,10 @@ class BandImageAdjuster(ImageAdjuster):
                     ignore_mask = np.ma.getmask(np.ma.masked_equal(self.__band, self.__data_ignore_vale))
                     # BandImageAdjuster.__LOG.debug("Created ignore value mask: {0}".format(ignore_mask))
 
-                # TODO <= or <, looks like <=, with < I get strange dots on the image
+                # <= or <, looks like <=, with < there are strange dots on the image
                 low_mask = np.ma.getmask(np.ma.masked_where(self.__band <= self.__low_cutoff, self.__band, False))
 
-                # TODO >= or <, looks like >=, with < I get strange dots on the image
+                # >= or <, looks like >=, with < I there are dots on the image
                 high_mask = np.ma.getmask(np.ma.masked_where(self.__band >= self.__high_cutoff, self.__band, False))
 
                 full_mask = low_mask | high_mask
@@ -402,7 +402,7 @@ class GreyscaleImage(Image, BandImageAdjuster):
         return self.__band_descriptor
 
 
-# TODO this is definately not thread safe
+# this is definately not thread safe
 class RGBImage(Image, RGBImageAdjuster):
     """A 32-bit RGB image using format (0xffRRGGBB)"""
 

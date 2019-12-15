@@ -36,11 +36,6 @@ class RegionOfInterest:
         self.__index = -1
         self.__display_name = display_name
 
-        # TODO do I need to keep area?
-        # self.__area = area
-
-        # TODO need a way we can tie this region back to the original image?
-        # TODO verify area is less than or equal to image size???
         self.__image_height = image_height
         self.__image_width = image_width
 
@@ -207,8 +202,6 @@ class Bands:
         self.__bands = bands
         self.__labels = labels
 
-        # TODO verify indexing matching up?
-
     def bands(self, index:int=None)-> np.ndarray:
         if index is not None:
             return self.__bands[index, :]
@@ -227,9 +220,7 @@ class BandStatistics(Bands):
     def __init__(self, bands:np.ndarray, labels:List[Tuple[str, str]]=None):
         super().__init__(bands, labels)
         self.__mean = bands.mean(0)
-        # TODO is this correct?
         self.__min = bands.min(0)
-        # TODO is this correct?
         self.__max = bands.max(0)
         self.__std = bands.std(0)
         self.__mean_plus = self.__mean + self.__std

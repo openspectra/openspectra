@@ -50,7 +50,6 @@ class SaveManager(QObject):
     __LOG:Logger = LogHelper.logger("SaveManager")
 
     def __init__(self, default_dir: os.PathLike, caption:str, filter_str:str, extension:str):
-        # TODO make save location configurable some how?
         super().__init__()
         self.__save_dir_default = default_dir
         self.__caption = caption
@@ -58,10 +57,10 @@ class SaveManager(QObject):
         self.__extension = extension
 
     def save_dialog(self, default_name:str) -> str:
-        # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
-        # seems to be releated to the text field where you would type a file name not getting cleaned up which
+        # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at least on Mac
+        # seems to be related to the text field where you would type a file name not getting cleaned up which
         # may explain why it only seems to impact the save dialog.
-        # TODO |QFileDialog.ShowDirsOnly only good with native dialog
+        # |QFileDialog.ShowDirsOnly only good with native dialog
 
         default_save_name = os.path.join(self.__save_dir_default, default_name)
         SaveManager.__LOG.debug("Default location: {0}", self.__save_dir_default)

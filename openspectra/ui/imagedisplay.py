@@ -309,44 +309,6 @@ class ReversePixelCalculator():
 
         return point_list
 
-
-# TODO this performs poorly for large and/or highly zoomed images
-# TODO remove?  Anything interesting to be learned???
-class ReversePixelMap():
-
-    __LOG: Logger = LogHelper.logger("ReversePixelMap")
-
-    # TODO perhaps use viewport's cooridinates to create the map for performance reasons???
-    def __init__(self, x_size:int, y_size:int, x_zoom_factor:float, y_zoom_factor:float):
-        if x_zoom_factor <= 1.0 or y_zoom_factor <= 1.0:
-            raise ValueError("Zoom factors should be greater than 1.0")
-
-        start_time = time.perf_counter_ns()
-
-        pixel_map = np.indices((x_size, y_size))
-        pixel_map[0] = np.floor(pixel_map[0] / x_zoom_factor).astype(np.int16)
-        pixel_map[1] = np.floor(pixel_map[1] / y_zoom_factor).astype(np.int16)
-        self.__pixel_map = np.moveaxis(pixel_map, 0, 2)
-
-        end_time = time.perf_counter_ns()
-        ReversePixelMap.__LOG.debug("Pixel map created in {0} ms".format((end_time - start_time) / 10**6))
-
-    def __get_pixels(self, adjusted_x:int, adjusted_y:int) -> np.ndarray:
-        """Get the zoomed in pixels that map back to a 1 to 1 pixel"""
-        adj_pixel = np.array([adjusted_x, adjusted_y])
-        mask = (self.__pixel_map == adj_pixel).all(2)
-        pixel_list = np.transpose(mask.nonzero())
-        return pixel_list
-
-    def get_points(self, adjusted_x:int, adjusted_y:int) -> List[QPoint]:
-        result = list()
-        pixel_list = self.__get_pixels(adjusted_x, adjusted_y)
-        for pixel in pixel_list:
-            result.append(QPoint(pixel[0], pixel[1]))
-
-        return result
-
-
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -426,7 +388,6 @@ class ImageLabel(QLabel):
     def set_locator_position(self, postion:QPoint):
         # calls to this method should always be in 1 to 1 coordinates
         if self.has_locator():
-            #TODO put contraints on it?
             new_position: QPoint = self.__scale_point(postion)
             ImageLabel.__LOG.debug("setting locator position: {0}, scaled pos: {1}", postion, new_position)
             self.__locator_rect.moveCenter(new_position)
@@ -439,7 +400,6 @@ class ImageLabel(QLabel):
     def set_locator_size(self, size:QSize):
         # calls to this method should always be in 1 to 1 coordinates
         if self.has_locator():
-            #TODO constraints?
             new_size: QSize = self.__scale_size(size)
             ImageLabel.__LOG.debug("setting locator size: {0}, scaled size: {1}", size, new_size)
             self.__locator_rect.setSize(new_size)
@@ -453,7 +413,6 @@ class ImageLabel(QLabel):
         self.__region_display_items.append(display_item)
         self.update()
 
-    # TODO make private handler?
     def remove_all_regions(self):
         self.__region_display_items.clear()
         self.__clear_selected_area()
@@ -595,19 +554,6 @@ class ImageLabel(QLabel):
                 return True
 
         return False
-
-    # TODO not sure we need the DOUBLE CLICK but keep it for the example for now
-    # this is best way I could figure to distinguish single and double mouse clicks
-    # def eventFilter(self, object:QObject, event:QEvent):
-    #     if event.type() == QEvent.MouseButtonPress:
-    #         self.__clickEvent = (event.x(), event.y())
-    #         QTimer.singleShot(QApplication.instance().doubleClickInterval(), self.__clicked)
-    #         # event was handled
-    #         return True
-    #
-    #     elif event.type() == QEvent.MouseButtonDblClick:
-    #         self.__clickEvent = None
-    #     return False
 
     def paintEvent(self, paint_event:QPaintEvent):
         # first render the image
@@ -865,35 +811,6 @@ class ImageLabel(QLabel):
         # TODO not sure this can work when scaling < 1??
         return AdjustedMouseEvent(event, 1 / self.__width_scale_factor, 1 / self.__height_scale_factor)
 
-    # TODO Get aspect ratio here?
-    # def setPixmap(self, qPixmap:QPixmap):
-    #     super().setPixmap(qPixmap)
-
-    # def heightForWidth(self, width):
-    #     print("heightForWidth with: ", width)
-    #     return int(width * self.__ratio)
-
-    # TODO I suspect these don't do anyting becuase they are for layouts to use I think
-    # def sizeHint(self):
-    #     if self.pixmap() is not None:
-    #         return self.pixmap().size()
-
-    # TODO I suspect these don't do anyting becuase they are for layouts to use I think
-    # def minimumSizeHint(self):
-    #     if self.pixmap() is not None:
-    #         return self.pixmap().size()
-
-    # def minimumHeight(self):
-    #     return self.__perferred_size.height()
-
-    # def minimumSize(self):
-    #     return self.__perferred_size
-
-    # TODO remove is not used
-    def resizeEvent(self, event:QResizeEvent):
-        ImageLabel.__LOG.debug("Resize to {0}, maxSize: {1}, minSize: {2}, minSizeHint: {3}",
-            event.size(), self.maximumSize(), self.minimumSize(), self.minimumSizeHint())
-
 
 class ImageDisplay(QScrollArea):
 
@@ -986,7 +903,6 @@ class ImageDisplay(QScrollArea):
     # TODO not sure we need this but keep it for the example for now
     @pyqtSlot(AdjustedMouseEvent)
     def __double_click_handler(self, event:AdjustedMouseEvent):
-        # TODO remove?
         ImageDisplay.__LOG.debug("Double clicked x: {0} y: {1}",
             event.pixel_x() + 1, event.pixel_y() + 1)
 
@@ -1061,8 +977,6 @@ class ImageDisplay(QScrollArea):
         self.__image_label.set_locator_size(size)
 
     def refresh_image(self):
-        # TODO do I need to del the old QImage & QPixmap object???
-        # TODO I think they should be garbage collected once the ref is gone?
         self.__display_image()
 
     def remove_all_regions(self):
@@ -1215,7 +1129,6 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_widget.setFeatures(QDockWidget.NoDockWidgetFeatures)
         self._mouse_widget.setTitleBarWidget(QWidget(None))
         self._mouse_viewer = MouseCoordinates()
-        # TODO make height configurable???
         # set to fixed height so we know how to layout the image display window
         self._mouse_viewer.setFixedHeight(16)
 
@@ -1246,12 +1159,6 @@ class ImageDisplayWindow(QMainWindow):
         self.closed.emit(WindowCloseEvent(self))
         # accepting hides the window
         event.accept()
-
-    # TODO remove if not needed
-    # def resizeEvent(self, event:QResizeEvent):
-        # size = event.size()
-        # size -= QSize(10, 20)
-        # self.__image_display.resize(size)
 
 
 class ZoomImageDisplayWindow(ImageDisplayWindow):
@@ -1286,7 +1193,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.__zoom_dock_widget.setWidget(self.__zoom_widget)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.__zoom_dock_widget)
 
-        # TODO make it so min size provides a veiwport of 150 x 150
+        # make it so min size provides a veiwport of 150 x 150
         self.__minimum_size = QSize(150, 150)
         self.setMinimumSize(self.__minimum_size)
 
@@ -1295,7 +1202,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.resize(self.__nom_size)
 
         self.__zoom_widget.setFixedHeight(17)
-        # TODO forcing to above 17 makes it looks better but now viewport is off by 7 but it looks like it 17
+        # forcing to above 17 makes it looks better but now viewport is off by 7 but it looks like its 17
         self.__dock_height = self.__zoom_widget.height()
         ZoomImageDisplayWindow.__LOG.debug("zoom widget height: {0}", self.__dock_height)
 
@@ -1356,41 +1263,8 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self._image_display.scale_image(self.__zoom_factor)
         self.__zoom_widget.set_zoom_label(self.__zoom_factor)
 
-    # TODO this didn't quite work, height was off by 7 pixels, fix or remove
-    # TODO perhaps there's a better way to choose an initial size???
-    # def __size_for_viewport_size(self, size:QSize):
-    #     ZoomImageDisplayWindow.__LOG.debug("sizing for viewport size: {0}", size)
-    #     new_width = size.width() + self._frame_width * 2 + self._margin_width * 2
-    #     if self._image_display.image_width() > size.width():
-    #         new_width += self._scroll_bar_width
-    #
-    #     new_height = size.height() + self._title_bar_height + self.__dock_height + \
-    #                  self._margin_height * 2 + self._frame_width * 2
-    #     if self._image_display.height() > size.height():
-    #         new_height += self._scroll_bar_width
-    #
-    #     if new_width > self._screen_geometry.width():
-    #         # TODO then what? adjust it
-    #         pass
-    #
-    #     if new_width > self.__minimum_size.width():
-    #         # TODO then what? adjust it
-    #         pass
-    #
-    #     if new_height > self._screen_geometry.height():
-    #         # TODO then what??  adjust it
-    #         pass
-    #
-    #     if new_height > self.__minimum_size.height():
-    #         # TODO then what??  adjust it
-    #         pass
-    #
-    #     new_size = QSize(new_width, new_height)
-    #     ZoomImageDisplayWindow.__LOG.debug("window size needed: {0}", new_size)
-    #     self.resize(new_size)
-
     def __center_in_viewport(self, center:QPoint):
-        # TODO Logging here is huge overkill
+        # Logging here is huge overkill uncomment to debug only
         # ZoomImageDisplayWindow.__LOG.debug("centering view to: {0}", center)
         self._image_display.center_in_viewport(center)
 

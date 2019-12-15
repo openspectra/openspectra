@@ -339,7 +339,6 @@ class OpenSpectraHeader:
         self.__wavelengths:np.array = None
         self.__band_labels:List[Tuple[str, str]] = None
         self.__header_offset:int = 0
-        # TODO use standard float instead?
         self.__reflectance_scale_factor:np.float64 = None
         self.__map_info:OpenSpectraHeader.MapInfo = None
         self.__data_ignore_value: Union[int, float] = None

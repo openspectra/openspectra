@@ -294,7 +294,7 @@ class RangeSelector(QWidget):
         from_layout.addWidget(QLabel("From:"))
 
         self.__from_select = QComboBox(self)
-        # TODO get ignored for certain styles, like Mac, when not editable
+        # TODO gets ignored for certain styles, like Mac, when not editable
         # TODO possibly allow editable but make it jump to item instead of adding to list?
         self.__from_select.setMaxVisibleItems(20)
         self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
@@ -306,7 +306,7 @@ class RangeSelector(QWidget):
         to_layout.addWidget(QLabel("To:"))
 
         self.__to_select = QComboBox(self)
-        # TODO get ignored for certain styles, like Mac, when not editable
+        # TODO gets ignored for certain styles, like Mac, when not editable
         # TODO possibly allow editable but make it jump to item instead of adding to list?
         self.__to_select.setMaxVisibleItems(20)
         self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
