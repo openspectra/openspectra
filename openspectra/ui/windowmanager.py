@@ -29,9 +29,8 @@ class MenuEvent(QObject):
     OPEN_EVENT:int = 0
     CLOSE_EVENT:int = 1
     SAVE_EVENT:int = 2
-    LINK_EVENT:int = 3
-    HIST_PLOT_EVENT:int = 4
-    SPEC_PLOT_EVENT:int = 5
+    HIST_PLOT_EVENT:int = 3
+    SPEC_PLOT_EVENT:int = 4
 
     def __init__(self, event_type:int, window:QMainWindow):
         super().__init__()
@@ -196,10 +195,6 @@ class WindowManager(QObject):
             dialog.setText("You must have at least one file open to save a sub-cube")
             dialog.addButton(QMessageBox.Ok)
             dialog.exec()
-
-    def link_windows(self, start_window:ImageDisplayWindow):
-        WindowManager.__LOG.debug("link_windows called...")
-        # TODO offer a list of other open windows? with the same size image
 
     @pyqtSlot(MenuEvent)
     def menu_event_handler(self, event:MenuEvent):

@@ -72,16 +72,6 @@ class OpenSpectraUI(QMainWindow):
         self.__histogram_plot_action.triggered.connect(self.__plot_hist)
         self.__histogram_plot_action.setDisabled(True)
 
-        self.__link_action = QAction('&Link', self)
-        self.__link_action.setShortcut('Ctrl+L')
-        self.__link_action.setStatusTip('Link displays')
-        self.__link_action.triggered.connect(self.__link_displays)
-        self.__link_action.setDisabled(True)
-
-        # TODO??
-        # self.toolbar = self.addToolBar('Open')
-        # self.toolbar.addAction(openAct)
-
         menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu('&File')
@@ -94,8 +84,7 @@ class OpenSpectraUI(QMainWindow):
         plot_menu.addAction(self.__spectrum_plot_action)
         plot_menu.addAction(self.__histogram_plot_action)
 
-        plot_menu = menu_bar.addMenu("&Windows")
-        plot_menu.addAction(self.__link_action)
+        window_menu = menu_bar.addMenu("&Windows")
 
         self.__band_list = BandList(self)
         self.setCentralWidget(self.__band_list)
@@ -131,22 +120,6 @@ class OpenSpectraUI(QMainWindow):
     def __plot_hist(self):
         self.__fire_menu_event(MenuEvent.HIST_PLOT_EVENT)
 
-    def __link_displays(self):
-        current_window:QWidget = QApplication.activeWindow()
-        if current_window is not None and isinstance(current_window, ImageDisplayWindow):
-            OpenSpectraUI.__LOG.debug("Found current window with title: {}", current_window.windowTitle())
-            self.__window_manager.link_windows(current_window)
-        else:
-            # this shouldn't happen if __handle_focus_changed is working correctly
-            OpenSpectraUI.__LOG.error(
-                "Internal error, __link_displays called without focus on an image window.  Focus was on: {}",
-                current_window)
-            dialog = QMessageBox()
-            dialog.setIcon(QMessageBox.Critical)
-            dialog.setText("You must select an image window to start linking.")
-            dialog.addButton(QMessageBox.Ok)
-            dialog.exec()
-
     def __fire_menu_event(self, event_type:int):
         current_window:QWidget = QApplication.activeWindow()
         if current_window is not None:
@@ -160,10 +133,8 @@ class OpenSpectraUI(QMainWindow):
 
         # TODO control which menus are available based on which window is active
         if current_window is not None and isinstance(current_window, ImageDisplayWindow):
-            self.__link_action.setDisabled(False)
             self.__spectrum_plot_action.setDisabled(False)
             self.__histogram_plot_action.setDisabled(False)
         else:
-            self.__link_action.setDisabled(True)
             self.__spectrum_plot_action.setDisabled(True)
             self.__histogram_plot_action.setDisabled(True)
