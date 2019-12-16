@@ -19,6 +19,7 @@ from numpy import ma
 
 from openspectra.image import Image, BandDescriptor
 from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.openspectra_file import OpenSpectraHeader
 from openspectra.utils import LogHelper, Logger, Singleton
 
 
@@ -197,14 +198,24 @@ class MouseCoordinates(QLabel):
 
     __LOG:Logger = LogHelper.logger("MouseCoordinates")
 
-    def __init__(self, parent=None):
+    def __init__(self, map_info:OpenSpectraHeader.MapInfo=None, parent=None):
         super().__init__(parent)
+        self.__map_info = map_info
+        if self.__map_info is not None:
+            self.__formatter = " sample: {0} line: {1}, x: {2:.3f}, y: {3:.3f}"
+        else:
+            self.__formatter = " sample: {0} line: {1}"
 
     @pyqtSlot(AdjustedMouseEvent)
     def on_mouse_move(self, event:AdjustedMouseEvent):
         # users are accustom to screen coordinates being 1 based
-        self.setText(" sample: {0} line: {1}".format(
-            event.pixel_x() + 1, event.pixel_y() + 1))
+        if self.__map_info is not None:
+            coords = self.__map_info.calculate_coordinates(event.pixel_x(), event.pixel_y())
+            self.setText(self.__formatter.format(event.pixel_x() + 1, event.pixel_y() + 1,
+                coords[0], coords[1]))
+        else:
+            self.setText(" sample: {0} line: {1}".format(
+                event.pixel_x() + 1, event.pixel_y() + 1))
 
 
 class ZoomWidget(QWidget):
@@ -1079,9 +1090,12 @@ class ImageDisplayWindow(QMainWindow):
     closed = pyqtSignal(WindowCloseEvent)
 
     def __init__(self, image:Image, label:str, qimage_format:QImage.Format,
-                screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False, parent=None):
+            screen_geometry:QRect, location_rect:bool=True, pixel_select:bool=False,
+            map_info:OpenSpectraHeader.MapInfo=None, parent=None):
         super().__init__(parent)
-        # TODO do we need to hold the data itself?
+
+        self._map_info = map_info
+
         self.__image = image
         self.__image_label = label
         self._image_display = ImageDisplay(self.__image, qimage_format, location_rect, pixel_select, self)
@@ -1112,7 +1126,7 @@ class ImageDisplayWindow(QMainWindow):
         self._mouse_widget = QDockWidget("Mouse", self)
         self._mouse_widget.setFeatures(QDockWidget.NoDockWidgetFeatures)
         self._mouse_widget.setTitleBarWidget(QWidget(None))
-        self._mouse_viewer = MouseCoordinates()
+        self._mouse_viewer = MouseCoordinates(self._map_info)
         # set to fixed height so we know how to layout the image display window
         self._mouse_viewer.setFixedHeight(16)
 
@@ -1154,8 +1168,9 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     view_changed = pyqtSignal(ViewChangeEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
-            screen_geometry:QRect, zoom_factor:float, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, False, True, parent)
+            screen_geometry:QRect, zoom_factor:float, map_info:OpenSpectraHeader.MapInfo=None,
+            parent=None):
+        super().__init__(image, label, qimage_format, screen_geometry, False, True, map_info, parent)
 
         self.__last_display_center:QPoint = None
 
@@ -1264,8 +1279,9 @@ class MainImageDisplayWindow(ImageDisplayWindow):
     view_location_changed = pyqtSignal(ViewLocationChangeEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
-                screen_geometry:QRect, parent=None):
-        super().__init__(image, label, qimage_format, screen_geometry, True, False, parent)
+            screen_geometry:QRect, map_info:OpenSpectraHeader.MapInfo=None,
+            parent=None):
+        super().__init__(image, label, qimage_format, screen_geometry, True, False, map_info, parent)
         self._image_display.right_clicked.connect(self.__handle_right_click)
         self._image_display.image_resized.connect(self.__handle_image_resize)
         self._image_display.locator_moved.connect(self.__handle_location_changed)

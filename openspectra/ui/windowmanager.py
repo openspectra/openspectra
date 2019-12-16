@@ -422,18 +422,22 @@ class WindowSet(QObject):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
                 self.__file_manager.window_manager().zoom_factor(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
         elif isinstance(self.__image, RGBImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
                 self.__file_manager.window_manager().zoom_factor(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
