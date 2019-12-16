@@ -72,6 +72,11 @@ class OpenSpectraUI(QMainWindow):
         self.__histogram_plot_action.triggered.connect(self.__plot_hist)
         self.__histogram_plot_action.setDisabled(True)
 
+        self.__set_zoom_action = QAction("&Set Zoom")
+        self.__set_zoom_action.setShortcut("Ctrl+Z")
+        self.__set_zoom_action.setStatusTip("Set the zoom factor")
+        self.__set_zoom_action.triggered.connect(self.__set_zoom)
+
         self.__zoom_in_action = QAction("&Zoom In")
         self.__zoom_in_action.setShortcut("Ctrl++")
         self.__zoom_in_action.setStatusTip("Zoom in for current zoom window")
@@ -103,6 +108,7 @@ class OpenSpectraUI(QMainWindow):
         plot_menu.addAction(self.__histogram_plot_action)
 
         window_menu = menu_bar.addMenu("&Windows")
+        window_menu.addAction(self.__set_zoom_action)
         window_menu.addAction(self.__zoom_reset_action)
         window_menu.addAction(self.__zoom_in_action)
         window_menu.addAction(self.__zoom_out_action)
@@ -140,6 +146,10 @@ class OpenSpectraUI(QMainWindow):
     @pyqtSlot()
     def __plot_hist(self):
         self.__fire_menu_event(MenuEvent.HIST_PLOT_EVENT)
+
+    @pyqtSlot()
+    def __set_zoom(self):
+        self.__fire_menu_event(MenuEvent.ZOOM_SET)
 
     @pyqtSlot()
     def __zoom_reset(self):

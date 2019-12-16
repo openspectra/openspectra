@@ -20,7 +20,8 @@ from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEve
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent, ImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent, \
+    ZoomSetWindow
 from openspectra.utils import LogHelper, Logger
 
 
@@ -34,6 +35,7 @@ class MenuEvent(QObject):
     ZOOM_IN:int = 5
     ZOOM_OUT:int = 6
     ZOOM_RESET:int = 7
+    ZOOM_SET:int = 8
 
     def __init__(self, event_type:int, window:QMainWindow):
         super().__init__()
@@ -92,6 +94,7 @@ class WindowManager(QObject):
     zoom_in = pyqtSignal(MenuEvent)
     zoom_out = pyqtSignal(MenuEvent)
     zoom_reset = pyqtSignal(MenuEvent)
+    zoom_factor_changed = pyqtSignal(float)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -115,6 +118,10 @@ class WindowManager(QObject):
         self.__default_open_dir = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
         self.__save_manager = SaveManager(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation),
                                 "Save Data", "", "")
+
+        self.__zoom_set_window:ZoomSetWindow = ZoomSetWindow()
+        self.__zoom_set_window.zoom_factor_changed.connect(self.zoom_factor_changed)
+        self.__zoom_set_window.move(self.__screen_geometry.width() - self.__zoom_set_window.width() - 5, 0)
 
     def open_file(self):
         file_dialog = QFileDialog.getOpenFileName(self.__parent_window, "Open file", self.__default_open_dir)
@@ -167,6 +174,9 @@ class WindowManager(QObject):
 
     def parent_window(self) -> QMainWindow:
         return self.__parent_window
+
+    def zoom_factor(self) -> float:
+        return self.__zoom_set_window.zoom_factor()
 
     def open_save_subcube(self, file_name:str):
         if len(self.__file_managers) > 0:
@@ -227,6 +237,8 @@ class WindowManager(QObject):
             elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window, HistogramDisplayWindow):
                 # notify the window sets they'll decide if it applies
                 self.plot_closed.emit(WindowCloseEvent(target_window))
+            elif isinstance(target_window, ZoomSetWindow):
+                self.__zoom_set_window.close()
 
         elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
             isinstance(target_window, ImageDisplayWindow):
@@ -242,8 +254,15 @@ class WindowManager(QObject):
         elif event_type == MenuEvent.ZOOM_RESET and isinstance(target_window, ZoomImageDisplayWindow):
             self.zoom_reset.emit(event)
 
+        elif event_type == MenuEvent.ZOOM_SET:
+            if not self.__zoom_set_window.isVisible():
+                self.__zoom_set_window.show()
+
+            self.__zoom_set_window.activateWindow()
+
         else:
-            WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
+            WindowManager.__LOG.warning("Unrecognized menu event and window combination event type: {}, with target: {}",
+                event_type, target_window)
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
@@ -406,6 +425,7 @@ class WindowSet(QObject):
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.window_manager().zoom_factor(),
                 self.file_manager().window_manager().parent_window())
         elif isinstance(self.__image, RGBImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
@@ -413,6 +433,7 @@ class WindowSet(QObject):
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.window_manager().zoom_factor(),
                 self.file_manager().window_manager().parent_window())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
@@ -435,6 +456,7 @@ class WindowSet(QObject):
         self.__zoom_image_window.closed.connect(self.__handle_image_closed)
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
         self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
+        self.file_manager().window_manager().zoom_factor_changed.connect(self.__zoom_image_window.handle_zoom_factor_changed)
 
         # Register for close events coming from the menu system
         self.__file_manager.window_manager().image_closed.connect(self.__handle_image_closed)

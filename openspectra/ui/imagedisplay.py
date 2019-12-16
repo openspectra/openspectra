@@ -292,6 +292,7 @@ class ReversePixelCalculator():
 
         return point_list
 
+
 class ImageLabel(QLabel):
 
     __LOG:Logger = LogHelper.logger("ImageLabel")
@@ -1153,7 +1154,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     view_changed = pyqtSignal(ViewChangeEvent)
 
     def __init__(self, image:Image, label, qimage_format:QImage.Format,
-            screen_geometry:QRect, parent=None):
+            screen_geometry:QRect, zoom_factor:float, parent=None):
         super().__init__(image, label, qimage_format, screen_geometry, False, True, parent)
 
         self.__last_display_center:QPoint = None
@@ -1165,8 +1166,9 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         # TODO for testing only, remove if not used otherwise
         self._image_display.right_clicked.connect(self.__handle_right_click)
 
-        self.__zoom_factor = 1.0
-        self.__zoom_widget = ZoomWidget(self, self.__zoom_factor)
+        self.__zoom_factor = zoom_factor
+        self.__current_zoom = 1.0
+        self.__zoom_widget = ZoomWidget(self, self.__current_zoom)
 
         self.__zoom_dock_widget = QDockWidget("Mouse", self)
         self.__zoom_dock_widget.setTitleBarWidget(QWidget(None))
@@ -1183,26 +1185,28 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
     @pyqtSlot()
     def handle_zoom_in(self):
-        # TODO multiplier should be settable
-        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
-        self.__zoom_factor *= 1.5
+        self.__last_display_center = self._image_display.get_view_center() / self.__current_zoom
+        self.__current_zoom *= self.__zoom_factor
         self.__set_zoom()
 
     @pyqtSlot()
     def handle_zoom_out(self):
-        # TODO multiplier should be settable
-        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
-        self.__zoom_factor *= 1/1.5
+        self.__last_display_center = self._image_display.get_view_center() / self.__current_zoom
+        self.__current_zoom *= 1 / self.__zoom_factor
         # limit zoom out to going back to 1 to 1
-        if self.__zoom_factor < 1.0:
-            self.__zoom_factor = 1.0
+        if self.__current_zoom < 1.0:
+            self.__current_zoom = 1.0
         self.__set_zoom()
 
     @pyqtSlot()
     def handle_zoom_reset(self):
-        self.__last_display_center = self._image_display.get_view_center() / self.__zoom_factor
-        self.__zoom_factor = 1.0
+        self.__last_display_center = self._image_display.get_view_center() / self.__current_zoom
+        self.__current_zoom = 1.0
         self.__set_zoom()
+
+    @pyqtSlot(float)
+    def handle_zoom_factor_changed(self, value:float):
+        self.__zoom_factor = value
 
     @pyqtSlot(ImageResizeEvent)
     def __handle_image_resize(self, event:ImageResizeEvent):
@@ -1210,10 +1214,10 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         ZoomImageDisplayWindow.__LOG.debug("image resize event, new size: {0}, last center: {1}, new viewport size: {2}",
             event.image_size(), self.__last_display_center, event.viewport_size())
         if self.__last_display_center is not None:
-            new_center:QPoint = self.__last_display_center * self.__zoom_factor
+            new_center:QPoint = self.__last_display_center * self.__current_zoom
             ZoomImageDisplayWindow.__LOG.debug("new center: {0}", new_center)
             self._image_display.center_in_viewport(new_center)
-            self.zoom_changed.emit(ViewZoomChangeEvent(self.__zoom_factor, event.viewport_size()/self.__zoom_factor))
+            self.zoom_changed.emit(ViewZoomChangeEvent(self.__current_zoom, event.viewport_size() / self.__current_zoom))
 
     # TODO for testing only, remove if not used otherwise
     @pyqtSlot(AdjustedMouseEvent)
@@ -1224,19 +1228,19 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
 
     def __handle_view_changed(self, event:ViewChangeEvent):
         # Handle when viewport is resized
-        event.scale(1 / self.__zoom_factor)
+        event.scale(1 / self.__current_zoom)
         self.view_changed.emit(event)
 
     @pyqtSlot(ViewLocationChangeEvent)
     def __handle_image_scroll(self, event:ViewLocationChangeEvent):
         # Handle when scrollbars move
         ZoomImageDisplayWindow.__LOG.debug("image scroll handled, center: {0}", event.center())
-        event.scale(1 / self.__zoom_factor)
+        event.scale(1 / self.__current_zoom)
         self.location_changed.emit(event)
 
     def __set_zoom(self):
-        self._image_display.scale_image(self.__zoom_factor)
-        self.__zoom_widget.set_zoom_label(self.__zoom_factor)
+        self._image_display.scale_image(self.__current_zoom)
+        self.__zoom_widget.set_zoom_label(self.__current_zoom)
 
     def __center_in_viewport(self, center:QPoint):
         # Logging here is huge overkill uncomment to debug only
@@ -1246,7 +1250,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     @pyqtSlot(ViewLocationChangeEvent)
     def handle_location_changed(self, event:ViewLocationChangeEvent):
         # Handles when the locator is moved in the main window
-        self.__center_in_viewport(event.center() * self.__zoom_factor)
+        self.__center_in_viewport(event.center() * self.__current_zoom)
 
     # TODO for testing only, remove if not used otherwise
     def resizeEvent(self, event:QResizeEvent):
