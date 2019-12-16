@@ -7,5 +7,5 @@ pyparsing==2.3.1
 PyQt5==5.11.3
 PyQt5-sip==4.19.13
 python-dateutil==2.7.5
-PyYAML==3.13
+PyYAML==5.1
 six==1.12.0
