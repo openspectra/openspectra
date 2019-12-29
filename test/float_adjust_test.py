@@ -22,7 +22,7 @@ def test_float_adj():
     print(float_data)
 
     # define number of bins
-    nbins = OpenSpectraProperties.FloatBins
+    nbins = OpenSpectraProperties.get_property("FloatBins", 512)
 
     plt.hist(float_data.flatten(), nbins,
         [float_data.min(), float_data.max()])

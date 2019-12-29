@@ -7,9 +7,14 @@ import traceback
 
 from PyQt5.QtWidgets import QApplication
 from openspectra.ui.openspectra_ui import OpenSpectraUI
+from openspectra.utils import OpenSpectraProperties
 
 if __name__ == '__main__':
     return_val = 0
+
+    # trigger configuration properties to load
+    OpenSpectraProperties.get_property(None, None)
+
     app = QApplication(sys.argv)
     try:
         os = OpenSpectraUI()

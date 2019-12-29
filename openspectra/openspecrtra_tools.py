@@ -524,7 +524,7 @@ class OpenSpectraHistogramTools:
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         elif type in OpenSpectraDataTypes.Floats:
             x_range = (data.min(), data.max())
-            bins = OpenSpectraProperties.FloatBins
+            bins = OpenSpectraProperties.get_property("FloatBins", 512)
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         else:
             raise TypeError("Data with type {0} is not supported".format(type))

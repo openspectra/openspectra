@@ -19,10 +19,11 @@ from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent, ImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
+from openspectra.ui.thread_tools import ThreadedImageTools
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
     RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent, \
     ZoomSetWindow
-from openspectra.utils import LogHelper, Logger
+from openspectra.utils import LogHelper, Logger, OpenSpectraProperties
 
 
 class MenuEvent(QObject):
@@ -333,21 +334,38 @@ class FileManager(QObject):
         self.__window_manager = window_manager
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
-        self.__image_tools = OpenSpectraImageTools(self.__file)
+        self.__is_threading_enabled = OpenSpectraProperties.get_property("ThreadingEnabled", True)
+
+        if self.__is_threading_enabled:
+            FileManager.__LOG.info("Threading enabled for Image Tools")
+            self.__image_tools = ThreadedImageTools(self.__file)
+            self.__image_tools.image_created.connect(self.__create_window_set)
+        else:
+            FileManager.__LOG.info("Threading not enabled for Image Tools")
+            self.__image_tools = OpenSpectraImageTools(self.__file)
+
         self.__window_sets = list()
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
         FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
             bands.red_descriptor().label(), bands.green_descriptor().label(),
             bands.blue_descriptor().label()))
+
         image = self.__image_tools.rgb_image(
             bands.red_index(), bands.green_index(), bands.blue_index(),
             bands.red_descriptor(), bands.green_descriptor(), bands.blue_descriptor())
-        self.__create_window_set(image)
+
+        if not self.__is_threading_enabled:
+            if image is not None:
+                self.__create_window_set(image)
+            else:
+                FileManager.__LOG.error("Image tools did not return and image")
 
     def add_grey_window_set(self, index:int, band_descriptor:BandDescriptor):
         image = self.__image_tools.greyscale_image(index, band_descriptor)
-        self.__create_window_set(image)
+        if not self.__is_threading_enabled:
+            if image is not None:
+                self.__create_window_set(image)
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
@@ -361,9 +379,6 @@ class FileManager(QObject):
     def band_tools(self) -> OpenSpectraBandTools:
         return self.__band_tools
 
-    def image_tools(self) -> OpenSpectraImageTools:
-        return self.__image_tools
-
     def window_manager(self) -> WindowManager:
         return self.__window_manager
 
@@ -372,7 +387,9 @@ class FileManager(QObject):
             window_set = self.__window_sets.pop()
             window_set.close()
 
+    @pyqtSlot(Image)
     def __create_window_set(self, image:Image):
+        FileManager.__LOG.debug("__create_window_set called...")
         title = image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)

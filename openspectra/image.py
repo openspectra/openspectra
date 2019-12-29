@@ -194,7 +194,7 @@ class BandImageAdjuster(ImageAdjuster):
         return self.__updated
 
     def __calculate_float_cutoffs(self, lower:Union[int, float], upper:Union[int, float]):
-        nbins = OpenSpectraProperties.FloatBins
+        nbins = OpenSpectraProperties.get_property("FloatBins", 512)
         min = self.__band.min()
         max = self.__band.max()
 
