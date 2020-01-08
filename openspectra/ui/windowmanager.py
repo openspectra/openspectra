@@ -4,6 +4,8 @@
 
 import logging
 import os
+import sys
+import traceback
 from typing import Dict, Tuple, List
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt, QStandardPaths
@@ -85,7 +87,31 @@ class SaveManager(QObject):
         return file_name
 
 
-class WindowManager(QObject):
+class ExceptionManager(QObject):
+
+    def __init__(self):
+        super().__init__()
+
+    def _logger(self) -> Logger:
+        pass
+
+    def _handle_exception(self, message:str, sys_info:tuple, trace_back:str):
+        error_msg = "{}: {} {}".format(message, sys_info[0], sys_info[1])
+        tb = traceback.format_exc()
+        self._logger().error("{}\n{}".format(error_msg, trace_back))
+        self._error_prompt(error_msg, trace_back)
+
+    def _error_prompt(self, error_msg:str, trace_back:str=None):
+        dialog = QMessageBox()
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText(error_msg)
+        if trace_back is not None:
+            dialog.setDetailedText(trace_back)
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()
+
+
+class WindowManager(ExceptionManager):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
 
@@ -138,9 +164,9 @@ class WindowManager(QObject):
                 if split_path[0]:
                     self.__default_open_dir = split_path[0]
 
-            except OpenSpectraFileError as e:
-                WindowManager.__LOG.error("Failed to open file with error: {0}".format(e))
-                self.__file_not_found_prompt(file_name)
+            except:
+                self._handle_exception("Failed to open file {} with error".
+                    format(file_name), sys.exc_info(), traceback.format_exc())
         else:
             WindowManager.__LOG.debug("File open canceled...")
 
@@ -219,51 +245,58 @@ class WindowManager(QObject):
         target_window = event.window()
         WindowManager.__LOG.debug("Received menu event type: {}, for window: {}", event_type, target_window)
 
-        if event_type == MenuEvent.OPEN_EVENT:
-            self.open_file()
+        try:
+            if event_type == MenuEvent.OPEN_EVENT:
+                self.open_file()
 
-        elif event_type == MenuEvent.SAVE_EVENT:
-            if target_window == self.__parent_window:
-                self.open_save_subcube(self.__band_list.selected_file())
-            elif isinstance(target_window, ImageDisplayWindow):
-                # TODO will do a save image eventually
-                pass
+            elif event_type == MenuEvent.SAVE_EVENT:
+                if target_window == self.__parent_window:
+                    self.open_save_subcube(self.__band_list.selected_file())
+                elif isinstance(target_window, ImageDisplayWindow):
+                    # TODO will do a save image eventually
+                    pass
 
-        elif event_type == MenuEvent.CLOSE_EVENT:
-            if target_window == self.__parent_window:
-                self.close_file(self.__band_list.selected_file())
-            elif isinstance(target_window, ImageDisplayWindow):
+            elif event_type == MenuEvent.CLOSE_EVENT:
+                if target_window == self.__parent_window:
+                    self.close_file(self.__band_list.selected_file())
+                elif isinstance(target_window, ImageDisplayWindow):
+                    # notify the window sets they'll decide if it applies
+                    self.image_closed.emit(WindowCloseEvent(target_window))
+                elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window,
+                        HistogramDisplayWindow):
+                    # notify the window sets they'll decide if it applies
+                    self.plot_closed.emit(WindowCloseEvent(target_window))
+                elif isinstance(target_window, ZoomSetWindow):
+                    self.__zoom_set_window.close()
+
+            elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
+                    isinstance(target_window, ImageDisplayWindow):
                 # notify the window sets they'll decide if it applies
-                self.image_closed.emit(WindowCloseEvent(target_window))
-            elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window, HistogramDisplayWindow):
-                # notify the window sets they'll decide if it applies
-                self.plot_closed.emit(WindowCloseEvent(target_window))
-            elif isinstance(target_window, ZoomSetWindow):
-                self.__zoom_set_window.close()
+                self.plot_opened.emit(event)
 
-        elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
-            isinstance(target_window, ImageDisplayWindow):
-            # notify the window sets they'll decide if it applies
-            self.plot_opened.emit(event)
+            elif event_type == MenuEvent.ZOOM_IN and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_in.emit(event)
 
-        elif event_type == MenuEvent.ZOOM_IN and isinstance(target_window, ZoomImageDisplayWindow):
-            self.zoom_in.emit(event)
+            elif event_type == MenuEvent.ZOOM_OUT and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_out.emit(event)
 
-        elif event_type == MenuEvent.ZOOM_OUT and isinstance(target_window, ZoomImageDisplayWindow):
-            self.zoom_out.emit(event)
+            elif event_type == MenuEvent.ZOOM_RESET and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_reset.emit(event)
 
-        elif event_type == MenuEvent.ZOOM_RESET and isinstance(target_window, ZoomImageDisplayWindow):
-            self.zoom_reset.emit(event)
+            elif event_type == MenuEvent.ZOOM_SET:
+                if not self.__zoom_set_window.isVisible():
+                    self.__zoom_set_window.show()
 
-        elif event_type == MenuEvent.ZOOM_SET:
-            if not self.__zoom_set_window.isVisible():
-                self.__zoom_set_window.show()
+                self.__zoom_set_window.activateWindow()
 
-            self.__zoom_set_window.activateWindow()
-
-        else:
-            WindowManager.__LOG.warning("Unrecognized menu event and window combination event type: {}, with target: {}",
-                event_type, target_window)
+            else:
+                WindowManager.__LOG.warning(
+                    "Unrecognized menu event and window combination event type: {}, with target: {}",
+                    event_type, target_window)
+        except:
+            # This will only catch the actions that don't result in an event being emitted
+            self._handle_exception("Error handling menu action {}".format(event_type),
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
@@ -271,58 +304,69 @@ class WindowManager(QObject):
         WindowManager.__LOG.debug("__handle_save_subcube for source file: {0}, with params: {1}".
             format(file_name, event.cube_params()))
 
-        if file_name in self.__file_managers:
-            os_file = self.__file_managers[file_name].file()
-            sub_cube_tools = SubCubeTools(os_file, event.cube_params())
-            sub_cube_tools.create_sub_cube()
-            default_name = "{}_{}_{}_{}".format(file_name,
-                max(sub_cube_tools.lines()) - min(sub_cube_tools.lines()),
-                max(sub_cube_tools.samples()) - min(sub_cube_tools.samples()),
-                max(sub_cube_tools.bands()) - min(sub_cube_tools.bands()))
-            new_file_name = self.__save_manager.save_dialog(default_name)
-            if new_file_name:
-                sub_cube_tools.save(new_file_name)
+        try:
+            if file_name in self.__file_managers:
+                os_file = self.__file_managers[file_name].file()
+                sub_cube_tools = SubCubeTools(os_file, event.cube_params())
+                sub_cube_tools.create_sub_cube()
+                default_name = "{}_{}_{}_{}".format(file_name,
+                    max(sub_cube_tools.lines()) - min(sub_cube_tools.lines()),
+                    max(sub_cube_tools.samples()) - min(sub_cube_tools.samples()),
+                    max(sub_cube_tools.bands()) - min(sub_cube_tools.bands()))
+                new_file_name = self.__save_manager.save_dialog(default_name)
+                if new_file_name:
+                    sub_cube_tools.save(new_file_name)
+                else:
+                    WindowManager.__LOG.debug("Sub cube save canceled")
             else:
-                WindowManager.__LOG.debug("Sub cube save canceled")
-        else:
-            dialog = QMessageBox()
-            dialog.setIcon(QMessageBox.Critical)
-            dialog.setText("An internal error occurred.  Requested source cube, {}, does not appear to be open")
-            dialog.addButton(QMessageBox.Ok)
-            dialog.exec()
+                msg = "An internal error occurred.  Requested source cube, {}, does not appear to be open".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed save sub cube due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
         band_descriptor:BandDescriptor = item.data(0, Qt.UserRole)
         WindowManager.__LOG.debug("Band selected for: {0}, {1}, {2}".format(
             band_descriptor.file_name(), band_descriptor.band_name(), band_descriptor.wavelength_label()))
-        parent_item = item.parent()
-        file_name = parent_item.text(0)
-        if file_name in self.__file_managers:
-            file_set = self.__file_managers[file_name]
-            file_set.add_grey_window_set(
-                parent_item.indexOfChild(item), band_descriptor)
-        else:
-            # TODO report or log?
-            pass
+
+        try:
+            parent_item = item.parent()
+            file_name = parent_item.text(0)
+            if file_name in self.__file_managers:
+                file_set = self.__file_managers[file_name]
+                file_set.add_grey_window_set(
+                    parent_item.indexOfChild(item), band_descriptor)
+            else:
+                msg = "An interal error occurred.  Failed to find the bands' file in the open file list.  Looking for file named {}".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed open image due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(RGBSelectedBands)
     def __handle_rgb_select(self, bands:RGBSelectedBands):
-        file_name = bands.file_name()
-        if file_name in self.__file_managers:
-            file_set = self.__file_managers[file_name]
-            file_set.add_rgb_window_set(bands)
-        else:
-            # TODO report or log?
-            pass
+        try:
+            file_name = bands.file_name()
+            if file_name in self.__file_managers:
+                file_set = self.__file_managers[file_name]
+                file_set.add_rgb_window_set(bands)
+            else:
+                msg = "An interal error occurred.  Failed to find the bands' file in the open file list.  Looking for file named {}".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed open image due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
-    @staticmethod
-    def __file_not_found_prompt(file_name:str):
-        dialog = QMessageBox()
-        dialog.setIcon(QMessageBox.Critical)
-        dialog.setText("File named '{0}' not found!".format(file_name))
-        dialog.addButton(QMessageBox.Ok)
-        dialog.exec()
+    def _logger(self) -> Logger:
+        return WindowManager.__LOG
 
 
 class FileManager(QObject):
