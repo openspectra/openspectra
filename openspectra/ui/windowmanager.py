@@ -64,7 +64,7 @@ class SaveManager(QObject):
         self.__extension = extension
 
     def save_dialog(self, default_name:str) -> str:
-        # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at least on Mac
+        # there appears to be an unresolved problem with QFileDialog when using native dialogs at least on Mac
         # seems to be related to the text field where you would type a file name not getting cleaned up which
         # may explain why it only seems to impact the save dialog.
         # |QFileDialog.ShowDirsOnly only good with native dialog
@@ -708,13 +708,10 @@ class WindowSet(QObject):
         if updated:
             self.__image.adjust()
 
-            # TODO use event instead?
             # trigger update in image window
             self.__main_image_window.refresh_image()
             self.__zoom_image_window.refresh_image()
 
-            # TODO replotting the whole thing is bit inefficient?
-            # TODO don't have the label here
             image_hist = self.__histogram_tools.adjusted_histogram(event.band())
             self.__histogram_window.set_adjusted_data(image_hist, event.band())
         else:
@@ -951,7 +948,6 @@ class RegionOfInterestManager(QObject):
             raise Exception("RegionOfInterestManager is a singleton, use RegionOfInterestManager.Get_Instance() instead")
         else:
             super().__init__()
-            # TODO figure out how to position the window??
             # Region of interest window, note we intentionally don't set Qt.WA_DeleteOnClose
             # because we can reuse it easily.
             self.__region_window = RegionOfInterestDisplayWindow()
@@ -1010,7 +1006,6 @@ class RegionOfInterestManager(QObject):
                     RegionOfInterestManager.__LOG.debug("Region save canceled")
             else:
                 # Report region not found?  Shouldn't happen...
-                # TODO raise here?
                 RegionOfInterestManager.__LOG.error(
                     "Attempt to save region failed because the region could not be found, region name: {0}".
                         format(region.display_name()))

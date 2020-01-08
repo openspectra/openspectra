@@ -169,7 +169,6 @@ class BandImageAdjuster(ImageAdjuster):
                 masked_band = np.ma.masked_where(full_mask, self.__band, True)
 
                 # 0 and 256 assumes 8-bit images, the pixel value limits
-                # TODO why didn't 255 work?
                 A, B = 0, 256
                 masked_band = ((masked_band - self.__low_cutoff) * ((B - A) / (self.__high_cutoff - self.__low_cutoff)) + A)
 
@@ -342,7 +341,6 @@ class BandDescriptor:
         return self.__default_stretch
 
 
-# TODO need to think through how much data we're holding here, clean up, views?
 class Image(ImageAdjuster):
 
     def image_data(self, band:Band) -> np.ndarray:
@@ -383,7 +381,7 @@ class GreyscaleImage(Image, BandImageAdjuster):
             self.adjust()
         return super().adjusted_data()
 
-    # TODO Warning returns view of the original data?!
+    # Warning returns view of the original data
     def raw_data(self, band:Band=None) -> np.ndarray:
         """band is ignored here if passed"""
         return self.__band
@@ -463,10 +461,10 @@ class RGBImage(Image, RGBImageAdjuster):
         else:
             return self.__image_data
 
-    # TODO Warning returns view of the original data?!
+    # Warning returns view of the original data
     def raw_data(self, band:Band) -> np.ndarray:
-        # TODO so this returns a view that could allow the user to alter the underlying data
-        # TODO Although I'm not sure what that would do in the case of a memmap??
+        # this returns a view that could allow the user to alter the underlying data
+        # Although I'm not sure what that would do in the case of a memmap??
         return self.__bands[band]
 
     def image_shape(self) -> (int, int):

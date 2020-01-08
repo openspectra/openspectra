@@ -191,7 +191,6 @@ class OpenSpectraHeader:
                     if name == "units":
                         self.__units:str = value
                     elif name == "rotation":
-                        # TODO validate in range?
                         # convert rotation angle to radians for compatibility
                         # with the math cos and sin functions
                         self.__rotation_deg = float(value)
@@ -483,7 +482,6 @@ class OpenSpectraHeader:
     def sensor_type(self) -> str:
         return self.__props.get(OpenSpectraHeader.__SENSOR_TYPE)
 
-    # TODO return standard float instead?
     def reflectance_scale_factor(self) -> np.float64:
         return self.__reflectance_scale_factor
 
@@ -605,7 +603,7 @@ class OpenSpectraHeader:
         self.__band_labels = list(zip(band_names, wavelengths_str))
 
         self.__header_offset = int(self.__props.get(OpenSpectraHeader._HEADER_OFFSET))
-        # TODO missing sometimes??
+
         if OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR in self.__props:
             self.__reflectance_scale_factor = np.float64(
                 self.__props[OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR])
@@ -651,9 +649,6 @@ class OpenSpectraHeader:
             # remember that "1" means the band is good, "0" means it's bad so
             # but True in a numpy mask means the value is masked so flip the values
             self.__bad_band_list = [not bool(int(item)) for item in bad_band_list]
-
-        # TODO byte_order - make sure we recognize and support?
-        # TODO additional validation????
 
 
 class MutableOpenSpectraHeader(OpenSpectraHeader):
@@ -1103,22 +1098,10 @@ class OpenSpectraFile:
         self.__validate()
 
         if OpenSpectraFile.__LOG.isEnabledFor(logging.DEBUG):
-            # TODO seems a little weird, maybe the file delegate should provide access to the file?
-            # TODO so how far do we want to go with the delegate, expose file?  Only expose file props/methods?
             OpenSpectraFile.__LOG.debug("Shape: {0}", self.__memory_model.file().shape)
             OpenSpectraFile.__LOG.debug("NDim: {0}", self.__memory_model.file().ndim)
             OpenSpectraFile.__LOG.debug("Size: {0}", self.__memory_model.file().size)
             OpenSpectraFile.__LOG.debug("Type: {0}", self.__memory_model.file().dtype)
-
-            # TODO so this causes performance problems on large file even with memory mapped, probably has to read the whole file
-            # TODO doesn't consume a bunch of memory in the end.
-            # OpenSpectraFile.__LOG.debug("Min: {0}, Max: {1}", self.__memory_model.file().min(), self.__memory_model.file().max())
-
-        # TODO this causes all memory to get used up then released and takes a long time but works when copy=False
-        # TODO doesn't seem to recover at all if copy=True
-        # view = np.ma.masked_invalid(self.__memory_model.file(), False)
-        # view = np.ma.masked_outside(view, -1, 1, False)
-        # OpenSpectraFile.__LOG.debug("Filtered Min: {0}, Max: {1}, Size: {2}", view.min(), view.max(), view[~view.mask].size)
 
     def raw_image(self, band:Union[int, tuple]) -> np.ndarray:
         """Return the image data for the given band.
@@ -1211,7 +1194,6 @@ class OpenSpectraFileFactory:
             else:
                 raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))
 
-            # TODO this is kind of weird
             memory_model.load(file_delegate.shape())
             return OpenSpectraFile(header, file_delegate, memory_model)
 

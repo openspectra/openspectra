@@ -767,8 +767,6 @@ class HistogramDisplayWindow(QMainWindow):
 
     @pyqtSlot(HistogramDisplayControl.Layout)
     def __handle_layout_changed(self, new_layout:HistogramDisplayControl.Layout):
-        # TODO need a more sensible way to pick a size, maybe based on screen geo?
-        # TODO if user resizes keep a ratio and apply to base sizes below?
         if new_layout == HistogramDisplayControl.Layout.STACKED:
             self.resize(800, 400)
 

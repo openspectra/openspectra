@@ -294,8 +294,8 @@ class RangeSelector(QWidget):
         from_layout.addWidget(QLabel("From:"))
 
         self.__from_select = QComboBox(self)
-        # TODO gets ignored for certain styles, like Mac, when not editable
-        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        # gets ignored for certain styles, like Mac, when not editable
+        # possibly allow editable but make it jump to item instead of adding to list?
         self.__from_select.setMaxVisibleItems(20)
         self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
 
@@ -306,8 +306,8 @@ class RangeSelector(QWidget):
         to_layout.addWidget(QLabel("To:"))
 
         self.__to_select = QComboBox(self)
-        # TODO gets ignored for certain styles, like Mac, when not editable
-        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        # gets ignored for certain styles, like Mac, when not editable
+        # possibly allow editable but make it jump to item instead of adding to list?
         self.__to_select.setMaxVisibleItems(20)
         self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
 
@@ -632,11 +632,10 @@ class SubCubeWindow(QMainWindow):
 
         self.setMinimumWidth(500)
         self.setMinimumHeight(325)
-        # TODO is this what we really want???
+
         self.setMaximumWidth(500)
         self.setMaximumHeight(325)
 
-        # TODO position center of screen??
 
     @pyqtSlot()
     def __handle_cancel(self):

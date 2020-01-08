@@ -302,7 +302,7 @@ class OpenSpectraBandTools:
         wavelengths = self.__file.header().wavelengths()
         # OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
 
-        # TODO something better than having to know to do band[0, :] here?? Use Bands??
+        # something better than having to know to do band[0, :] here?? Use Bands??
         return LinePlotData(wavelengths, band[0, :], "Wavelength", "Magnitude",
             "Spectrum S-{0}, L-{1}".format(sample + 1, line + 1))
 
@@ -419,7 +419,6 @@ class OpenSpectraRegionTools:
         out.write("# description:{0}\n".format(self.__region.description()))
         out.write("# data:\n")
 
-        # TODO output formatting?  Specific number of decimal places to print?
         out.write(self.__get_data_header(bands))
         band_index:int = 0
         for r in self.__region:

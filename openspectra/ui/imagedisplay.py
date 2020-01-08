@@ -314,8 +314,8 @@ class ImageLabel(QLabel):
         Drawing = 2
         Picking = 3
 
-    # TODO on double click we get both clicked and doubleClicked
-    # TODO decide if we need both and fix
+    # on double click we get both clicked and doubleClicked
+    # decide if we need both and fix
     area_selected = pyqtSignal(AreaSelectedEvent)
     left_clicked = pyqtSignal(AdjustedMouseEvent)
     right_clicked = pyqtSignal(AdjustedMouseEvent)
@@ -523,11 +523,6 @@ class ImageLabel(QLabel):
         ImageLabel.__LOG.debug("mouseDoubleClickEvent")
         self.double_clicked.emit(self.__create_adjusted_mouse_event(event))
 
-    # TODO don't need??
-    def resize(self, size:QSize):
-        ImageLabel.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())
-        super().resize(size)
-
     def eventFilter(self, object:QObject, event:QEvent):
         if isinstance(event, QMouseEvent):
             image_size:QSize = self.pixmap().size()
@@ -537,7 +532,6 @@ class ImageLabel(QLabel):
                 return True
 
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-                # TODO this has to account for scaling - no I don't think so now????
                 self.__last_mouse_loc = event.pos()
                 QTimer.singleShot(300, self.__pressed)
                 # event was handled
@@ -566,10 +560,8 @@ class ImageLabel(QLabel):
             path.closeSubpath()
             painter.fillPath(path, brush)
 
-            # TODO probabaly don't need, only for debugging?
             if self.__current_action == ImageLabel.Action.Drawing:
                 self.__polygon_bounds = self.__polygon.boundingRect()
-                painter.drawRect(self.__polygon_bounds)
 
         # draw locator in red if present
         painter.setPen(Qt.red)
@@ -802,8 +794,6 @@ class ImageLabel(QLabel):
                 # ImageLabel.__LOG.debug("press called, draw start")
 
     def __create_adjusted_mouse_event(self, event:QMouseEvent):
-        # TODO seems to be a bit off for large images when scaled down to fit???
-        # TODO not sure this can work when scaling < 1??
         return AdjustedMouseEvent(event, 1 / self.__width_scale_factor, 1 / self.__height_scale_factor)
 
 
@@ -824,11 +814,9 @@ class ImageDisplay(QScrollArea):
             location_rect:bool=True, pixel_select:bool=False, parent=None):
         super().__init__(parent)
 
-        # TODO make settable prop?
         self.__margin_width = 4
         self.__margin_height = 4
 
-        # TODO do we need to hold the data itself?
         self.__image = image
         self.__qimage_format = qimage_format
 
@@ -1074,11 +1062,6 @@ class ImageDisplay(QScrollArea):
         self.__update_scroll_bars(event.oldSize(), event.size())
         self.viewport_changed.emit(ViewChangeEvent(self.get_view_center(), event.size()))
 
-    # TODO test only
-    def size(self):
-        ImageDisplay.__LOG.debug("ImageLabel size: {0}", self.__image_label.size())
-        return super().size()
-
 
 class ImageDisplayWindow(QMainWindow):
 
@@ -1194,7 +1177,7 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
         self.__minimum_size = QSize(150, 150)
         self.setMinimumSize(self.__minimum_size)
 
-        # TODO temporarily initial size setting, figure out a more sensible way to determine initial size
+        # initial size setting, figure out a more sensible way to determine initial size
         self.__nom_size = QSize(400, 350)
         self.resize(self.__nom_size)
 
@@ -1266,10 +1249,6 @@ class ZoomImageDisplayWindow(ImageDisplayWindow):
     def handle_location_changed(self, event:ViewLocationChangeEvent):
         # Handles when the locator is moved in the main window
         self.__center_in_viewport(event.center() * self.__current_zoom)
-
-    # TODO for testing only, remove if not used otherwise
-    def resizeEvent(self, event:QResizeEvent):
-        ZoomImageDisplayWindow.__LOG.debug("Resize to {0}", event.size())
 
 
 class MainImageDisplayWindow(ImageDisplayWindow):
@@ -1402,8 +1381,3 @@ class MainImageDisplayWindow(ImageDisplayWindow):
         window.location_changed.connect(self.__handle_zoom_window_location_changed)
         window.view_changed.connect(self.__handle_view_changed)
         self.view_location_changed.connect(window.handle_location_changed)
-
-    # TODO don't need?
-    def resizeEvent(self, event:QResizeEvent):
-        size = event.size()
-        # MainImageDisplayWindow.__LOG.debug("Resizing to w: {0}, h: {1}", size.width(), size.height())

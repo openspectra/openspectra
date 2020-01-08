@@ -77,7 +77,6 @@ class LogHelper:
 
     @staticmethod
     def logger(name:str) -> logging.Logger:
-        # TODO thread safety??
         if LogHelper.__logger is None:
             LogHelper.__initialize()
 

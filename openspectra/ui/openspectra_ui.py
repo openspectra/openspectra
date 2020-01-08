@@ -28,10 +28,6 @@ class OpenSpectraUI(QMainWindow):
 
         self.__init_ui()
 
-        # TODO QMainWindow can store the state of its layout with saveState(); it can later be retrieved
-        # with restoreState(). It is the position and size (relative to the size of the main window) of the
-        # toolbars and dock widgets that are stored.
-
     def __init_ui(self):
         self.setGeometry(25, 50, 600, 0)
         self.setWindowTitle("OpenSpectra")
