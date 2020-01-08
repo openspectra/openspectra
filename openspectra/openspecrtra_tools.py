@@ -276,7 +276,6 @@ class BandStaticsPlotData():
             "Wavelength", "Magnitude", self.__title, "g", legend="std-")
 
 
-# TODO needs much attention!!!
 class OpenSpectraBandTools:
     """A class for working on OpenSpectra files.
     Note: all indexes are expected to be zero based."""
@@ -333,22 +332,16 @@ class OpenSpectraBandTools:
             else:
                 result.mask = result.mask | header.bad_band_list()
 
-        return self.__bogus_noise_cleanup(result)
+        return self.__noise_cleanup(result)
 
-    # TODO work around for now for 1 float file, remove noise from data for floats
-    # TODO will need a general solution also for images too?
-    # TODO where will this live
     @staticmethod
-    def __bogus_noise_cleanup(bands:np.ndarray) -> np.ndarray:
+    def __noise_cleanup(bands:np.ndarray) -> np.ndarray:
         clean_bands = bands
         if clean_bands.dtype in OpenSpectraDataTypes.Floats:
             if clean_bands.min() == np.nan or clean_bands.max() == np.nan or clean_bands.min() == np.inf or clean_bands.max() == np.inf:
                 clean_bands = ma.masked_invalid(clean_bands)
 
-            # TODO certain areas look a bit better when filtered by different criteria, must be a better way
-            # if clean_bands.std() > 1.0:
-            # if clean_bands.std() > 0.1:
-            # clean_bands = ma.masked_outside(clean_bands, -0.01, 0.05)
+            # TODO is this for all float file?
             clean_bands = ma.masked_outside(clean_bands, 0.0, 1.0)
 
         return clean_bands
