@@ -48,13 +48,11 @@ class OpenSpectraUI(QMainWindow):
         self.__save_action.setShortcut("Ctrl+S")
         self.__save_action.setStatusTip("Save sub-cube")
         self.__save_action.triggered.connect(self.__save)
-        # TODO probably init to disabled until file opened?
 
         self.__close_action = QAction("&Close", self)
         self.__close_action.setShortcut("Ctrl+C")
         self.__close_action.setStatusTip("Close file")
         self.__close_action.triggered.connect(self.__close)
-        # TODO probably init to disabled until file opened?
 
         self.__spectrum_plot_action = QAction("&Spectrum", self)
         self.__spectrum_plot_action.setShortcut("Ctrl+P")
