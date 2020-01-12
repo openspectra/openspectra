@@ -178,8 +178,7 @@ class WindowManager(ExceptionManager):
         file_manager = FileManager(file, self)
         file_name = file_manager.file_name()
         if file_name in self.__file_managers:
-            # TODO file names must be unique, handle dups somehow, no need to reopen really
-            # TODO Just throw a up a dialog box saying it's already open?
+            self._error_prompt("A file with name {} is already open".format(file_name))
             return
 
         self.__file_managers[file_name] = file_manager
