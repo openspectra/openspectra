@@ -550,7 +550,12 @@ class OpenSpectraHeader:
             raise OpenSpectraHeaderError("Valid values for byte order in header are '0' or '1'.  Value is: {0}".
                 format(self.__props.get(OpenSpectraHeader.__BYTE_ORDER)))
 
-        interleave:str = self.__props.get(OpenSpectraHeader._INTERLEAVE).lower()
+        interleave:str = self.__props.get(OpenSpectraHeader._INTERLEAVE)
+        if interleave is None or len(interleave) != 3:
+            raise OpenSpectraHeaderError("Interleave format missing from header file.  Must be one of {}, {}, or {}".format(
+                OpenSpectraHeader.BIP_INTERLEAVE, OpenSpectraHeader.BSQ_INTERLEAVE, OpenSpectraHeader.BIL_INTERLEAVE))
+
+        interleave = interleave.lower()
         if interleave == OpenSpectraHeader.BIP_INTERLEAVE:
             self.__interleave = OpenSpectraHeader.BIP_INTERLEAVE
         elif interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
@@ -558,8 +563,9 @@ class OpenSpectraHeader:
         elif interleave == OpenSpectraHeader.BIL_INTERLEAVE:
             self.__interleave = OpenSpectraHeader.BIL_INTERLEAVE
         else:
-            raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {0}".
-                format(self.__props.get(OpenSpectraHeader._INTERLEAVE)))
+            raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {}. Must be one of {}, {}, or {}".
+                format(self.__props.get(OpenSpectraHeader._INTERLEAVE),
+                OpenSpectraHeader.BIP_INTERLEAVE, OpenSpectraHeader.BSQ_INTERLEAVE, OpenSpectraHeader.BIL_INTERLEAVE))
 
         self.__samples = int(self.__props.get(OpenSpectraHeader._SAMPLES))
         self.__lines = int(self.__props.get(OpenSpectraHeader._LINES))
