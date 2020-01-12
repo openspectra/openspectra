@@ -1044,6 +1044,11 @@ class ImageDisplay(QScrollArea):
     def add_selected_area(self, area:AreaSelectedEvent):
         self.__image_label.add_selected_area(area)
 
+    def save_image(self, file_name:str):
+        if not file_name.endswith(".jpg") and not file_name.endswith(".png") and not file_name.endswith(".xpm"):
+            file_name += ".jpg"
+        self.__pix_map.save(file_name, quality=100)
+
     def resize(self, size:QSize):
         ImageDisplay.__LOG.debug("Resizing widget to: {0}", size)
         # This adjust my size and the display widget and causes the scroll bars to update properly
@@ -1134,6 +1139,9 @@ class ImageDisplayWindow(QMainWindow):
 
     def refresh_image(self):
         self._image_display.refresh_image()
+
+    def save_image(self, file_name:str):
+        self._image_display.save_image(file_name)
 
     def closeEvent(self, event:QCloseEvent):
         MainImageDisplayWindow.__LOG.debug("About to emit closed...")

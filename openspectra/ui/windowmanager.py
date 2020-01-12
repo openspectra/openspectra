@@ -56,12 +56,15 @@ class SaveManager(QObject):
 
     __LOG:Logger = LogHelper.logger("SaveManager")
 
-    def __init__(self, default_dir: os.PathLike, caption:str, filter_str:str, extension:str):
+    def __init__(self, default_dir:os.PathLike, caption:str, filter_str:str, extension:str):
         super().__init__()
         self.__save_dir_default = default_dir
         self.__caption = caption
         self.__filter_str = filter_str
-        self.__extension = extension
+        if extension is not None and len(extension) > 0:
+            self.__extension = "." + extension
+        else:
+            self.__extension = ""
 
     def save_dialog(self, default_name:str) -> str:
         # there appears to be an unresolved problem with QFileDialog when using native dialogs at least on Mac
@@ -69,7 +72,7 @@ class SaveManager(QObject):
         # may explain why it only seems to impact the save dialog.
         # |QFileDialog.ShowDirsOnly only good with native dialog
 
-        default_save_name = os.path.join(self.__save_dir_default, default_name)
+        default_save_name = os.path.join(self.__save_dir_default, default_name + self.__extension)
         SaveManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
         dialog_result = QFileDialog.getSaveFileName(caption=self.__caption, directory=default_save_name,
             filter=self.__filter_str, options=QFileDialog.DontUseNativeDialog)
@@ -122,6 +125,7 @@ class WindowManager(ExceptionManager):
     zoom_out = pyqtSignal(MenuEvent)
     zoom_reset = pyqtSignal(MenuEvent)
     zoom_factor_changed = pyqtSignal(float)
+    save_image = pyqtSignal(MenuEvent)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -253,8 +257,7 @@ class WindowManager(ExceptionManager):
                 if target_window == self.__parent_window:
                     self.open_save_subcube(self.__band_list.selected_file())
                 elif isinstance(target_window, ImageDisplayWindow):
-                    # TODO will do a save image eventually
-                    pass
+                    self.save_image.emit(event)
 
             elif event_type == MenuEvent.CLOSE_EVENT:
                 if target_window == self.__parent_window:
@@ -479,6 +482,10 @@ class WindowSet(QObject):
         self.__init_plot_windows()
         self.__init_roi()
 
+        self.__default_image_save_dir = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+        self.__save_manager = SaveManager(self.__default_image_save_dir,
+            "Save Image", "Images (*.png *.xpm *.jpg)", "jpg")
+
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
@@ -530,6 +537,7 @@ class WindowSet(QObject):
         self.__file_manager.window_manager().zoom_in.connect(self.__handle_zoom_in)
         self.__file_manager.window_manager().zoom_out.connect(self.__handle_zoom_out)
         self.__file_manager.window_manager().zoom_reset.connect(self.__handle_zoom_reset)
+        self.__file_manager.window_manager().save_image.connect(self.__handle_save_image)
 
     def __init_plot_windows(self):
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
@@ -575,6 +583,16 @@ class WindowSet(QObject):
         window_rect = self.get_image_window_geometry()
         self.__histogram_window.setGeometry(window_rect.x(), window_rect.y() + window_rect.height() + 50, 800, 400)
         self.__histogram_window.show()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_save_image(self, event:MenuEvent):
+        target_window = event.window()
+        if target_window == self.__zoom_image_window or target_window == self.__main_image_window:
+            image_file_name = self.__save_manager.save_dialog(target_window.windowTitle())
+            if image_file_name:
+                target_window.save_image(image_file_name)
+            else:
+                WindowSet.__LOG.debug("Image save canceled")
 
     @pyqtSlot(MenuEvent)
     def __handle_zoom_reset(self, event:MenuEvent):
