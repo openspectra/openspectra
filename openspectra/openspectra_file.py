@@ -634,9 +634,9 @@ class OpenSpectraHeader:
 
         data_ignore_value = self.__props.get(OpenSpectraHeader.__DATA_IGNORE_VALUE)
         if data_ignore_value is not None:
-            if re.match("[+-]?[0-9]*", data_ignore_value):
+            if re.match("^[+-]?[0-9]*$", data_ignore_value):
                 self.__data_ignore_value = int(data_ignore_value)
-            elif re.match("[+-]?[0-9]*[\.][0-9]*", data_ignore_value):
+            elif re.match("^[+-]?[0-9]*[\.][0-9]*$", data_ignore_value):
                 self.__data_ignore_value = float(data_ignore_value)
             else:
                 raise OpenSpectraHeaderError("Couldn't parse 'data ignore value' as a float or int, value was: {0}", data_ignore_value)

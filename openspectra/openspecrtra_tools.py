@@ -321,15 +321,28 @@ class OpenSpectraBandTools:
         result = bands
         header = self.__file.header()
 
-        # If there is an ignore value maske any occurrences
+        # If there is an ignore value mask any occurrences
         if header.data_ignore_value() is not None:
             result = ma.masked_equal(bands, header.data_ignore_value())
 
         # If there are bad bands mask them
         if header.bad_band_list() is not None:
             if not ma.isMaskedArray(result):
-                result = ma.masked_array(result, mask=header.bad_band_list())
+                OpenSpectraBandTools.__LOG.debug("Data shape: {}, data dimensions: {}, mask shape: {}".format(
+                    result.shape, result.ndim, len(header.bad_band_list())))
+
+                band_mask = header.bad_band_list()
+                if result.shape[0] != 1:
+                    # for roi band stats we need to duplicate the mask in first dimension to match
+                    # the number of data elements in that dimension
+                    band_mask = np.asarray(header.bad_band_list())
+                    band_mask = np.expand_dims(band_mask, axis=0)
+                    band_mask = np.repeat(band_mask, result.shape[0], axis=0)
+                    OpenSpectraBandTools.__LOG.debug("mask shape: {}".format(band_mask.shape))
+
+                result = ma.masked_array(result, mask=band_mask)
             else:
+                OpenSpectraBandTools.__LOG.debug("Updating exiting mask with bad bands")
                 result.mask = result.mask | header.bad_band_list()
 
         return self.__noise_cleanup(result)
