@@ -2,13 +2,18 @@
 
 An open source tool for viewing hyperspectral image data.
 
-## Warning!!
-At this time this application is still under development.  It's been made available here for pre-release preview to help facilate the development of a workshop built around it and other tools.  We hope to have version 1.0 ready in the next couple months.  In the meantime please be aware the code may change signifigantly and you may run into issues we haven't had a chance to address yet.  Test coverage and documentation is very sparse.  Thank you for your patience and we hope you enjoy.
+### Version 1.0 released 1/13/2020
+#### _Important_ _Note_
+If you've setup a previous version of the application from this git repository you may need to re-run
+````
+pip install -r requirements.txt
+````
+as some requirements were updated with the release of 1.0.  See the [Feature Notes](https://github.com/openspectra/openspectra/wiki/Feature-Notes) section of the wiki for a brief summary of what has changed.
 
 ### Setup notes
 At this point the application is available only via this Github repo.  We plan to create an installer in the future for easier setup.
 
-You'll need Python 3.7 installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.  Setup may be easier if you don't mind installing the dependencies globablly.
+You'll need Python 3.7 or later installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.  Setup may be easier if you don't mind installing the dependencies globablly.
 
 If you're using a virtual environment set up your project directory first then see the [Clone](https://github.com/openspectra/openspectra/wiki/Git-Tips#clone) section of git tips for how to get the code added to your project.  If not using a virtual environment you can jump straight to the clone instructions.
 
