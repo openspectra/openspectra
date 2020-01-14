@@ -338,11 +338,10 @@ class OpenSpectraBandTools:
     def __noise_cleanup(bands:np.ndarray) -> np.ndarray:
         clean_bands = bands
         if clean_bands.dtype in OpenSpectraDataTypes.Floats:
-            if clean_bands.min() == np.nan or clean_bands.max() == np.nan or clean_bands.min() == np.inf or clean_bands.max() == np.inf:
+            min = clean_bands.min()
+            max = clean_bands.max()
+            if np.isnan(min) or np.isnan(max) or np.isinf(min) or np.isinf(max):
                 clean_bands = ma.masked_invalid(clean_bands)
-
-            # TODO is this for all float file?
-            clean_bands = ma.masked_outside(clean_bands, 0.0, 1.0)
 
         return clean_bands
 
