@@ -122,8 +122,6 @@ class PlotCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
 
     def plot(self, data:PlotData):
-        # TODO something better than setting it over and over??
-        # TODO only reset if change is detected??  Seems to work though
         self._axes.set_xlabel(data.x_label)
         self._axes.set_ylabel(data.y_label)
         self._axes.set_title(data.title)
@@ -176,7 +174,6 @@ class HistogramPlotCanvas(PlotCanvas):
         super().plot(data)
 
     def update_plot(self, data:HistogramPlotData):
-        # TODO clear and replace whole plot is a bit inefficient
         self._axes.clear()
         self.plot(data)
 
@@ -399,7 +396,6 @@ class AdjustableHistogramControl(QWidget):
         self.__raw_data_canvas.plot_changed.connect(self.__handle_plot_change)
         self.__adjusted_data_canvas = HistogramPlotCanvas(band, self, width=5, height=4)
 
-        # TODO need to set the data's precision
         self.__edit_precision:int = 3
 
         self.__init_ui()
@@ -771,8 +767,6 @@ class HistogramDisplayWindow(QMainWindow):
 
     @pyqtSlot(HistogramDisplayControl.Layout)
     def __handle_layout_changed(self, new_layout:HistogramDisplayControl.Layout):
-        # TODO need a more sensible to pick a size, maybe based on screen geo?
-        # TODO if user resizes keep a ratio and apply to base sizes below?
         if new_layout == HistogramDisplayControl.Layout.STACKED:
             self.resize(800, 400)
 

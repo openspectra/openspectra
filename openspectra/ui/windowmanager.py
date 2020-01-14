@@ -4,6 +4,8 @@
 
 import logging
 import os
+import sys
+import traceback
 from typing import Dict, Tuple, List
 
 from PyQt5.QtCore import pyqtSlot, QObject, QRect, pyqtSignal, QChildEvent, Qt, QStandardPaths
@@ -19,9 +21,11 @@ from openspectra.ui.bandlist import BandList, RGBSelectedBands
 from openspectra.ui.imagedisplay import MainImageDisplayWindow, AdjustedMouseEvent, AreaSelectedEvent, \
     ZoomImageDisplayWindow, RegionDisplayItem, WindowCloseEvent, ImageDisplayWindow
 from openspectra.ui.plotdisplay import LinePlotDisplayWindow, HistogramDisplayWindow, LimitChangeEvent, LimitResetEvent
+from openspectra.ui.thread_tools import ThreadedImageTools
 from openspectra.ui.toolsdisplay import RegionOfInterestDisplayWindow, RegionStatsEvent, RegionToggleEvent, \
-    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent
-from openspectra.utils import LogHelper, Logger
+    RegionCloseEvent, RegionNameChangeEvent, RegionSaveEvent, SubCubeWindow, FileSubCubeParams, SaveSubCubeEvent, \
+    ZoomSetWindow
+from openspectra.utils import LogHelper, Logger, OpenSpectraProperties
 
 
 class MenuEvent(QObject):
@@ -29,9 +33,12 @@ class MenuEvent(QObject):
     OPEN_EVENT:int = 0
     CLOSE_EVENT:int = 1
     SAVE_EVENT:int = 2
-    LINK_EVENT:int = 3
-    HIST_PLOT_EVENT:int = 4
-    SPEC_PLOT_EVENT:int = 5
+    HIST_PLOT_EVENT:int = 3
+    SPEC_PLOT_EVENT:int = 4
+    ZOOM_IN:int = 5
+    ZOOM_OUT:int = 6
+    ZOOM_RESET:int = 7
+    ZOOM_SET:int = 8
 
     def __init__(self, event_type:int, window:QMainWindow):
         super().__init__()
@@ -49,21 +56,23 @@ class SaveManager(QObject):
 
     __LOG:Logger = LogHelper.logger("SaveManager")
 
-    def __init__(self, default_dir: os.PathLike, caption:str, filter_str:str, extension:str):
-        # TODO make save location configurable some how?
+    def __init__(self, default_dir:os.PathLike, caption:str, filter_str:str, extension:str):
         super().__init__()
         self.__save_dir_default = default_dir
         self.__caption = caption
         self.__filter_str = filter_str
-        self.__extension = extension
+        if extension is not None and len(extension) > 0:
+            self.__extension = "." + extension
+        else:
+            self.__extension = ""
 
     def save_dialog(self, default_name:str) -> str:
-        # TODO there appears to be an unresolved problem with QFileDialog when using native dialogs at aleast on Mac
-        # seems to be releated to the text field where you would type a file name not getting cleaned up which
+        # there appears to be an unresolved problem with QFileDialog when using native dialogs at least on Mac
+        # seems to be related to the text field where you would type a file name not getting cleaned up which
         # may explain why it only seems to impact the save dialog.
-        # TODO |QFileDialog.ShowDirsOnly only good with native dialog
+        # |QFileDialog.ShowDirsOnly only good with native dialog
 
-        default_save_name = os.path.join(self.__save_dir_default, default_name)
+        default_save_name = os.path.join(self.__save_dir_default, default_name + self.__extension)
         SaveManager.__LOG.debug("Default location: {0}", self.__save_dir_default)
         dialog_result = QFileDialog.getSaveFileName(caption=self.__caption, directory=default_save_name,
             filter=self.__filter_str, options=QFileDialog.DontUseNativeDialog)
@@ -81,13 +90,42 @@ class SaveManager(QObject):
         return file_name
 
 
-class WindowManager(QObject):
+class ExceptionManager(QObject):
+
+    def __init__(self):
+        super().__init__()
+
+    def _logger(self) -> Logger:
+        pass
+
+    def _handle_exception(self, message:str, sys_info:tuple, trace_back:str):
+        error_msg = "{}: {} {}".format(message, sys_info[0], sys_info[1])
+        tb = traceback.format_exc()
+        self._logger().error("{}\n{}".format(error_msg, trace_back))
+        self._error_prompt(error_msg, trace_back)
+
+    def _error_prompt(self, error_msg:str, trace_back:str=None):
+        dialog = QMessageBox()
+        dialog.setIcon(QMessageBox.Critical)
+        dialog.setText(error_msg)
+        if trace_back is not None:
+            dialog.setDetailedText(trace_back)
+        dialog.addButton(QMessageBox.Ok)
+        dialog.exec()
+
+
+class WindowManager(ExceptionManager):
 
     __LOG:Logger = LogHelper.logger("WindowManager")
 
     image_closed = pyqtSignal(WindowCloseEvent)
     plot_closed = pyqtSignal(WindowCloseEvent)
     plot_opened = pyqtSignal(MenuEvent)
+    zoom_in = pyqtSignal(MenuEvent)
+    zoom_out = pyqtSignal(MenuEvent)
+    zoom_reset = pyqtSignal(MenuEvent)
+    zoom_factor_changed = pyqtSignal(float)
+    save_image = pyqtSignal(MenuEvent)
 
     def __init__(self, parent_window:QMainWindow, band_list:BandList):
         super().__init__()
@@ -112,6 +150,10 @@ class WindowManager(QObject):
         self.__save_manager = SaveManager(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation),
                                 "Save Data", "", "")
 
+        self.__zoom_set_window:ZoomSetWindow = ZoomSetWindow()
+        self.__zoom_set_window.zoom_factor_changed.connect(self.zoom_factor_changed)
+        self.__zoom_set_window.move(self.__screen_geometry.width() - self.__zoom_set_window.width() - 5, 0)
+
     def open_file(self):
         file_dialog = QFileDialog.getOpenFileName(self.__parent_window, "Open file", self.__default_open_dir)
         file_name = file_dialog[0]
@@ -126,9 +168,9 @@ class WindowManager(QObject):
                 if split_path[0]:
                     self.__default_open_dir = split_path[0]
 
-            except OpenSpectraFileError as e:
-                WindowManager.__LOG.error("Failed to open file with error: {0}".format(e))
-                self.__file_not_found_prompt(file_name)
+            except:
+                self._handle_exception("Failed to open file {} with error".
+                    format(file_name), sys.exc_info(), traceback.format_exc())
         else:
             WindowManager.__LOG.debug("File open canceled...")
 
@@ -136,8 +178,7 @@ class WindowManager(QObject):
         file_manager = FileManager(file, self)
         file_name = file_manager.file_name()
         if file_name in self.__file_managers:
-            # TODO file names must be unique, handle dups somehow, no need to reopen really
-            # TODO Just throw a up a dialog box saying it's already open?
+            self._error_prompt("A file with name {} is already open".format(file_name))
             return
 
         self.__file_managers[file_name] = file_manager
@@ -163,6 +204,9 @@ class WindowManager(QObject):
 
     def parent_window(self) -> QMainWindow:
         return self.__parent_window
+
+    def zoom_factor(self) -> float:
+        return self.__zoom_set_window.zoom_factor()
 
     def open_save_subcube(self, file_name:str):
         if len(self.__file_managers) > 0:
@@ -198,43 +242,63 @@ class WindowManager(QObject):
             dialog.addButton(QMessageBox.Ok)
             dialog.exec()
 
-    def link_windows(self, start_window:ImageDisplayWindow):
-        WindowManager.__LOG.debug("link_windows called...")
-        # TODO offer a list of other open windows? with the same size image
-
     @pyqtSlot(MenuEvent)
     def menu_event_handler(self, event:MenuEvent):
         event_type = event.event_type()
         target_window = event.window()
         WindowManager.__LOG.debug("Received menu event type: {}, for window: {}", event_type, target_window)
 
-        if event_type == MenuEvent.OPEN_EVENT:
-            self.open_file()
+        try:
+            if event_type == MenuEvent.OPEN_EVENT:
+                self.open_file()
 
-        elif event_type == MenuEvent.SAVE_EVENT:
-            if target_window == self.__parent_window:
-                self.open_save_subcube(self.__band_list.selected_file())
-            elif isinstance(target_window, ImageDisplayWindow):
-                # TODO will do a save image eventually
-                pass
+            elif event_type == MenuEvent.SAVE_EVENT:
+                if target_window == self.__parent_window:
+                    self.open_save_subcube(self.__band_list.selected_file())
+                elif isinstance(target_window, ImageDisplayWindow):
+                    self.save_image.emit(event)
 
-        elif event_type == MenuEvent.CLOSE_EVENT:
-            if target_window == self.__parent_window:
-                self.close_file(self.__band_list.selected_file())
-            elif isinstance(target_window, ImageDisplayWindow):
+            elif event_type == MenuEvent.CLOSE_EVENT:
+                if target_window == self.__parent_window:
+                    self.close_file(self.__band_list.selected_file())
+                elif isinstance(target_window, ImageDisplayWindow):
+                    # notify the window sets they'll decide if it applies
+                    self.image_closed.emit(WindowCloseEvent(target_window))
+                elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window,
+                        HistogramDisplayWindow):
+                    # notify the window sets they'll decide if it applies
+                    self.plot_closed.emit(WindowCloseEvent(target_window))
+                elif isinstance(target_window, ZoomSetWindow):
+                    self.__zoom_set_window.close()
+
+            elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
+                    isinstance(target_window, ImageDisplayWindow):
                 # notify the window sets they'll decide if it applies
-                self.image_closed.emit(WindowCloseEvent(target_window))
-            elif isinstance(target_window, LinePlotDisplayWindow) or isinstance(target_window, HistogramDisplayWindow):
-                # notify the window sets they'll decide if it applies
-                self.plot_closed.emit(WindowCloseEvent(target_window))
+                self.plot_opened.emit(event)
 
-        elif (event_type == MenuEvent.SPEC_PLOT_EVENT or event_type == MenuEvent.HIST_PLOT_EVENT) and \
-            isinstance(target_window, ImageDisplayWindow):
-            # notify the window sets they'll decide if it applies
-            self.plot_opened.emit(event)
+            elif event_type == MenuEvent.ZOOM_IN and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_in.emit(event)
 
-        else:
-            WindowManager.__LOG.warning("Unrecognized menu event type: {}", event_type)
+            elif event_type == MenuEvent.ZOOM_OUT and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_out.emit(event)
+
+            elif event_type == MenuEvent.ZOOM_RESET and isinstance(target_window, ZoomImageDisplayWindow):
+                self.zoom_reset.emit(event)
+
+            elif event_type == MenuEvent.ZOOM_SET:
+                if not self.__zoom_set_window.isVisible():
+                    self.__zoom_set_window.show()
+
+                self.__zoom_set_window.activateWindow()
+
+            else:
+                WindowManager.__LOG.warning(
+                    "Unrecognized menu event and window combination event type: {}, with target: {}",
+                    event_type, target_window)
+        except:
+            # This will only catch the actions that don't result in an event being emitted
+            self._handle_exception("Error handling menu action {}".format(event_type),
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(SaveSubCubeEvent)
     def __handle_save_subcube(self, event:SaveSubCubeEvent):
@@ -242,58 +306,69 @@ class WindowManager(QObject):
         WindowManager.__LOG.debug("__handle_save_subcube for source file: {0}, with params: {1}".
             format(file_name, event.cube_params()))
 
-        if file_name in self.__file_managers:
-            os_file = self.__file_managers[file_name].file()
-            sub_cube_tools = SubCubeTools(os_file, event.cube_params())
-            sub_cube_tools.create_sub_cube()
-            default_name = "{}_{}_{}_{}".format(file_name,
-                max(sub_cube_tools.lines()) - min(sub_cube_tools.lines()),
-                max(sub_cube_tools.samples()) - min(sub_cube_tools.samples()),
-                max(sub_cube_tools.bands()) - min(sub_cube_tools.bands()))
-            new_file_name = self.__save_manager.save_dialog(default_name)
-            if new_file_name:
-                sub_cube_tools.save(new_file_name)
+        try:
+            if file_name in self.__file_managers:
+                os_file = self.__file_managers[file_name].file()
+                sub_cube_tools = SubCubeTools(os_file, event.cube_params())
+                sub_cube_tools.create_sub_cube()
+                default_name = "{}_{}_{}_{}".format(file_name,
+                    max(sub_cube_tools.lines()) - min(sub_cube_tools.lines()),
+                    max(sub_cube_tools.samples()) - min(sub_cube_tools.samples()),
+                    max(sub_cube_tools.bands()) - min(sub_cube_tools.bands()))
+                new_file_name = self.__save_manager.save_dialog(default_name)
+                if new_file_name:
+                    sub_cube_tools.save(new_file_name)
+                else:
+                    WindowManager.__LOG.debug("Sub cube save canceled")
             else:
-                WindowManager.__LOG.debug("Sub cube save canceled")
-        else:
-            dialog = QMessageBox()
-            dialog.setIcon(QMessageBox.Critical)
-            dialog.setText("An internal error occurred.  Requested source cube, {}, does not appear to be open")
-            dialog.addButton(QMessageBox.Ok)
-            dialog.exec()
+                msg = "An internal error occurred.  Requested source cube, {}, does not appear to be open".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed save sub cube due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(QTreeWidgetItem)
     def __handle_band_select(self, item:QTreeWidgetItem):
         band_descriptor:BandDescriptor = item.data(0, Qt.UserRole)
         WindowManager.__LOG.debug("Band selected for: {0}, {1}, {2}".format(
             band_descriptor.file_name(), band_descriptor.band_name(), band_descriptor.wavelength_label()))
-        parent_item = item.parent()
-        file_name = parent_item.text(0)
-        if file_name in self.__file_managers:
-            file_set = self.__file_managers[file_name]
-            file_set.add_grey_window_set(
-                parent_item.indexOfChild(item), band_descriptor)
-        else:
-            # TODO report or log?
-            pass
+
+        try:
+            parent_item = item.parent()
+            file_name = parent_item.text(0)
+            if file_name in self.__file_managers:
+                file_set = self.__file_managers[file_name]
+                file_set.add_grey_window_set(
+                    parent_item.indexOfChild(item), band_descriptor)
+            else:
+                msg = "An interal error occurred.  Failed to find the bands' file in the open file list.  Looking for file named {}".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed open image due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
     @pyqtSlot(RGBSelectedBands)
     def __handle_rgb_select(self, bands:RGBSelectedBands):
-        file_name = bands.file_name()
-        if file_name in self.__file_managers:
-            file_set = self.__file_managers[file_name]
-            file_set.add_rgb_window_set(bands)
-        else:
-            # TODO report or log?
-            pass
+        try:
+            file_name = bands.file_name()
+            if file_name in self.__file_managers:
+                file_set = self.__file_managers[file_name]
+                file_set.add_rgb_window_set(bands)
+            else:
+                msg = "An interal error occurred.  Failed to find the bands' file in the open file list.  Looking for file named {}".\
+                    format(file_name)
+                WindowManager.__LOG.error(msg)
+                self._error_prompt(msg)
+        except:
+            self._handle_exception("Failed open image due to an error.",
+                sys.exc_info(), traceback.format_exc())
 
-    @staticmethod
-    def __file_not_found_prompt(file_name:str):
-        dialog = QMessageBox()
-        dialog.setIcon(QMessageBox.Critical)
-        dialog.setText("File named '{0}' not found!".format(file_name))
-        dialog.addButton(QMessageBox.Ok)
-        dialog.exec()
+    def _logger(self) -> Logger:
+        return WindowManager.__LOG
 
 
 class FileManager(QObject):
@@ -305,21 +380,38 @@ class FileManager(QObject):
         self.__window_manager = window_manager
         self.__file = file
         self.__band_tools = OpenSpectraBandTools(self.__file)
-        self.__image_tools = OpenSpectraImageTools(self.__file)
+        self.__is_threading_enabled = OpenSpectraProperties.get_property("ThreadingEnabled", True)
+
+        if self.__is_threading_enabled:
+            FileManager.__LOG.info("Threading enabled for Image Tools")
+            self.__image_tools = ThreadedImageTools(self.__file)
+            self.__image_tools.image_created.connect(self.__create_window_set)
+        else:
+            FileManager.__LOG.info("Threading not enabled for Image Tools")
+            self.__image_tools = OpenSpectraImageTools(self.__file)
+
         self.__window_sets = list()
 
     def add_rgb_window_set(self, bands:RGBSelectedBands):
         FileManager.__LOG.debug("New RGB window: {0} - {1} - {2}".format(
             bands.red_descriptor().label(), bands.green_descriptor().label(),
             bands.blue_descriptor().label()))
+
         image = self.__image_tools.rgb_image(
             bands.red_index(), bands.green_index(), bands.blue_index(),
             bands.red_descriptor(), bands.green_descriptor(), bands.blue_descriptor())
-        self.__create_window_set(image)
+
+        if not self.__is_threading_enabled:
+            if image is not None:
+                self.__create_window_set(image)
+            else:
+                FileManager.__LOG.error("Image tools did not return and image")
 
     def add_grey_window_set(self, index:int, band_descriptor:BandDescriptor):
         image = self.__image_tools.greyscale_image(index, band_descriptor)
-        self.__create_window_set(image)
+        if not self.__is_threading_enabled:
+            if image is not None:
+                self.__create_window_set(image)
 
     def header(self) -> OpenSpectraHeader:
         return self.__file.header()
@@ -333,9 +425,6 @@ class FileManager(QObject):
     def band_tools(self) -> OpenSpectraBandTools:
         return self.__band_tools
 
-    def image_tools(self) -> OpenSpectraImageTools:
-        return self.__image_tools
-
     def window_manager(self) -> WindowManager:
         return self.__window_manager
 
@@ -344,7 +433,9 @@ class FileManager(QObject):
             window_set = self.__window_sets.pop()
             window_set.close()
 
+    @pyqtSlot(Image)
     def __create_window_set(self, image:Image):
+        FileManager.__LOG.debug("__create_window_set called...")
         title = image.label()
         window_set = WindowSet(image, title, self)
         window_set.closed.connect(self.__handle_windowset_closed)
@@ -390,20 +481,30 @@ class WindowSet(QObject):
         self.__init_plot_windows()
         self.__init_roi()
 
+        self.__default_image_save_dir = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+        self.__save_manager = SaveManager(self.__default_image_save_dir,
+            "Save Image", "Images (*.png *.xpm *.jpg)", "jpg")
+
     def __init_image_window(self):
         if isinstance(self.__image, GreyscaleImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_Grayscale8, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.window_manager().zoom_factor(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
         elif isinstance(self.__image, RGBImage):
             self.__main_image_window = MainImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
             self.__zoom_image_window = ZoomImageDisplayWindow(self.__image, self.__title,
                 QImage.Format_RGB32, self.__file_manager.window_manager().available_geometry(),
+                self.__file_manager.window_manager().zoom_factor(),
+                self.__file_manager.header().map_info(),
                 self.file_manager().window_manager().parent_window())
         else:
             raise TypeError("Image type not recognized, found type: {0}".
@@ -426,11 +527,16 @@ class WindowSet(QObject):
         self.__zoom_image_window.closed.connect(self.__handle_image_closed)
         self.__zoom_image_window.area_selected.connect(self.__handle_area_selected)
         self.__zoom_image_window.area_selected.connect(self.__main_image_window.handle_region_selected)
+        self.file_manager().window_manager().zoom_factor_changed.connect(self.__zoom_image_window.handle_zoom_factor_changed)
 
         # Register for close events coming from the menu system
         self.__file_manager.window_manager().image_closed.connect(self.__handle_image_closed)
         self.__file_manager.window_manager().plot_closed.connect(self.__handle_plot_closed)
         self.__file_manager.window_manager().plot_opened.connect(self.__handle_plot_open)
+        self.__file_manager.window_manager().zoom_in.connect(self.__handle_zoom_in)
+        self.__file_manager.window_manager().zoom_out.connect(self.__handle_zoom_out)
+        self.__file_manager.window_manager().zoom_reset.connect(self.__handle_zoom_reset)
+        self.__file_manager.window_manager().save_image.connect(self.__handle_save_image)
 
     def __init_plot_windows(self):
         self.__spec_plot_window = LinePlotDisplayWindow(self.__main_image_window)
@@ -476,6 +582,31 @@ class WindowSet(QObject):
         window_rect = self.get_image_window_geometry()
         self.__histogram_window.setGeometry(window_rect.x(), window_rect.y() + window_rect.height() + 50, 800, 400)
         self.__histogram_window.show()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_save_image(self, event:MenuEvent):
+        target_window = event.window()
+        if target_window == self.__zoom_image_window or target_window == self.__main_image_window:
+            image_file_name = self.__save_manager.save_dialog(target_window.windowTitle())
+            if image_file_name:
+                target_window.save_image(image_file_name)
+            else:
+                WindowSet.__LOG.debug("Image save canceled")
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_reset(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_reset()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_in(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_in()
+
+    @pyqtSlot(MenuEvent)
+    def __handle_zoom_out(self, event:MenuEvent):
+        if event.window() == self.__zoom_image_window:
+            self.__zoom_image_window.handle_zoom_out()
 
     @pyqtSlot(MenuEvent)
     def __handle_plot_open(self, event:MenuEvent):
@@ -594,13 +725,10 @@ class WindowSet(QObject):
         if updated:
             self.__image.adjust()
 
-            # TODO use event instead?
             # trigger update in image window
             self.__main_image_window.refresh_image()
             self.__zoom_image_window.refresh_image()
 
-            # TODO replotting the whole thing is bit inefficient?
-            # TODO don't have the label here
             image_hist = self.__histogram_tools.adjusted_histogram(event.band())
             self.__histogram_window.set_adjusted_data(image_hist, event.band())
         else:
@@ -668,7 +796,6 @@ class WindowSet(QObject):
         band_stats_window.closed.connect(self.__handle_band_stats_closed)
         self.__band_stats_windows[region] = band_stats_window
 
-        # TODO still??? bug here when image window has been resized, need adjusted coords
         stats_plot = self.__band_tools.statistics_plot(lines, samples, "Region: {0}".format(region.display_name()))
         band_stats_window.plot(stats_plot.mean())
         band_stats_window.add_plot(stats_plot.min())
@@ -837,7 +964,6 @@ class RegionOfInterestManager(QObject):
             raise Exception("RegionOfInterestManager is a singleton, use RegionOfInterestManager.Get_Instance() instead")
         else:
             super().__init__()
-            # TODO figure out how to position the window??
             # Region of interest window, note we intentionally don't set Qt.WA_DeleteOnClose
             # because we can reuse it easily.
             self.__region_window = RegionOfInterestDisplayWindow()
@@ -896,7 +1022,6 @@ class RegionOfInterestManager(QObject):
                     RegionOfInterestManager.__LOG.debug("Region save canceled")
             else:
                 # Report region not found?  Shouldn't happen...
-                # TODO raise here?
                 RegionOfInterestManager.__LOG.error(
                     "Attempt to save region failed because the region could not be found, region name: {0}".
                         format(region.display_name()))

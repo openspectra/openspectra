@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject, QPoint, pyqtSlot, QRegExp
 from PyQt5.QtGui import QColor, QBrush, QCloseEvent, QFont, QResizeEvent, QRegExpValidator, QValidator
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QHBoxLayout, QLabel, QComboBox, QFormLayout, \
-    QLineEdit, QPushButton, QMessageBox
+    QLineEdit, QPushButton, QMessageBox, QSlider
 
 from openspectra.openspecrtra_tools import RegionOfInterest, CubeParams
 from openspectra.openspectra_file import OpenSpectraHeader
@@ -294,8 +294,8 @@ class RangeSelector(QWidget):
         from_layout.addWidget(QLabel("From:"))
 
         self.__from_select = QComboBox(self)
-        # TODO get ignored for certain styles, like Mac, when not editable
-        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        # gets ignored for certain styles, like Mac, when not editable
+        # possibly allow editable but make it jump to item instead of adding to list?
         self.__from_select.setMaxVisibleItems(20)
         self.__from_select.currentIndexChanged.connect(self.__handle_from_changed)
 
@@ -306,8 +306,8 @@ class RangeSelector(QWidget):
         to_layout.addWidget(QLabel("To:"))
 
         self.__to_select = QComboBox(self)
-        # TODO get ignored for certain styles, like Mac, when not editable
-        # TODO possibly allow editable but make it jump to item instead of adding to list?
+        # gets ignored for certain styles, like Mac, when not editable
+        # possibly allow editable but make it jump to item instead of adding to list?
         self.__to_select.setMaxVisibleItems(20)
         self.__to_select.currentIndexChanged.connect(self.__handle_to_changed)
 
@@ -632,11 +632,10 @@ class SubCubeWindow(QMainWindow):
 
         self.setMinimumWidth(500)
         self.setMinimumHeight(325)
-        # TODO is this what we really want???
+
         self.setMaximumWidth(500)
         self.setMaximumHeight(325)
 
-        # TODO position center of screen??
 
     @pyqtSlot()
     def __handle_cancel(self):
@@ -645,3 +644,72 @@ class SubCubeWindow(QMainWindow):
 
     def resizeEvent(self, event:QResizeEvent):
         SubCubeWindow.__LOG.debug("new size: {0}".format(event.size()))
+
+
+class ZoomSetControl(QWidget):
+    __LOG:Logger = LogHelper.logger("ZoomSetControl")
+
+    zoom_factor_changed = pyqtSignal(float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.__default_zoom_factor = 1.5
+        self.__precision = 1
+        self.__display_format = "{{:.{}f}}".format(self.__precision)
+
+        layout = QVBoxLayout()
+        self.__label = QLabel("Zoom Factor")
+        layout.addWidget(self.__label)
+
+        adjuster_layout = QHBoxLayout()
+
+        self.__value_display = QLineEdit(self)
+        self.__value_display.setFixedWidth(35)
+        self.__value_display.setEnabled(False)
+        self.__value_display.setText(self.__display_format.format(self.__default_zoom_factor))
+
+        self.__slider = QSlider(self)
+        self.__slider.setMinimum(11)
+        self.__slider.setMaximum(50)
+        self.__slider.setTickInterval(2)
+        self.__slider.setTickPosition(QSlider.TicksBothSides)
+        self.__slider.setValue(self.__default_zoom_factor * 10)
+        self.__slider.valueChanged.connect(self.__handle_slider_value_change)
+
+        adjuster_layout.addWidget(self.__value_display)
+        adjuster_layout.addWidget(self.__slider)
+
+        layout.addLayout(adjuster_layout)
+        self.setLayout(layout)
+
+    @pyqtSlot(int)
+    def __handle_slider_value_change(self, value:int):
+        new_value = value / 10
+        self.__value_display.setText(self.__display_format.format(new_value))
+        self.zoom_factor_changed.emit(new_value)
+
+    def zoom_factor(self) -> float:
+        return float(self.__value_display.text())
+
+
+class ZoomSetWindow(QMainWindow):
+    __LOG:Logger = LogHelper.logger("ZoomSetWindow")
+
+    zoom_factor_changed = pyqtSignal(float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.__zoom_set_control = ZoomSetControl()
+        self.__zoom_set_control.zoom_factor_changed.connect(self.zoom_factor_changed)
+
+        self.setMinimumWidth(100)
+        self.setMaximumWidth(100)
+        self.setMinimumHeight(300)
+        self.setMaximumHeight(300)
+
+        self.setToolTip("Change the zoom factor for all zoom windows")
+        self.setCentralWidget(self.__zoom_set_control)
+
+    def zoom_factor(self) -> float:
+        return self.__zoom_set_control.zoom_factor()

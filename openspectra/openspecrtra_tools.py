@@ -36,11 +36,6 @@ class RegionOfInterest:
         self.__index = -1
         self.__display_name = display_name
 
-        # TODO do I need to keep area?
-        # self.__area = area
-
-        # TODO need a way we can tie this region back to the original image?
-        # TODO verify area is less than or equal to image size???
         self.__image_height = image_height
         self.__image_width = image_width
 
@@ -207,8 +202,6 @@ class Bands:
         self.__bands = bands
         self.__labels = labels
 
-        # TODO verify indexing matching up?
-
     def bands(self, index:int=None)-> np.ndarray:
         if index is not None:
             return self.__bands[index, :]
@@ -227,9 +220,7 @@ class BandStatistics(Bands):
     def __init__(self, bands:np.ndarray, labels:List[Tuple[str, str]]=None):
         super().__init__(bands, labels)
         self.__mean = bands.mean(0)
-        # TODO is this correct?
         self.__min = bands.min(0)
-        # TODO is this correct?
         self.__max = bands.max(0)
         self.__std = bands.std(0)
         self.__mean_plus = self.__mean + self.__std
@@ -285,7 +276,6 @@ class BandStaticsPlotData():
             "Wavelength", "Magnitude", self.__title, "g", legend="std-")
 
 
-# TODO needs much attention!!!
 class OpenSpectraBandTools:
     """A class for working on OpenSpectra files.
     Note: all indexes are expected to be zero based."""
@@ -312,7 +302,7 @@ class OpenSpectraBandTools:
         wavelengths = self.__file.header().wavelengths()
         # OpenSpectraBandTools.__LOG.debug("plotting spectra with min: {0}, max: {1}", band.min(), band.max())
 
-        # TODO something better than having to know to do band[0, :] here?? Use Bands??
+        # something better than having to know to do band[0, :] here?? Use Bands??
         return LinePlotData(wavelengths, band[0, :], "Wavelength", "Magnitude",
             "Spectrum S-{0}, L-{1}".format(sample + 1, line + 1))
 
@@ -342,23 +332,16 @@ class OpenSpectraBandTools:
             else:
                 result.mask = result.mask | header.bad_band_list()
 
-        return self.__bogus_noise_cleanup(result)
+        return self.__noise_cleanup(result)
 
-    # TODO work around for now for 1 float file, remove noise from data for floats
-    # TODO will need a general solution also for images too?
-    # TODO where will this live
     @staticmethod
-    def __bogus_noise_cleanup(bands:np.ndarray) -> np.ndarray:
+    def __noise_cleanup(bands:np.ndarray) -> np.ndarray:
         clean_bands = bands
         if clean_bands.dtype in OpenSpectraDataTypes.Floats:
-            if clean_bands.min() == np.nan or clean_bands.max() == np.nan or clean_bands.min() == np.inf or clean_bands.max() == np.inf:
+            min = clean_bands.min()
+            max = clean_bands.max()
+            if np.isnan(min) or np.isnan(max) or np.isinf(min) or np.isinf(max):
                 clean_bands = ma.masked_invalid(clean_bands)
-
-            # TODO certain areas look a bit better when filtered by different criteria, must be a better way
-            # if clean_bands.std() > 1.0:
-            # if clean_bands.std() > 0.1:
-            # clean_bands = ma.masked_outside(clean_bands, -0.01, 0.05)
-            clean_bands = ma.masked_outside(clean_bands, 0.0, 1.0)
 
         return clean_bands
 
@@ -435,7 +418,6 @@ class OpenSpectraRegionTools:
         out.write("# description:{0}\n".format(self.__region.description()))
         out.write("# data:\n")
 
-        # TODO output formatting?  Specific number of decimal places to print?
         out.write(self.__get_data_header(bands))
         band_index:int = 0
         for r in self.__region:
@@ -533,7 +515,7 @@ class OpenSpectraHistogramTools:
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         elif type in OpenSpectraDataTypes.Floats:
             x_range = (data.min(), data.max())
-            bins = OpenSpectraProperties.FloatBins
+            bins = OpenSpectraProperties.get_property("FloatBins", 512)
             return HistogramPlotData(x_range, data.flatten(), bins=bins)
         else:
             raise TypeError("Data with type {0} is not supported".format(type))

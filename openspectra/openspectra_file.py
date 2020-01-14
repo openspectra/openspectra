@@ -191,7 +191,6 @@ class OpenSpectraHeader:
                     if name == "units":
                         self.__units:str = value
                     elif name == "rotation":
-                        # TODO validate in range?
                         # convert rotation angle to radians for compatibility
                         # with the math cos and sin functions
                         self.__rotation_deg = float(value)
@@ -339,7 +338,6 @@ class OpenSpectraHeader:
         self.__wavelengths:np.array = None
         self.__band_labels:List[Tuple[str, str]] = None
         self.__header_offset:int = 0
-        # TODO use standard float instead?
         self.__reflectance_scale_factor:np.float64 = None
         self.__map_info:OpenSpectraHeader.MapInfo = None
         self.__data_ignore_value: Union[int, float] = None
@@ -484,7 +482,6 @@ class OpenSpectraHeader:
     def sensor_type(self) -> str:
         return self.__props.get(OpenSpectraHeader.__SENSOR_TYPE)
 
-    # TODO return standard float instead?
     def reflectance_scale_factor(self) -> np.float64:
         return self.__reflectance_scale_factor
 
@@ -553,7 +550,12 @@ class OpenSpectraHeader:
             raise OpenSpectraHeaderError("Valid values for byte order in header are '0' or '1'.  Value is: {0}".
                 format(self.__props.get(OpenSpectraHeader.__BYTE_ORDER)))
 
-        interleave:str = self.__props.get(OpenSpectraHeader._INTERLEAVE).lower()
+        interleave:str = self.__props.get(OpenSpectraHeader._INTERLEAVE)
+        if interleave is None or len(interleave) != 3:
+            raise OpenSpectraHeaderError("Interleave format missing from header file.  Must be one of {}, {}, or {}".format(
+                OpenSpectraHeader.BIP_INTERLEAVE, OpenSpectraHeader.BSQ_INTERLEAVE, OpenSpectraHeader.BIL_INTERLEAVE))
+
+        interleave = interleave.lower()
         if interleave == OpenSpectraHeader.BIP_INTERLEAVE:
             self.__interleave = OpenSpectraHeader.BIP_INTERLEAVE
         elif interleave == OpenSpectraHeader.BSQ_INTERLEAVE:
@@ -561,8 +563,9 @@ class OpenSpectraHeader:
         elif interleave == OpenSpectraHeader.BIL_INTERLEAVE:
             self.__interleave = OpenSpectraHeader.BIL_INTERLEAVE
         else:
-            raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {0}".
-                format(self.__props.get(OpenSpectraHeader._INTERLEAVE)))
+            raise OpenSpectraHeaderError("Unknown interleave format in header file.  Value is: {}. Must be one of {}, {}, or {}".
+                format(self.__props.get(OpenSpectraHeader._INTERLEAVE),
+                OpenSpectraHeader.BIP_INTERLEAVE, OpenSpectraHeader.BSQ_INTERLEAVE, OpenSpectraHeader.BIL_INTERLEAVE))
 
         self.__samples = int(self.__props.get(OpenSpectraHeader._SAMPLES))
         self.__lines = int(self.__props.get(OpenSpectraHeader._LINES))
@@ -606,7 +609,7 @@ class OpenSpectraHeader:
         self.__band_labels = list(zip(band_names, wavelengths_str))
 
         self.__header_offset = int(self.__props.get(OpenSpectraHeader._HEADER_OFFSET))
-        # TODO missing sometimes??
+
         if OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR in self.__props:
             self.__reflectance_scale_factor = np.float64(
                 self.__props[OpenSpectraHeader.__REFLECTANCE_SCALE_FACTOR])
@@ -652,9 +655,6 @@ class OpenSpectraHeader:
             # remember that "1" means the band is good, "0" means it's bad so
             # but True in a numpy mask means the value is masked so flip the values
             self.__bad_band_list = [not bool(int(item)) for item in bad_band_list]
-
-        # TODO byte_order - make sure we recognize and support?
-        # TODO additional validation????
 
 
 class MutableOpenSpectraHeader(OpenSpectraHeader):
@@ -1104,22 +1104,10 @@ class OpenSpectraFile:
         self.__validate()
 
         if OpenSpectraFile.__LOG.isEnabledFor(logging.DEBUG):
-            # TODO seems a little weird, maybe the file delegate should provide access to the file?
-            # TODO so how far do we want to go with the delegate, expose file?  Only expose file props/methods?
             OpenSpectraFile.__LOG.debug("Shape: {0}", self.__memory_model.file().shape)
             OpenSpectraFile.__LOG.debug("NDim: {0}", self.__memory_model.file().ndim)
             OpenSpectraFile.__LOG.debug("Size: {0}", self.__memory_model.file().size)
             OpenSpectraFile.__LOG.debug("Type: {0}", self.__memory_model.file().dtype)
-
-            # TODO so this causes performance problems on large file even with memory mapped, probably has to read the whole file
-            # TODO doesn't consume a bunch of memory in the end.
-            # OpenSpectraFile.__LOG.debug("Min: {0}, Max: {1}", self.__memory_model.file().min(), self.__memory_model.file().max())
-
-        # TODO this causes all memory to get used up then released and takes a long time but works when copy=False
-        # TODO doesn't seem to recover at all if copy=True
-        # view = np.ma.masked_invalid(self.__memory_model.file(), False)
-        # view = np.ma.masked_outside(view, -1, 1, False)
-        # OpenSpectraFile.__LOG.debug("Filtered Min: {0}, Max: {1}, Size: {2}", view.min(), view.max(), view[~view.mask].size)
 
     def raw_image(self, band:Union[int, tuple]) -> np.ndarray:
         """Return the image data for the given band.
@@ -1212,7 +1200,6 @@ class OpenSpectraFileFactory:
             else:
                 raise OpenSpectraHeaderError("Unexpected file type: {0}".format(file_type))
 
-            # TODO this is kind of weird
             memory_model.load(file_delegate.shape())
             return OpenSpectraFile(header, file_delegate, memory_model)
 

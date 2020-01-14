@@ -6,6 +6,7 @@ import logging
 import logging.config as lc
 import os
 from pathlib import Path
+from typing import Union, Dict
 
 import numpy as np
 from yaml import load
@@ -49,11 +50,11 @@ class LogHelper:
         # TODO set this from config options
         logging.raiseExceptions = True
 
-        path: str = os.path.abspath(os.path.dirname(__file__))
-        file: str = os.path.join(path, "config/logging.conf")
+        path:str = os.path.abspath(os.path.dirname(__file__))
+        file:str = os.path.join(path, "config/logging.conf")
 
         if file is not None and len(file) > 0:
-            config_file: Path = Path(file)
+            config_file:Path = Path(file)
 
             if config_file.exists() and config_file.is_file():
                 conf = load(config_file.open("r"))
@@ -76,7 +77,6 @@ class LogHelper:
 
     @staticmethod
     def logger(name:str) -> logging.Logger:
-        # TODO thread safety??
         if LogHelper.__logger is None:
             LogHelper.__initialize()
 
@@ -92,4 +92,84 @@ class OpenSpectraDataTypes:
 
 class OpenSpectraProperties:
 
-    FloatBins = 512
+    __LOG: Logger = LogHelper.logger("OpenSpectraProperties")
+    __properties = None
+
+    def __init__(self):
+        self.__prop_map:Dict[str, Union[str, int, float, bool]] = dict()
+        self.__load_properties()
+
+    def __load_properties(self, file_name:str=None):
+        file:str = file_name
+        if file_name is None:
+            path: str = os.path.abspath(os.path.dirname(__file__))
+            file: str = os.path.join(path, "config/openspectra.properties")
+
+        if file is not None and len(file) > 0:
+            config_file: Path = Path(file)
+            if config_file.exists() and config_file.is_file():
+                OpenSpectraProperties.__LOG.info("Loading configuration properties from {}".format(config_file))
+
+                with config_file.open() as properties_file:
+                    for line in properties_file:
+                        line = line.strip()
+                        # ignore # as a comment
+                        if not line.startswith("#") and len(line) > 0:
+                            nv_pair = line.split('=')
+                            if len(nv_pair) == 2:
+                                name: str = nv_pair[0]
+                                value: Union[str, int, float] = OpenSpectraProperties.__get_typed_value(nv_pair[1])
+                                self.__prop_map[name] = value
+                                OpenSpectraProperties.__LOG.info("name: {}, value: {}".format(name, value))
+                            else:
+                                OpenSpectraProperties.__LOG.warning("Ignore malformed line [{}] in file {}".
+                                    format(line, file))
+            else:
+                OpenSpectraProperties.__LOG.error("Failed to load configuration file {}, exists {}, is file {}".
+                    format(file, config_file.exists(), config_file.is_file()))
+
+    def __get_property_value(self, name:str) -> Union[str, int, float, bool]:
+        return self.__prop_map.get(name)
+
+    @staticmethod
+    def __get_typed_value(value:str) -> Union[str, int, float, bool]:
+        result:Union[str, int, float] = None
+        if all(s.isalpha() or s.isspace() for s in value):
+            if value == "True":
+                result = True
+            elif value == "False":
+                result = False
+            else:
+                result = value
+        elif value.count(".") == 1:
+            try:
+                result = float(value)
+            except ValueError:
+                result = value
+        elif value.isdigit():
+            try:
+                result = int(value)
+            except ValueError:
+                result = value
+
+        return result
+
+    @staticmethod
+    def __get_instance():
+        if OpenSpectraProperties.__properties is None:
+            OpenSpectraProperties.__properties = OpenSpectraProperties()
+
+        return OpenSpectraProperties.__properties
+
+    @staticmethod
+    def get_property(name:str, defalut:Union[str, int, float, bool]=None) -> Union[str, int, float, bool]:
+        result = OpenSpectraProperties.__get_instance().__get_property_value(name)
+        if result is None:
+            return defalut
+        else:
+            return result
+
+    @staticmethod
+    def add_properties(file_name:str):
+        """Add properties in addition to the default properties over writing any duplicates"""
+        OpenSpectraProperties.__get_instance().__load_properties(file_name)
