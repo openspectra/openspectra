@@ -13,7 +13,7 @@ as some requirements were updated with the release of 1.0.  See the [Feature Not
 ### Setup notes
 At this point the application is available only via this Github repo.  We plan to create an installer in the future for easier setup.
 
-You'll need Python 3.7 or later installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is reccomended but not required.  Setup may be easier if you don't mind installing the dependencies globablly.
+You'll need Python 3.7 or later installed.  Here is a good guide for setting up Python and your project on multiple platforms, https://docs.python-guide.org.  Using virutalenvwrapper is recommended but not required.  Setup may be easier if you don't mind installing the dependencies globablly.
 
 If you're using a virtual environment set up your project directory first then see the [Clone](https://github.com/openspectra/openspectra/wiki/Git-Tips#clone) section of git tips for how to get the code added to your project.  If not using a virtual environment you can jump straight to the clone instructions.
 
@@ -23,7 +23,7 @@ Once you have the code in your project you'll see a "requirements.txt" file in t
 pip install -r requirements.txt
 ````
 
-Once the libraries have all downloaded you're ready to run the application.  Simply run,
+Once the libraries have all been downloaded you're ready to run the application.  Simply run,
 
 ````
 python main.py
@@ -49,7 +49,7 @@ Don't for the "samples." before the base file name.
 
 Also be sure to checkout the source code itself.  They'll be heavily commented to explain what is going on at each step in the code.
 
-You should also be able to run them in your IDE with or without debugging.  In PyCharm for example simply right click the sample file you want to run and choose eithr "Run" or "Debug".
+You should also be able to run them in your IDE with or without debugging.  In PyCharm for example simply right click the sample file you want to run and choose either "Run" or "Debug".
 
 ### Unit tests
 
