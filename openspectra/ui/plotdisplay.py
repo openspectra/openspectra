@@ -15,7 +15,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from openspectra.image import Band
-from openspectra.openspecrtra_tools import PlotData, HistogramPlotData, LinePlotData
+from openspectra.openspectra_tools import PlotData, HistogramPlotData, LinePlotData
 from openspectra.utils import LogHelper, Logger
 
 

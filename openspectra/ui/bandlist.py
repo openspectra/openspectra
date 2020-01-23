@@ -8,7 +8,7 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, QItemSelectionModel, QObject, QMo
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAbstractItemView, QTreeWidget, QTreeWidgetItem, QRadioButton, \
     QHBoxLayout, QPushButton, QMessageBox, QCheckBox, QTreeWidgetItemIterator
 
-from openspectra.openspecrtra_tools import OpenSpectraBandTools
+from openspectra.openspectra_tools import OpenSpectraBandTools
 from openspectra.image import BandDescriptor
 from openspectra.utils import Logger, LogHelper
 

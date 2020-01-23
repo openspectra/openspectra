@@ -13,7 +13,7 @@ from PyQt5.QtGui import QGuiApplication, QScreen, QImage
 from PyQt5.QtWidgets import QTreeWidgetItem, QFileDialog, QMessageBox, QCheckBox, QMainWindow
 
 from openspectra.image import Image, GreyscaleImage, RGBImage, Band, BandDescriptor
-from openspectra.openspecrtra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
+from openspectra.openspectra_tools import OpenSpectraHistogramTools, OpenSpectraBandTools, OpenSpectraImageTools, \
     RegionOfInterest, OpenSpectraRegionTools, SubCubeTools
 from openspectra.openspectra_file import OpenSpectraFile, OpenSpectraHeader, OpenSpectraFileFactory, \
     OpenSpectraFileError

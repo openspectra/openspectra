@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QThreadPool, QRunnable, QMetaType, pyqtSignal, QObject
 
 from openspectra.image import BandDescriptor, GreyscaleImage, RGBImage, Image
-from openspectra.openspecrtra_tools import OpenSpectraImageTools
+from openspectra.openspectra_tools import OpenSpectraImageTools
 from openspectra.openspectra_file import OpenSpectraFile
 from openspectra.utils import Logger, LogHelper
 

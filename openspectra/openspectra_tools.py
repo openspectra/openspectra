@@ -559,17 +559,17 @@ class CubeParams:
         return self.__interleave
 
     def lines(self) -> Tuple[int, int]:
-        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        """See openspectra.openspectra_tools.SubCubeTools for an explaination
         of how these parameters are used"""
         return self.__lines
 
     def samples(self) -> Tuple[int, int]:
-        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        """See openspectra.openspectra_tools.SubCubeTools for an explaination
         of how these parameters are used"""
         return self.__samples
 
     def bands(self) -> Union[Tuple[int, int], List[int]]:
-        """See openspectra.openspecrtra_tools.SubCubeTools for an explaination
+        """See openspectra.openspectra_tools.SubCubeTools for an explaination
         of how these parameters are used"""
         return self.__bands
 

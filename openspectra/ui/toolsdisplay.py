@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, \
     QTableWidget, QTableWidgetItem, QApplication, QStyle, QMenu, QAction, QHBoxLayout, QLabel, QComboBox, QFormLayout, \
     QLineEdit, QPushButton, QMessageBox, QSlider
 
-from openspectra.openspecrtra_tools import RegionOfInterest, CubeParams
+from openspectra.openspectra_tools import RegionOfInterest, CubeParams
 from openspectra.openspectra_file import OpenSpectraHeader
 from openspectra.utils import Logger, LogHelper
 

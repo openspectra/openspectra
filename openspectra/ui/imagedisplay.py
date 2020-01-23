@@ -18,7 +18,7 @@ import numpy as np
 from numpy import ma
 
 from openspectra.image import Image, BandDescriptor
-from openspectra.openspecrtra_tools import RegionOfInterest
+from openspectra.openspectra_tools import RegionOfInterest
 from openspectra.openspectra_file import OpenSpectraHeader
 from openspectra.utils import LogHelper, Logger, Singleton
 
