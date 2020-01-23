@@ -1,0 +1,11 @@
+dist: bionic
+
+language: python
+python:
+  - "3.7"
+
+install:
+  - pip install -r requirements.txt
+
+script:
+  - python -m unittest discover -t . -s test/unit_tests -p "*_test.py"
