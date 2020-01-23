@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Union, Dict
 
 import numpy as np
-from yaml import load
+from yaml import load, FullLoader
 
 
 class Singleton(type):
@@ -57,7 +57,7 @@ class LogHelper:
             config_file:Path = Path(file)
 
             if config_file.exists() and config_file.is_file():
-                conf = load(config_file.open("r"))
+                conf = load(config_file.open("r"), Loader=FullLoader)
                 lc.dictConfig(conf)
                 LogHelper.__logger = Logger(logging.getLogger("openSpectra"))
                 logger = LogHelper.logger("Logger")
