@@ -10,7 +10,7 @@ from typing import List
 import numpy as np
 
 from openspectra.image import BandDescriptor
-from openspectra.openspecrtra_tools import RegionOfInterest, OpenSpectraBandTools, OpenSpectraRegionTools, CubeParams, \
+from openspectra.openspectra_tools import RegionOfInterest, OpenSpectraBandTools, OpenSpectraRegionTools, CubeParams, \
     SubCubeTools
 from openspectra.openspectra_file import OpenSpectraHeader, OpenSpectraFileFactory
 
